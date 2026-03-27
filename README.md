@@ -68,6 +68,8 @@ That installs both `lumo.desktop` and `lumo-headless.desktop` into the Wayland
 session directory and points the login screen at the right startup mode for
 each session.
 The normal session launches `lumo-compositor --backend drm --shell lumo-shell`.
+When the session is started by GDM, the compositor can still use DRM even if
+there is no controlling tty in the process.
 The debug session launches `lumo-compositor --backend headless --debug --session
 lumo-headless --socket lumo-shell-headless --shell lumo-shell`.
 In both cases, the compositor still owns shell startup, so the bundled launcher,
@@ -91,11 +93,12 @@ The compositor binaries land in `compositor/build/` by default:
 ```
 
 On the OrangePi RV2 running Ubuntu 24.04 riscv64, `--backend drm` is the
-normal direct-to-display path. Use `--backend headless`, `--backend wayland`,
-or `--backend x11` when you want to debug nested sessions or isolate backend
-bring-up issues.
-`--backend drm` expects a local VT or other seat-managed session. SSH and other
-non-seat shells are fine for `headless`, but they will not bring up a DRM seat.
+normal direct-to-display path and the normal GDM login-session path. Use
+`--backend headless`, `--backend wayland`, or `--backend x11` when you want to
+debug nested sessions or isolate backend bring-up issues from SSH or another
+remote shell.
+`--backend drm` is still a bad fit for SSH and other non-seat shells, but it no
+longer requires a visible tty when a display manager is launching the session.
 When you leave the compositor in `--backend auto` and launch it from SSH or
 another non-VT shell, Lumo now picks the safest available nested backend
 instead of waiting on DRM to time out.

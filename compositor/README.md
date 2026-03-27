@@ -43,6 +43,8 @@ That install step drops both the normal `Lumo` session and the
 `Lumo Headless Debug` session into the Wayland session directory.
 The normal session launches `lumo-compositor --backend drm --shell lumo-shell`
 so the compositor and bundled shell clients start together after login.
+When GDM launches the session, the compositor can still use DRM even if the
+process has no controlling tty.
 The debug session launches `lumo-compositor --backend headless --debug --session
 lumo-headless --socket lumo-shell-headless --shell lumo-shell` for remote or
 headless bring-up.
@@ -61,11 +63,12 @@ Lumo can be launched with an explicit backend mode:
 ```
 
 The OrangePi RV2 on Ubuntu 24.04 riscv64 should normally use `drm` for the
-physical touchscreen. `headless`, `wayland`, and `x11` are there to make
-debugging and nested bring-up easier when we want to isolate backend problems.
-`drm` needs a local VT or seat-managed login. SSH is fine for inspecting logs,
-but it is only a good fit when you are intentionally using `headless` or another
-nested backend.
+physical touchscreen and for the login-screen session. `headless`, `wayland`,
+and `x11` are there to make debugging and nested bring-up easier when we want
+to isolate backend problems.
+`drm` is still the wrong choice for SSH and other non-seat shells, but it does
+not require a visible tty when GDM or another display manager starts the
+session.
 If you leave the backend in `auto` from SSH or any other non-VT shell, Lumo
 now prefers the safest available nested or headless backend instead of waiting
 for the DRM path to time out.

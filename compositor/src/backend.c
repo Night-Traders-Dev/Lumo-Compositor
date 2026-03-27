@@ -37,6 +37,14 @@ static enum lumo_backend_mode lumo_backend_auto_selection(void) {
     );
 }
 
+static bool lumo_backend_session_looks_remote(void) {
+    const char *ssh_connection = getenv("SSH_CONNECTION");
+    const char *ssh_tty = getenv("SSH_TTY");
+
+    return (ssh_connection != NULL && ssh_connection[0] != '\0') ||
+        (ssh_tty != NULL && ssh_tty[0] != '\0');
+}
+
 int lumo_backend_start(struct lumo_compositor *compositor) {
     enum lumo_backend_mode selected_mode = LUMO_BACKEND_AUTO;
 
@@ -51,11 +59,18 @@ int lumo_backend_start(struct lumo_compositor *compositor) {
             const char *tty_name = lumo_backend_controlling_tty();
 
             if (compositor->config->backend_mode == LUMO_BACKEND_DRM &&
-                    !lumo_tty_name_looks_like_vt(tty_name)) {
+                    lumo_backend_session_looks_remote()) {
                 wlr_log(WLR_ERROR,
-                    "backend: DRM mode requires a local VT (current tty=%s); use --backend headless, --backend wayland, or --backend x11 for remote debugging",
+                    "backend: DRM mode was requested from a remote shell (current tty=%s); use --backend headless, --backend wayland, or --backend x11 for remote debugging",
                     tty_name != NULL ? tty_name : "none");
                 return -1;
+            }
+
+            if (compositor->config->backend_mode == LUMO_BACKEND_DRM &&
+                    !lumo_tty_name_looks_like_vt(tty_name)) {
+                wlr_log(WLR_INFO,
+                    "backend: DRM mode requested without a local VT (current tty=%s); continuing so logind or GDM can provide seat access",
+                    tty_name != NULL ? tty_name : "none");
             }
 
             if (setenv("WLR_BACKENDS", backend_name, 1) != 0) {

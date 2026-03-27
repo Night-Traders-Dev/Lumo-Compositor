@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.21] - 2026-03-27
+- Relaxed the DRM session preflight so the normal GDM login-session path can start Lumo even when there is no controlling tty.
+- Kept the SSH remote-shell guard in place so explicit DRM still points people toward the nested or headless debug backends.
+- Bumped the compositor version to reflect the login-session bring-up fix.
+
 ## [0.0.20] - 2026-03-27
 - Added a second installable Wayland session for headless debug bring-up with distinct session and socket names.
 - Updated the install rules so both the normal `Lumo` session and the debug session are bundled automatically.
