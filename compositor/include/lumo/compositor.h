@@ -529,6 +529,12 @@ struct lumo_layer_surface {
     struct wlr_layer_surface_v1 *layer_surface;
     struct wlr_scene_layer_surface_v1 *scene_surface;
     struct lumo_output *output;
+    struct lumo_output *last_configured_output;
+    bool layout_snapshot_valid;
+    struct wlr_box last_full_area;
+    struct wlr_box last_usable_area;
+    struct wlr_layer_surface_v1_state last_current_state;
+    struct wlr_layer_surface_v1_state last_pending_state;
     struct wl_listener map;
     struct wl_listener unmap;
     struct wl_listener commit;

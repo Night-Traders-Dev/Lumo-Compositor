@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.43] - 2026-03-27
+- Suppressed duplicate layer-shell configures by caching the last arranged launcher and shell layout snapshot per layer surface and skipping no-op reconfigurations.
+- Stopped forcing repeated layer configuration frames while new layer surfaces are waiting for their first commit, which reduces startup and reopen configure churn on slower devices like the OrangePi RV2.
+- Kept the local shell reopen harness green with repeated open-close-open cycles while preserving the earlier shell child supervision and launcher recovery work.
+
 ## [0.0.42] - 2026-03-27
 - Added compositor-side shell client supervision so launcher, OSK, gesture, and status processes are reaped and respawned if they exit unexpectedly during a live session.
 - Fixed a layer-shell configure loop by only marking layer layout dirty when a commit changes actual layer-shell arrangement state, instead of on every redraw buffer commit.

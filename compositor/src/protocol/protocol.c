@@ -288,6 +288,49 @@ bool lumo_protocol_layer_surface_commit_needs_reconfigure(
     return (committed & layout_fields) != 0;
 }
 
+static bool lumo_protocol_layer_surface_layout_state_equal(
+    const struct wlr_layer_surface_v1_state *left,
+    const struct wlr_layer_surface_v1_state *right
+) {
+    if (left == NULL || right == NULL) {
+        return false;
+    }
+
+    return left->anchor == right->anchor &&
+        left->exclusive_zone == right->exclusive_zone &&
+        left->margin.top == right->margin.top &&
+        left->margin.right == right->margin.right &&
+        left->margin.bottom == right->margin.bottom &&
+        left->margin.left == right->margin.left &&
+        left->keyboard_interactive == right->keyboard_interactive &&
+        left->desired_width == right->desired_width &&
+        left->desired_height == right->desired_height &&
+        left->layer == right->layer;
+}
+
+static bool lumo_protocol_layer_surface_layout_unchanged(
+    const struct lumo_layer_surface *layer_surface,
+    const struct lumo_output *output,
+    const struct wlr_box *full_area,
+    const struct wlr_box *usable_area
+) {
+    if (layer_surface == NULL || output == NULL || full_area == NULL ||
+            usable_area == NULL || layer_surface->layer_surface == NULL ||
+            !layer_surface->layout_snapshot_valid ||
+            layer_surface->last_configured_output != output) {
+        return false;
+    }
+
+    return wlr_box_equal(&layer_surface->last_full_area, full_area) &&
+        wlr_box_equal(&layer_surface->last_usable_area, usable_area) &&
+        lumo_protocol_layer_surface_layout_state_equal(
+            &layer_surface->last_current_state,
+            &layer_surface->layer_surface->current) &&
+        lumo_protocol_layer_surface_layout_state_equal(
+            &layer_surface->last_pending_state,
+            &layer_surface->layer_surface->pending);
+}
+
 void lumo_protocol_refresh_shell_hitboxes(struct lumo_compositor *compositor) {
     struct wlr_box workarea = {0};
     struct lumo_shell_surface_config shell_config = {0};
@@ -744,6 +787,8 @@ static void lumo_protocol_configure_layer_surface_for_output(
     const struct wlr_box *full_area,
     struct wlr_box *usable_area
 ) {
+    struct wlr_box incoming_usable_area;
+
     if (layer_surface == NULL || output == NULL || full_area == NULL ||
         usable_area == NULL || layer_surface->scene_surface == NULL ||
         layer_surface->layer_surface == NULL ||
@@ -751,8 +796,20 @@ static void lumo_protocol_configure_layer_surface_for_output(
         return;
     }
 
+    incoming_usable_area = *usable_area;
+    if (lumo_protocol_layer_surface_layout_unchanged(layer_surface, output,
+            full_area, &incoming_usable_area)) {
+        return;
+    }
+
     wlr_scene_layer_surface_v1_configure(layer_surface->scene_surface,
         full_area, usable_area);
+    layer_surface->last_configured_output = output;
+    layer_surface->layout_snapshot_valid = true;
+    layer_surface->last_full_area = *full_area;
+    layer_surface->last_usable_area = incoming_usable_area;
+    layer_surface->last_current_state = layer_surface->layer_surface->current;
+    layer_surface->last_pending_state = layer_surface->layer_surface->pending;
 }
 
 int lumo_protocol_start(struct lumo_compositor *compositor) {
@@ -1074,7 +1131,6 @@ void lumo_protocol_configure_layers(
     struct wlr_box usable_area = {0};
     int width = 0;
     int height = 0;
-    bool pending_initialization = false;
 
     if (compositor == NULL || output == NULL || output->wlr_output == NULL ||
             compositor->scene == NULL) {
@@ -1117,10 +1173,6 @@ void lumo_protocol_configure_layers(
 
             lumo_protocol_configure_layer_surface_for_output(layer_surface,
                 output, &full_area, &usable_area);
-
-            if (!layer_surface->layer_surface->initialized) {
-                pending_initialization = true;
-            }
         }
     }
 
@@ -1133,9 +1185,6 @@ void lumo_protocol_configure_layers(
     }
 
     lumo_protocol_refresh_shell_hitboxes(compositor);
-    if (pending_initialization) {
-        compositor->layer_config_dirty = true;
-    }
 }
 
 void lumo_protocol_configure_all_layers(struct lumo_compositor *compositor) {
