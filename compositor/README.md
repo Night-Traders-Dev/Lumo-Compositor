@@ -2,14 +2,15 @@
 
 This directory is the starting point for the wlroots-based compositor core.
 
-It is intentionally small right now:
+It is intentionally small right now, but the source tree is now grouped by
+category so the compositor can keep scaling without turning into one giant
+flat directory:
 
-- `src/backend.c` will own wlroots backend startup and shutdown
-- `src/input.c` will own seats, touch, pointer, keyboard, and gesture routing
-- `src/output.c` will own output layout, scale, and rotation
-- `src/protocol.c` will own the custom `lumo-shell` protocol
-- `src/compositor.c` will orchestrate the modules
-- `src/main.c` will become the compositor entrypoint
+- `src/core/` owns backend startup, compositor orchestration, input, output, XWayland, and the main entrypoint
+- `src/protocol/` owns the custom `lumo-shell` protocol and shared shell wire helpers
+- `src/shell/` owns shell launch and the shell-side UI helpers such as launcher and OSK layout
+- `src/tools/` owns standalone utilities such as `lumo-screenshot`
+- `tests/core/`, `tests/shell/`, and `tests/tools/` mirror those runtime categories
 
 The real wlroots integration will come next. This scaffold gives us the module boundary first so shell-client work can move in parallel.
 

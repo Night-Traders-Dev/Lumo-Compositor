@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.27] - 2026-03-27
+- Reorganized the compositor source tree into category directories under `src/core`, `src/protocol`, `src/shell`, and `src/tools`, with matching grouped test directories.
+- Kept the new screenshot utility in the tools category and broadened its wl_shm format handling so screencopy works with common XRGB and XBGR-style buffers.
+- Updated the compositor docs to reflect the categorized layout and the new screenshot utility path.
+
 ## [0.0.26] - 2026-03-27
 - Added a compositor-backed screencopy manager and a new `lumo-screenshot` client that captures the active output to PNG for remote review and debugging.
 - Added shared screenshot helpers and unit coverage for runtime-dir fallback, socket-name selection, row orientation, and pixel conversion.
@@ -11,7 +16,7 @@ All notable changes to this project will be documented in this file.
 - Reworked the shell toward a mobile UI direction that blends Ubuntu Touch app-drawer and keyboard ergonomics with webOS-inspired surface styling and motion.
 - Removed the shell client's hardcoded `1280x720` bootstrap sizing in favor of live layer-shell sizing and compositor-provided output dimensions.
 - Hid launcher and OSK surfaces by default, added animated show and hide behavior, and kept the gesture surface as the always-available bottom handle.
-- Replaced placeholder launcher blocks and keyboard outlines with labeled launcher tiles, real key legends, and a modularized OSK source file at `compositor/src/shell_osk.c`.
+- Replaced placeholder launcher blocks and keyboard outlines with labeled launcher tiles, real key legends, and a modularized OSK source file at `compositor/src/shell/shell_osk.c`.
 - Wired keyboard visibility to focused and enabled `text-input-v3` state on the compositor side and documented the shell design direction in `Design.md`.
 
 ## [0.0.24] - 2026-03-27

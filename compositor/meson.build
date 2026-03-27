@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.26',
+  version: '0.0.27',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -95,28 +95,28 @@ screenshot_protocol_files = [
 ]
 
 lumo_sources = files(
-  'src/backend.c',
-  'src/compositor.c',
-  'src/input.c',
-  'src/output.c',
-  'src/protocol.c',
-  'src/shell_launch.c',
-  'src/shell_osk.c',
-  'src/shell_protocol.c',
-  'src/shell_ui.c',
-  'src/xwayland.c',
+  'src/core/backend.c',
+  'src/core/compositor.c',
+  'src/core/input.c',
+  'src/core/output.c',
+  'src/protocol/protocol.c',
+  'src/shell/shell_launch.c',
+  'src/shell/shell_osk.c',
+  'src/protocol/shell_protocol.c',
+  'src/shell/shell_ui.c',
+  'src/core/xwayland.c',
 ) + protocol_headers
 
 shell_sources = files(
-  'src/shell_osk.c',
-  'src/shell_ui.c',
-  'src/shell_client.c',
-  'src/shell_protocol.c',
+  'src/shell/shell_osk.c',
+  'src/shell/shell_ui.c',
+  'src/shell/shell_client.c',
+  'src/protocol/shell_protocol.c',
 ) + shell_protocol_files
 
 screenshot_sources = files(
-  'src/screenshot.c',
-  'src/screenshot_common.c',
+  'src/tools/screenshot.c',
+  'src/tools/screenshot_common.c',
 ) + screenshot_protocol_files
 
 session_conf = configuration_data()
@@ -134,7 +134,7 @@ session_debug_desktop = configure_file(
 
 executable(
   'lumo-compositor',
-  lumo_sources + files('src/main.c'),
+  lumo_sources + files('src/core/main.c'),
   include_directories: lumo_inc,
   dependencies: lumo_deps,
   install: true,
@@ -162,7 +162,7 @@ install_data(
   install_dir: join_paths(get_option('datadir'), 'wayland-sessions'),
 )
 
-test_sources = lumo_sources + files('tests/test_lumo.c')
+test_sources = lumo_sources + files('tests/core/test_lumo.c')
 
 test_exe = executable(
   'lumo-compositor-tests',
@@ -175,9 +175,9 @@ test_exe = executable(
 test('lumo-compositor', test_exe)
 
 shell_test_sources = files(
-  'src/shell_osk.c',
-  'src/shell_ui.c',
-  'tests/test_shell.c',
+  'src/shell/shell_osk.c',
+  'src/shell/shell_ui.c',
+  'tests/shell/test_shell.c',
 )
 
 shell_test_exe = executable(
@@ -192,8 +192,8 @@ test('lumo-shell', shell_test_exe)
 screenshot_test_exe = executable(
   'lumo-screenshot-tests',
   files(
-    'src/screenshot_common.c',
-    'tests/test_screenshot.c',
+    'src/tools/screenshot_common.c',
+    'tests/tools/test_screenshot.c',
   ),
   include_directories: lumo_inc,
   install: false,

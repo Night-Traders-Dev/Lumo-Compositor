@@ -47,7 +47,7 @@ Current app drawer labels:
 ### On-Screen Keyboard
 
 The OSK is separated into its own source module at
-`compositor/src/shell_osk.c`.
+`compositor/src/shell/shell_osk.c`.
 
 Design goals:
 
