@@ -522,10 +522,10 @@ static void lumo_app_touch_handle_up(
                             size_t plen = strlen(client->browse_path);
                             if (plen + 1 + strlen(entry->d_name) + 1 <
                                     sizeof(client->browse_path)) {
-                                if (plen > 1) {
-                                    strcat(client->browse_path, "/");
-                                }
-                                strcat(client->browse_path, entry->d_name);
+                                const char *sep = (plen > 1) ? "/" : "";
+                                snprintf(client->browse_path + plen,
+                                    sizeof(client->browse_path) - plen,
+                                    "%s%s", sep, entry->d_name);
                                 (void)lumo_app_client_redraw(client);
                             }
                         }
@@ -914,7 +914,8 @@ int main(int argc, char **argv) {
         int display_fd = wl_display_get_fd(client.display);
         bool needs_periodic = client.app_id == LUMO_APP_CLOCK ||
             client.app_id == LUMO_APP_SETTINGS;
-        int timeout_ms = needs_periodic ? 1000 : -1;
+        int timeout_ms = client.app_id == LUMO_APP_CLOCK ? 1000 :
+            client.app_id == LUMO_APP_SETTINGS ? 5000 : -1;
 
         while (client.running) {
             struct pollfd pfd = {

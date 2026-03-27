@@ -734,22 +734,37 @@ static void lumo_app_render_settings(
         struct lumo_rect card = {28, row_y, (int)width - 56, 70};
         int val_x = card.x + card.width / 3;
         char wifi_buf[64] = "NOT CONNECTED";
-        FILE *fp;
 
-        fp = popen("nmcli -t -f active,ssid dev wifi 2>/dev/null", "r");
-        if (fp != NULL) {
-            char line[128];
-            while (fgets(line, sizeof(line), fp) != NULL) {
-                if (strncmp(line, "yes:", 4) == 0) {
-                    char *nl = strchr(line + 4, '\n');
-                    if (nl != NULL) {
-                        *nl = '\0';
+        {
+            FILE *wfp = fopen("/proc/net/wireless", "r");
+            if (wfp != NULL) {
+                char wline[256];
+                while (fgets(wline, sizeof(wline), wfp) != NULL) {
+                    char ifname[32] = {0};
+                    int status = 0;
+                    if (sscanf(wline, " %31[^:]: %d", ifname, &status) >= 1 &&
+                            ifname[0] != '\0' && ifname[0] != '|') {
+                        snprintf(wifi_buf, sizeof(wifi_buf), "%s UP", ifname);
+                        break;
                     }
-                    snprintf(wifi_buf, sizeof(wifi_buf), "%s", line + 4);
-                    break;
+                }
+                fclose(wfp);
+            }
+            if (strcmp(wifi_buf, "NOT CONNECTED") == 0) {
+                FILE *ofp = fopen("/sys/class/net/wlan0/operstate", "r");
+                if (ofp != NULL) {
+                    char state[32] = {0};
+                    if (fgets(state, sizeof(state), ofp) != NULL) {
+                        char *nl = strchr(state, '\n');
+                        if (nl) *nl = '\0';
+                        if (strcmp(state, "up") == 0) {
+                            snprintf(wifi_buf, sizeof(wifi_buf),
+                                "WLAN0 CONNECTED");
+                        }
+                    }
+                    fclose(ofp);
                 }
             }
-            pclose(fp);
         }
 
         lumo_app_fill_rounded_rect(pixels, width, height, &card, 14,
