@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <wlr/util/box.h>
+
 struct lumo_protocol_state {
     struct wl_listener xdg_new_toplevel;
     struct wl_listener xdg_new_popup;

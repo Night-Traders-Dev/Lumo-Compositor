@@ -256,11 +256,15 @@ struct lumo_touch_point {
     enum lumo_touch_target_kind kind;
     const struct lumo_hitbox *hitbox;
     struct wlr_surface *surface;
+    struct wl_listener surface_destroy;
+    bool surface_destroy_active;
     struct wlr_seat_client *seat_client;
     void *owner;
     struct wlr_scene_tree *scene_tree;
     double lx;
     double ly;
+    double down_lx;
+    double down_ly;
     double sx;
     double sy;
     uint32_t down_time_msec;

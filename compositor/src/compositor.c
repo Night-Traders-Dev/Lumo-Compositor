@@ -30,9 +30,18 @@ struct lumo_compositor *lumo_compositor_create(
     compositor->event_loop = wl_display_get_event_loop(compositor->display);
     compositor->running = false;
     compositor->keyboard_visible = false;
+    compositor->launcher_visible = false;
     compositor->active_rotation = config != NULL
         ? config->initial_rotation
         : LUMO_ROTATION_NORMAL;
+    compositor->scrim_state = LUMO_SCRIM_HIDDEN;
+    compositor->gesture_threshold = 32.0;
+    compositor->gesture_timeout_ms = 180;
+    compositor->keyboard_resize_serial = 0;
+    compositor->keyboard_resize_pending = false;
+    compositor->keyboard_resize_acked = true;
+    compositor->input_state = NULL;
+    compositor->protocol_state = NULL;
 
     wl_list_init(&compositor->outputs);
     wl_list_init(&compositor->keyboards);

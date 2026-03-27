@@ -1,12 +1,1684 @@
 #include "lumo/compositor.h"
 
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#include <wlr/types/wlr_keyboard.h>
+#include <wlr/types/wlr_pointer.h>
+#include <wlr/types/wlr_touch.h>
+#include <wlr/util/box.h>
+#include <wlr/util/transform.h>
+
+struct lumo_scene_object_head {
+    struct wl_list link;
+    struct lumo_compositor *compositor;
+    enum lumo_scene_object_role role;
+};
+
+struct lumo_input_state {
+    struct wl_event_source *gesture_timer;
+};
+
+struct lumo_input_device {
+    struct wl_list link;
+    struct lumo_compositor *compositor;
+    struct wlr_input_device *device;
+    enum wlr_input_device_type type;
+    struct wl_listener destroy;
+};
+
+struct lumo_surface_target {
+    struct wlr_surface *surface;
+    struct lumo_scene_object_head *object;
+    enum lumo_scene_object_role role;
+    double sx;
+    double sy;
+};
+
+static struct lumo_input_state *lumo_input_state_from(
+    struct lumo_compositor *compositor
+) {
+    return compositor != NULL
+        ? (struct lumo_input_state *)compositor->input_state
+        : NULL;
+}
+
+static uint32_t lumo_input_now_msec(void) {
+    struct timespec now;
+
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (uint32_t)(now.tv_sec * 1000u + now.tv_nsec / 1000000u);
+}
+
+static struct lumo_output *lumo_input_first_output(
+    struct lumo_compositor *compositor
+) {
+    if (compositor == NULL || wl_list_empty(&compositor->outputs)) {
+        return NULL;
+    }
+
+    return wl_container_of(compositor->outputs.next, struct lumo_output, link);
+}
+
+static struct lumo_output *lumo_input_output_from_wlr(
+    struct lumo_compositor *compositor,
+    struct wlr_output *wlr_output
+) {
+    struct lumo_output *output;
+
+    if (compositor == NULL || wlr_output == NULL) {
+        return NULL;
+    }
+
+    wl_list_for_each(output, &compositor->outputs, link) {
+        if (output->wlr_output == wlr_output) {
+            return output;
+        }
+    }
+
+    return NULL;
+}
+
+static struct lumo_output *lumo_input_output_for_layout_coords(
+    struct lumo_compositor *compositor,
+    double lx,
+    double ly
+) {
+    struct wlr_output *wlr_output;
+
+    if (compositor == NULL || compositor->output_layout == NULL) {
+        return lumo_input_first_output(compositor);
+    }
+
+    wlr_output = wlr_output_layout_output_at(compositor->output_layout, lx, ly);
+    if (wlr_output != NULL) {
+        return lumo_input_output_from_wlr(compositor, wlr_output);
+    }
+
+    return lumo_input_first_output(compositor);
+}
+
+static bool lumo_input_transform_touch_coords(
+    struct lumo_compositor *compositor,
+    struct wlr_input_device *device,
+    double raw_x,
+    double raw_y,
+    double *lx,
+    double *ly,
+    struct lumo_output **output_out
+) {
+    double mapped_x = raw_x;
+    double mapped_y = raw_y;
+    struct lumo_output *output;
+    struct wlr_box box = {0};
+
+    if (compositor == NULL || lx == NULL || ly == NULL) {
+        return false;
+    }
+
+    if (compositor->cursor != NULL && compositor->output_layout != NULL) {
+        wlr_cursor_absolute_to_layout_coords(compositor->cursor, device,
+            raw_x, raw_y, &mapped_x, &mapped_y);
+    }
+
+    output = lumo_input_output_for_layout_coords(compositor, mapped_x, mapped_y);
+    if (output != NULL && output->wlr_output != NULL) {
+        wlr_output_layout_get_box(compositor->output_layout, output->wlr_output,
+            &box);
+        if (!wlr_box_empty(&box)) {
+            struct wlr_fbox point = {
+                .x = (mapped_x - box.x) / box.width,
+                .y = (mapped_y - box.y) / box.height,
+                .width = 0.0,
+                .height = 0.0,
+            };
+
+            wlr_fbox_transform(&point, &point,
+                wlr_output_transform_invert(output->wlr_output->transform),
+                1.0, 1.0);
+
+            mapped_x = box.x + point.x * box.width;
+            mapped_y = box.y + point.y * box.height;
+        }
+    }
+
+    *lx = mapped_x;
+    *ly = mapped_y;
+
+    if (output_out != NULL) {
+        *output_out = output;
+    }
+
+    return true;
+}
+
+static struct lumo_scene_object_head *lumo_input_scene_object_from_node(
+    struct wlr_scene_node *node
+) {
+    while (node != NULL) {
+        if (node->data != NULL) {
+            return node->data;
+        }
+
+        node = node->parent != NULL ? &node->parent->node : NULL;
+    }
+
+    return NULL;
+}
+
+static bool lumo_input_surface_target_at(
+    struct lumo_compositor *compositor,
+    double lx,
+    double ly,
+    struct lumo_surface_target *target
+) {
+    struct wlr_scene_node *node;
+    struct wlr_scene_surface *scene_surface;
+    double sx = 0.0;
+    double sy = 0.0;
+
+    if (target != NULL) {
+        memset(target, 0, sizeof(*target));
+    }
+
+    if (compositor == NULL || compositor->scene == NULL || target == NULL) {
+        return false;
+    }
+
+    node = wlr_scene_node_at(&compositor->scene->tree.node, lx, ly, &sx, &sy);
+    if (node == NULL) {
+        return false;
+    }
+
+    scene_surface = wlr_scene_surface_try_from_buffer(node);
+    if (scene_surface != NULL) {
+        target->surface = scene_surface->surface;
+        target->sx = sx;
+        target->sy = sy;
+    }
+
+    target->object = lumo_input_scene_object_from_node(node);
+    if (target->object != NULL) {
+        target->role = target->object->role;
+        if (target->surface == NULL) {
+            switch (target->role) {
+            case LUMO_SCENE_OBJECT_TOPLEVEL: {
+                struct lumo_toplevel *toplevel =
+                    (struct lumo_toplevel *)target->object;
+                if (toplevel->xdg_surface != NULL) {
+                    target->surface = toplevel->xdg_surface->surface;
+                }
+                break;
+            }
+            case LUMO_SCENE_OBJECT_POPUP: {
+                struct lumo_popup *popup = (struct lumo_popup *)target->object;
+                if (popup->xdg_popup != NULL && popup->xdg_popup->base != NULL) {
+                    target->surface = popup->xdg_popup->base->surface;
+                }
+                break;
+            }
+            case LUMO_SCENE_OBJECT_LAYER_SURFACE: {
+                struct lumo_layer_surface *layer_surface =
+                    (struct lumo_layer_surface *)target->object;
+                if (layer_surface->layer_surface != NULL) {
+                    target->surface = layer_surface->layer_surface->surface;
+                }
+                break;
+            }
+            }
+        }
+    }
+
+    if (target->surface != NULL && scene_surface == NULL) {
+        target->sx = sx;
+        target->sy = sy;
+    }
+
+    return target->surface != NULL;
+}
+
+static bool lumo_input_target_is_shell(const struct lumo_surface_target *target) {
+    if (target == NULL) {
+        return false;
+    }
+
+    return target->role == LUMO_SCENE_OBJECT_LAYER_SURFACE ||
+        target->role == LUMO_SCENE_OBJECT_POPUP;
+}
+
+static bool lumo_input_in_edge_zone(
+    struct lumo_compositor *compositor,
+    const struct lumo_output *output,
+    double lx,
+    double ly
+) {
+    struct wlr_box box = {0};
+    double threshold;
+
+    if (compositor == NULL || output == NULL || output->wlr_output == NULL) {
+        return false;
+    }
+
+    wlr_output_layout_get_box(compositor->output_layout, output->wlr_output,
+        &box);
+    if (wlr_box_empty(&box)) {
+        return false;
+    }
+
+    threshold = compositor->gesture_threshold > 0.0
+        ? compositor->gesture_threshold
+        : 24.0;
+
+    return lx <= box.x + threshold ||
+        lx >= box.x + box.width - threshold ||
+        ly <= box.y + threshold ||
+        ly >= box.y + box.height - threshold;
+}
+
+static struct lumo_touch_point *lumo_input_touch_point_for_id(
+    struct lumo_compositor *compositor,
+    int32_t touch_id
+) {
+    struct lumo_touch_point *point;
+
+    if (compositor == NULL) {
+        return NULL;
+    }
+
+    wl_list_for_each(point, &compositor->touch_points, link) {
+        if (point->touch_id == touch_id) {
+            return point;
+        }
+    }
+
+    return NULL;
+}
+
+static void lumo_input_touch_sample_append(
+    struct lumo_touch_point *point,
+    enum lumo_touch_sample_type type,
+    uint32_t time_msec,
+    double lx,
+    double ly,
+    double sx,
+    double sy
+) {
+    struct lumo_touch_sample *sample;
+
+    if (point == NULL) {
+        return;
+    }
+
+    sample = calloc(1, sizeof(*sample));
+    if (sample == NULL) {
+        wlr_log_errno(WLR_ERROR, "input: failed to allocate touch sample");
+        return;
+    }
+
+    sample->type = type;
+    sample->time_msec = time_msec;
+    sample->lx = lx;
+    sample->ly = ly;
+    sample->sx = sx;
+    sample->sy = sy;
+    wl_list_insert(point->samples.prev, &sample->link);
+}
+
+static void lumo_input_touch_samples_clear(struct lumo_touch_point *point) {
+    struct lumo_touch_sample *sample, *tmp;
+
+    if (point == NULL) {
+        return;
+    }
+
+    wl_list_for_each_safe(sample, tmp, &point->samples, link) {
+        wl_list_remove(&sample->link);
+        free(sample);
+    }
+}
+
+static void lumo_input_touch_point_surface_destroy(
+    struct wl_listener *listener,
+    void *data
+);
+
+static void lumo_input_touch_point_bind_surface(
+    struct lumo_touch_point *point,
+    struct wlr_surface *surface
+) {
+    if (point == NULL) {
+        return;
+    }
+
+    if (point->surface_destroy_active) {
+        wl_list_remove(&point->surface_destroy.link);
+        point->surface_destroy_active = false;
+    }
+
+    point->surface = surface;
+    if (surface == NULL) {
+        return;
+    }
+
+    point->surface_destroy.notify = lumo_input_touch_point_surface_destroy;
+    wl_signal_add(&surface->events.destroy, &point->surface_destroy);
+    point->surface_destroy_active = true;
+}
+
+static void lumo_input_touch_point_destroy(struct lumo_touch_point *point) {
+    if (point == NULL) {
+        return;
+    }
+
+    if (point->surface_destroy_active) {
+        wl_list_remove(&point->surface_destroy.link);
+        point->surface_destroy_active = false;
+    }
+    lumo_input_touch_samples_clear(point);
+    wl_list_remove(&point->link);
+    free(point);
+}
+
+static void lumo_input_focus_surface(
+    struct lumo_compositor *compositor,
+    struct wlr_surface *surface
+) {
+    struct wlr_keyboard *keyboard;
+    const uint32_t *keycodes = NULL;
+    size_t num_keycodes = 0;
+    struct wlr_keyboard_modifiers modifiers = {0};
+
+    if (compositor == NULL || compositor->seat == NULL) {
+        return;
+    }
+
+    keyboard = wlr_seat_get_keyboard(compositor->seat);
+    if (keyboard != NULL) {
+        keycodes = keyboard->keycodes;
+        num_keycodes = keyboard->num_keycodes;
+        modifiers = keyboard->modifiers;
+    }
+
+    if (surface != NULL) {
+        wlr_seat_keyboard_notify_enter(compositor->seat, surface,
+            keycodes, num_keycodes, &modifiers);
+        return;
+    }
+
+    wlr_seat_keyboard_notify_clear_focus(compositor->seat);
+}
+
+static void lumo_input_refresh_capabilities(struct lumo_compositor *compositor) {
+    uint32_t caps = 0;
+
+    if (compositor == NULL || compositor->seat == NULL) {
+        return;
+    }
+
+    if (compositor->pointer_devices > 0) {
+        caps |= WLR_SEAT_CAPABILITY_POINTER;
+    }
+    if (compositor->keyboard_devices > 0) {
+        caps |= WLR_SEAT_CAPABILITY_KEYBOARD;
+    }
+    if (compositor->touch_devices > 0) {
+        caps |= WLR_SEAT_CAPABILITY_TOUCH;
+    }
+
+    wlr_seat_set_capabilities(compositor->seat, caps);
+}
+
+static bool lumo_input_touch_point_surface_destroyed_cb(
+    struct lumo_compositor *compositor,
+    struct lumo_touch_point *point,
+    uint32_t time_msec
+) {
+    struct wlr_touch_point *seat_point;
+
+    if (compositor == NULL || compositor->seat == NULL || point == NULL) {
+        return false;
+    }
+
+    seat_point = wlr_seat_touch_get_point(compositor->seat, point->touch_id);
+    if (seat_point != NULL) {
+        wlr_seat_touch_notify_cancel(compositor->seat, seat_point->client);
+    }
+
+    if (point->surface_destroy_active) {
+        wl_list_remove(&point->surface_destroy.link);
+        point->surface_destroy_active = false;
+    }
+
+    point->surface = NULL;
+    wlr_log(WLR_INFO, "input: touch %d surface destroyed at %u", point->touch_id,
+        time_msec);
+    return true;
+}
+
+static void lumo_input_touch_point_surface_destroy(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_touch_point *point =
+        wl_container_of(listener, point, surface_destroy);
+    struct lumo_compositor *compositor =
+        point != NULL ? point->owner : NULL;
+    uint32_t time_msec = lumo_input_now_msec();
+
+    (void)data;
+    if (point == NULL) {
+        return;
+    }
+
+    if (point->delivered) {
+        lumo_input_touch_point_surface_destroyed_cb(compositor, point, time_msec);
+        lumo_input_touch_point_destroy(point);
+        return;
+    }
+
+    lumo_input_touch_point_surface_destroyed_cb(compositor, point, time_msec);
+    if (!point->captured) {
+        lumo_input_touch_point_destroy(point);
+    }
+}
+
+static void lumo_input_remove_touch_point(
+    struct lumo_compositor *compositor,
+    struct lumo_touch_point *point
+) {
+    if (compositor == NULL || point == NULL) {
+        return;
+    }
+
+    lumo_input_touch_point_destroy(point);
+}
+
+static void lumo_input_replay_touch_point(
+    struct lumo_compositor *compositor,
+    struct lumo_touch_point *point
+) {
+    struct lumo_touch_sample *sample;
+
+    if (compositor == NULL || compositor->seat == NULL || point == NULL ||
+            point->surface == NULL || point->delivered) {
+        return;
+    }
+
+    lumo_input_focus_surface(compositor, point->surface);
+    wl_list_for_each(sample, &point->samples, link) {
+        switch (sample->type) {
+        case LUMO_TOUCH_SAMPLE_DOWN:
+            wlr_seat_touch_notify_down(compositor->seat, point->surface,
+                sample->time_msec, point->touch_id, sample->sx, sample->sy);
+            break;
+        case LUMO_TOUCH_SAMPLE_MOTION:
+            wlr_seat_touch_notify_motion(compositor->seat, sample->time_msec,
+                point->touch_id, sample->sx, sample->sy);
+            break;
+        case LUMO_TOUCH_SAMPLE_UP:
+        case LUMO_TOUCH_SAMPLE_CANCEL:
+            break;
+        }
+    }
+
+    point->captured = false;
+    point->delivered = true;
+    lumo_input_touch_samples_clear(point);
+    wlr_log(WLR_INFO, "input: touch %d replayed to surface", point->touch_id);
+}
+
+static void lumo_input_maybe_start_gesture_timer(struct lumo_compositor *compositor) {
+    struct lumo_input_state *state = lumo_input_state_from(compositor);
+    struct lumo_touch_point *point;
+    uint32_t now;
+    uint32_t next_deadline = 0;
+    bool have_pending = false;
+
+    if (compositor == NULL || state == NULL) {
+        return;
+    }
+
+    now = lumo_input_now_msec();
+    wl_list_for_each(point, &compositor->touch_points, link) {
+        uint32_t deadline;
+
+        if (!point->captured || point->gesture_triggered) {
+            continue;
+        }
+
+        deadline = point->down_time_msec + compositor->gesture_timeout_ms;
+        if (!have_pending || deadline < next_deadline) {
+            next_deadline = deadline;
+            have_pending = true;
+        }
+
+        if (deadline <= now) {
+            next_deadline = now + 1;
+            have_pending = true;
+            break;
+        }
+    }
+
+    if (!have_pending) {
+        if (state->gesture_timer != NULL) {
+            wl_event_source_remove(state->gesture_timer);
+            state->gesture_timer = NULL;
+        }
+        return;
+    }
+
+    if (state->gesture_timer == NULL) {
+        state->gesture_timer = wl_event_loop_add_timer(compositor->event_loop,
+            lumo_input_gesture_timeout_cb, compositor);
+        if (state->gesture_timer == NULL) {
+            wlr_log(WLR_ERROR, "input: failed to allocate gesture timer");
+            return;
+        }
+    }
+
+    wl_event_source_timer_update(state->gesture_timer,
+        next_deadline > now ? (int)(next_deadline - now) : 1);
+}
+
+static int lumo_input_gesture_timeout_cb(void *data) {
+    struct lumo_compositor *compositor = data;
+    struct lumo_touch_point *point;
+    struct lumo_touch_point *tmp;
+    bool replayed = false;
+    uint32_t now = lumo_input_now_msec();
+
+    if (compositor == NULL) {
+        return 0;
+    }
+
+    wl_list_for_each_safe(point, tmp, &compositor->touch_points, link) {
+        uint32_t deadline;
+
+        if (!point->captured || point->gesture_triggered || point->delivered) {
+            continue;
+        }
+
+        deadline = point->down_time_msec + compositor->gesture_timeout_ms;
+        if (deadline > now) {
+            continue;
+        }
+
+        if (point->surface != NULL) {
+            lumo_input_replay_touch_point(compositor, point);
+            replayed = true;
+        }
+    }
+
+    if (replayed && compositor->seat != NULL) {
+        wlr_seat_touch_notify_frame(compositor->seat);
+    }
+
+    lumo_input_maybe_start_gesture_timer(compositor);
+    return 0;
+}
+
+static void lumo_input_touch_point_begin_capture(
+    struct lumo_compositor *compositor,
+    struct lumo_touch_point *point,
+    const struct lumo_surface_target *target,
+    uint32_t time_msec
+) {
+    if (point == NULL) {
+        return;
+    }
+
+    point->kind = LUMO_TOUCH_TARGET_HITBOX;
+    point->captured = true;
+    point->delivered = false;
+    point->gesture_triggered = false;
+    point->sx = target != NULL ? target->sx : 0.0;
+    point->sy = target != NULL ? target->sy : 0.0;
+    point->down_time_msec = time_msec;
+
+    wlr_log(WLR_INFO, "input: touch %d captured for gesture", point->touch_id);
+    lumo_input_maybe_start_gesture_timer(compositor);
+}
+
+static void lumo_input_touch_point_deliver_now(
+    struct lumo_compositor *compositor,
+    struct lumo_touch_point *point,
+    const struct lumo_surface_target *target,
+    uint32_t time_msec
+) {
+    if (compositor == NULL || point == NULL || target == NULL ||
+            target->surface == NULL) {
+        return;
+    }
+
+    point->kind = LUMO_TOUCH_TARGET_SURFACE;
+    point->sx = target->sx;
+    point->sy = target->sy;
+    point->down_time_msec = time_msec;
+    point->delivered = true;
+    point->captured = false;
+
+    wlr_seat_touch_notify_down(compositor->seat, point->surface, time_msec,
+        point->touch_id, point->sx, point->sy);
+    lumo_input_touch_samples_clear(point);
+    wlr_log(WLR_INFO, "input: touch %d delivered to surface", point->touch_id);
+}
+
+static void lumo_input_touch_point_trigger_gesture(
+    struct lumo_compositor *compositor,
+    struct lumo_touch_point *point,
+    uint32_t time_msec
+) {
+    if (compositor == NULL || point == NULL || point->gesture_triggered) {
+        return;
+    }
+
+    point->gesture_triggered = true;
+    lumo_protocol_set_launcher_visible(compositor, true);
+    lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_MODAL);
+    wlr_log(WLR_INFO, "input: touch %d triggered launcher gesture at %u",
+        point->touch_id, time_msec);
+}
+
+static bool lumo_input_touch_point_dist_exceeded(
+    const struct lumo_touch_point *point,
+    double lx,
+    double ly,
+    double threshold
+) {
+    double dx;
+    double dy;
+
+    if (point == NULL) {
+        return false;
+    }
+
+    dx = lx - point->down_lx;
+    dy = ly - point->down_ly;
+    return dx * dx + dy * dy >= threshold * threshold;
+}
+
+static int lumo_input_gesture_timeout_cb(void *data);
+
+static void lumo_input_touch_down(struct wl_listener *listener, void *data);
+static void lumo_input_touch_motion(struct wl_listener *listener, void *data);
+static void lumo_input_touch_up(struct wl_listener *listener, void *data);
+static void lumo_input_touch_cancel(struct wl_listener *listener, void *data);
+static void lumo_input_touch_frame(struct wl_listener *listener, void *data);
+static void lumo_input_pointer_motion(struct wl_listener *listener, void *data);
+static void lumo_input_pointer_motion_absolute(struct wl_listener *listener, void *data);
+static void lumo_input_pointer_button(struct wl_listener *listener, void *data);
+static void lumo_input_pointer_axis(struct wl_listener *listener, void *data);
+static void lumo_input_pointer_frame(struct wl_listener *listener, void *data);
+static void lumo_input_pointer_swipe_begin(struct wl_listener *listener, void *data);
+static void lumo_input_pointer_swipe_update(struct wl_listener *listener, void *data);
+static void lumo_input_pointer_swipe_end(struct wl_listener *listener, void *data);
+static void lumo_input_pointer_pinch_begin(struct wl_listener *listener, void *data);
+static void lumo_input_pointer_pinch_update(struct wl_listener *listener, void *data);
+static void lumo_input_pointer_pinch_end(struct wl_listener *listener, void *data);
+static void lumo_input_pointer_hold_begin(struct wl_listener *listener, void *data);
+static void lumo_input_pointer_hold_end(struct wl_listener *listener, void *data);
+static void lumo_input_request_set_cursor(struct wl_listener *listener, void *data);
+static void lumo_input_request_set_selection(struct wl_listener *listener, void *data);
+static void lumo_input_keyboard_key(struct wl_listener *listener, void *data);
+static void lumo_input_keyboard_modifiers(struct wl_listener *listener, void *data);
+static void lumo_input_keyboard_destroy(struct wl_listener *listener, void *data);
+static void lumo_input_device_destroy(struct wl_listener *listener, void *data);
+
+static void lumo_input_pointer_notify_surface(
+    struct lumo_compositor *compositor,
+    uint32_t time_msec
+) {
+    struct wlr_surface *focused = NULL;
+    struct wlr_scene_node *node = NULL;
+    double sx = 0.0;
+    double sy = 0.0;
+
+    if (compositor == NULL || compositor->cursor == NULL ||
+            compositor->seat == NULL || compositor->scene == NULL) {
+        return;
+    }
+
+    node = wlr_scene_node_at(&compositor->scene->tree.node, compositor->cursor->x,
+        compositor->cursor->y, &sx, &sy);
+    if (node != NULL) {
+        struct wlr_scene_surface *scene_surface =
+            wlr_scene_surface_try_from_buffer(node);
+
+        if (scene_surface != NULL) {
+            focused = scene_surface->surface;
+        }
+    }
+
+    if (focused == NULL) {
+        wlr_seat_pointer_notify_clear_focus(compositor->seat);
+        return;
+    }
+
+    if (compositor->seat->pointer_state.focused_surface != focused) {
+        wlr_seat_pointer_notify_enter(compositor->seat, focused, sx, sy);
+    }
+
+    wlr_seat_pointer_notify_motion(compositor->seat, time_msec, sx, sy);
+}
+
+static void lumo_input_keyboard_attach(
+    struct lumo_compositor *compositor,
+    struct wlr_input_device *device
+) {
+    struct wlr_keyboard *keyboard;
+    struct lumo_keyboard *entry;
+    struct xkb_keymap *keymap;
+    struct xkb_rule_names rules = {
+        .layout = "us",
+    };
+
+    if (compositor == NULL || device == NULL || compositor->seat == NULL) {
+        return;
+    }
+
+    keyboard = wlr_keyboard_from_input_device(device);
+    if (keyboard == NULL) {
+        wlr_log(WLR_ERROR, "input: keyboard device '%s' could not be cast",
+            device->name != NULL ? device->name : "(unknown)");
+        return;
+    }
+
+    keymap = xkb_keymap_new_from_names(compositor->xkb_context, &rules,
+        XKB_KEYMAP_COMPILE_NO_FLAGS);
+    if (keymap != NULL) {
+        if (!wlr_keyboard_set_keymap(keyboard, keymap)) {
+            wlr_log(WLR_ERROR, "input: failed to set keymap for '%s'",
+                device->name != NULL ? device->name : "(unknown)");
+        }
+        xkb_keymap_unref(keymap);
+    } else {
+        wlr_log(WLR_ERROR, "input: failed to build default keymap");
+    }
+
+    wlr_keyboard_set_repeat_info(keyboard, 25, 600);
+    wlr_seat_set_keyboard(compositor->seat, keyboard);
+
+    entry = calloc(1, sizeof(*entry));
+    if (entry == NULL) {
+        wlr_log_errno(WLR_ERROR, "input: failed to allocate keyboard wrapper");
+        return;
+    }
+
+    entry->compositor = compositor;
+    entry->wlr_keyboard = keyboard;
+    entry->modifiers.notify = lumo_input_keyboard_modifiers;
+    wl_signal_add(&keyboard->events.modifiers, &entry->modifiers);
+    entry->key.notify = lumo_input_keyboard_key;
+    wl_signal_add(&keyboard->events.key, &entry->key);
+    entry->destroy.notify = lumo_input_keyboard_destroy;
+    wl_signal_add(&device->events.destroy, &entry->destroy);
+
+    wl_list_insert(&compositor->keyboards, &entry->link);
+    compositor->keyboard_devices++;
+    lumo_input_refresh_capabilities(compositor);
+    wlr_log(WLR_INFO, "input: keyboard '%s' ready",
+        device->name != NULL ? device->name : "(unknown)");
+}
+
+static void lumo_input_pointer_device_attach(
+    struct lumo_compositor *compositor,
+    struct wlr_input_device *device
+) {
+    struct lumo_input_device *entry;
+
+    if (compositor == NULL || device == NULL || compositor->cursor == NULL) {
+        return;
+    }
+
+    entry = calloc(1, sizeof(*entry));
+    if (entry == NULL) {
+        wlr_log_errno(WLR_ERROR, "input: failed to allocate pointer wrapper");
+        return;
+    }
+
+    entry->compositor = compositor;
+    entry->device = device;
+    entry->type = device->type;
+    entry->destroy.notify = lumo_input_device_destroy;
+    wl_signal_add(&device->events.destroy, &entry->destroy);
+    wl_list_insert(&compositor->input_devices, &entry->link);
+    wlr_cursor_attach_input_device(compositor->cursor, device);
+    if (device->type == WLR_INPUT_DEVICE_POINTER ||
+            device->type == WLR_INPUT_DEVICE_TABLET) {
+        compositor->pointer_devices++;
+    } else if (device->type == WLR_INPUT_DEVICE_TOUCH) {
+        compositor->touch_devices++;
+    }
+
+    lumo_input_refresh_capabilities(compositor);
+    wlr_log(WLR_INFO, "input: device '%s' attached to cursor",
+        device->name != NULL ? device->name : "(unknown)");
+}
+
+static void lumo_input_device_destroy(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_input_device *entry =
+        wl_container_of(listener, entry, destroy);
+    struct lumo_compositor *compositor =
+        entry != NULL ? entry->compositor : NULL;
+
+    (void)data;
+    if (compositor != NULL && compositor->cursor != NULL &&
+            entry->device != NULL) {
+        wlr_cursor_detach_input_device(compositor->cursor, entry->device);
+    }
+
+    if (compositor != NULL) {
+        if (entry->type == WLR_INPUT_DEVICE_POINTER ||
+                entry->type == WLR_INPUT_DEVICE_TABLET) {
+            if (compositor->pointer_devices > 0) {
+                compositor->pointer_devices--;
+            }
+        } else if (entry->type == WLR_INPUT_DEVICE_TOUCH) {
+            if (compositor->touch_devices > 0) {
+                compositor->touch_devices--;
+            }
+        }
+
+        lumo_input_refresh_capabilities(compositor);
+    }
+
+    wl_list_remove(&entry->destroy.link);
+    wl_list_remove(&entry->link);
+    free(entry);
+}
+
+static void lumo_input_keyboard_destroy(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_keyboard *keyboard = wl_container_of(listener, keyboard, destroy);
+    struct lumo_compositor *compositor =
+        keyboard != NULL ? keyboard->compositor : NULL;
+
+    (void)data;
+    if (compositor != NULL && compositor->keyboard_devices > 0) {
+        compositor->keyboard_devices--;
+        lumo_input_refresh_capabilities(compositor);
+    }
+
+    wl_list_remove(&keyboard->modifiers.link);
+    wl_list_remove(&keyboard->key.link);
+    wl_list_remove(&keyboard->destroy.link);
+    wl_list_remove(&keyboard->link);
+    free(keyboard);
+}
+
+static void lumo_input_keyboard_modifiers(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
+
+    if (keyboard == NULL || keyboard->compositor == NULL ||
+            keyboard->compositor->seat == NULL || keyboard->wlr_keyboard == NULL) {
+        return;
+    }
+
+    wlr_seat_keyboard_notify_modifiers(keyboard->compositor->seat,
+        &keyboard->wlr_keyboard->modifiers);
+    (void)data;
+}
+
+static void lumo_input_keyboard_key(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_keyboard *keyboard = wl_container_of(listener, keyboard, key);
+    struct wlr_keyboard_key_event *event = data;
+
+    if (keyboard == NULL || keyboard->compositor == NULL ||
+            keyboard->compositor->seat == NULL || event == NULL) {
+        return;
+    }
+
+    wlr_seat_set_keyboard(keyboard->compositor->seat, keyboard->wlr_keyboard);
+    wlr_seat_keyboard_notify_key(keyboard->compositor->seat, event->time_msec,
+        event->keycode, event->state);
+}
+
+static void lumo_input_request_set_cursor(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, seat_request_cursor);
+    struct wlr_seat_pointer_request_set_cursor_event *event = data;
+
+    if (compositor == NULL || compositor->cursor == NULL || compositor->seat == NULL ||
+            event == NULL) {
+        return;
+    }
+
+    if (event->seat_client != compositor->seat->pointer_state.focused_client) {
+        wlr_log(WLR_INFO, "input: ignored cursor request from unfocused client");
+        return;
+    }
+
+    wlr_cursor_set_surface(compositor->cursor, event->surface,
+        event->hotspot_x, event->hotspot_y);
+}
+
+static void lumo_input_request_set_selection(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, seat_request_set_selection);
+    struct wlr_seat_request_set_selection_event *event = data;
+
+    if (compositor == NULL || compositor->seat == NULL || event == NULL) {
+        return;
+    }
+
+    wlr_seat_set_selection(compositor->seat, event->source, event->serial);
+}
+
+static void lumo_input_pointer_motion(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_motion);
+    struct wlr_pointer_motion_event *event = data;
+
+    if (compositor == NULL || event == NULL || compositor->cursor == NULL) {
+        return;
+    }
+
+    wlr_cursor_move(compositor->cursor, &event->pointer->base,
+        event->unaccel_dx, event->unaccel_dy);
+    lumo_input_pointer_notify_surface(compositor, event->time_msec);
+}
+
+static void lumo_input_pointer_motion_absolute(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_motion_absolute);
+    struct wlr_pointer_motion_absolute_event *event = data;
+    double lx = 0.0;
+    double ly = 0.0;
+
+    if (compositor == NULL || event == NULL || compositor->cursor == NULL) {
+        return;
+    }
+
+    lumo_input_transform_touch_coords(compositor, &event->pointer->base,
+        event->x, event->y, &lx, &ly, NULL);
+    wlr_cursor_warp(compositor->cursor, &event->pointer->base, lx, ly);
+    lumo_input_pointer_notify_surface(compositor, event->time_msec);
+}
+
+static void lumo_input_pointer_button(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_button);
+    struct wlr_pointer_button_event *event = data;
+
+    if (compositor == NULL || event == NULL || compositor->seat == NULL) {
+        return;
+    }
+
+    if (compositor->seat->pointer_state.focused_surface == NULL) {
+        lumo_input_pointer_notify_surface(compositor, event->time_msec);
+    }
+
+    wlr_seat_pointer_notify_button(compositor->seat, event->time_msec,
+        event->button, event->state);
+}
+
+static void lumo_input_pointer_axis(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_axis);
+    struct wlr_pointer_axis_event *event = data;
+
+    if (compositor == NULL || event == NULL || compositor->seat == NULL) {
+        return;
+    }
+
+    wlr_seat_pointer_notify_axis(compositor->seat, event->time_msec,
+        event->orientation, event->delta, event->delta_discrete,
+        event->source, event->relative_direction);
+}
+
+static void lumo_input_pointer_frame(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_frame);
+
+    if (compositor == NULL || compositor->seat == NULL) {
+        return;
+    }
+
+    wlr_seat_pointer_notify_frame(compositor->seat);
+    (void)data;
+}
+
+static void lumo_input_pointer_swipe_begin(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_swipe_begin);
+    struct wlr_pointer_swipe_begin_event *event = data;
+
+    if (compositor == NULL || compositor->pointer_gestures == NULL ||
+            event == NULL) {
+        return;
+    }
+
+    wlr_pointer_gestures_v1_send_swipe_begin(compositor->pointer_gestures,
+        compositor->seat, event->time_msec, event->fingers);
+}
+
+static void lumo_input_pointer_swipe_update(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_swipe_update);
+    struct wlr_pointer_swipe_update_event *event = data;
+
+    if (compositor == NULL || compositor->pointer_gestures == NULL ||
+            event == NULL) {
+        return;
+    }
+
+    wlr_pointer_gestures_v1_send_swipe_update(compositor->pointer_gestures,
+        compositor->seat, event->time_msec, event->dx, event->dy);
+}
+
+static void lumo_input_pointer_swipe_end(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_swipe_end);
+    struct wlr_pointer_swipe_end_event *event = data;
+
+    if (compositor == NULL || compositor->pointer_gestures == NULL ||
+            event == NULL) {
+        return;
+    }
+
+    wlr_pointer_gestures_v1_send_swipe_end(compositor->pointer_gestures,
+        compositor->seat, event->time_msec, event->cancelled);
+}
+
+static void lumo_input_pointer_pinch_begin(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_pinch_begin);
+    struct wlr_pointer_pinch_begin_event *event = data;
+
+    if (compositor == NULL || compositor->pointer_gestures == NULL ||
+            event == NULL) {
+        return;
+    }
+
+    wlr_pointer_gestures_v1_send_pinch_begin(compositor->pointer_gestures,
+        compositor->seat, event->time_msec, event->fingers);
+}
+
+static void lumo_input_pointer_pinch_update(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_pinch_update);
+    struct wlr_pointer_pinch_update_event *event = data;
+
+    if (compositor == NULL || compositor->pointer_gestures == NULL ||
+            event == NULL) {
+        return;
+    }
+
+    wlr_pointer_gestures_v1_send_pinch_update(compositor->pointer_gestures,
+        compositor->seat, event->time_msec, event->dx, event->dy,
+        event->scale, event->rotation);
+}
+
+static void lumo_input_pointer_pinch_end(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_pinch_end);
+    struct wlr_pointer_pinch_end_event *event = data;
+
+    if (compositor == NULL || compositor->pointer_gestures == NULL ||
+            event == NULL) {
+        return;
+    }
+
+    wlr_pointer_gestures_v1_send_pinch_end(compositor->pointer_gestures,
+        compositor->seat, event->time_msec, event->cancelled);
+}
+
+static void lumo_input_pointer_hold_begin(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_hold_begin);
+    struct wlr_pointer_hold_begin_event *event = data;
+
+    if (compositor == NULL || compositor->pointer_gestures == NULL ||
+            event == NULL) {
+        return;
+    }
+
+    wlr_pointer_gestures_v1_send_hold_begin(compositor->pointer_gestures,
+        compositor->seat, event->time_msec, event->fingers);
+}
+
+static void lumo_input_pointer_hold_end(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_hold_end);
+    struct wlr_pointer_hold_end_event *event = data;
+
+    if (compositor == NULL || compositor->pointer_gestures == NULL ||
+            event == NULL) {
+        return;
+    }
+
+    wlr_pointer_gestures_v1_send_hold_end(compositor->pointer_gestures,
+        compositor->seat, event->time_msec, event->cancelled);
+}
+
+static void lumo_input_touch_motion(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_touch_motion);
+    struct wlr_touch_motion_event *event = data;
+    struct lumo_touch_point *point;
+    struct lumo_surface_target target = {0};
+    double lx = 0.0;
+    double ly = 0.0;
+    double threshold;
+    bool in_edge_zone;
+
+    if (compositor == NULL || event == NULL || compositor->seat == NULL) {
+        return;
+    }
+
+    point = lumo_input_touch_point_for_id(compositor, event->touch_id);
+    if (point == NULL) {
+        return;
+    }
+
+    lumo_input_transform_touch_coords(compositor, &event->touch->base, event->x,
+        event->y, &lx, &ly, NULL);
+    lumo_input_surface_target_at(compositor, lx, ly, &target);
+
+    threshold = compositor->gesture_threshold > 0.0
+        ? compositor->gesture_threshold
+        : 24.0;
+
+    if (point->captured && !point->gesture_triggered &&
+            lumo_input_touch_point_dist_exceeded(point, lx, ly, threshold)) {
+        lumo_input_touch_point_trigger_gesture(compositor, point, event->time_msec);
+    }
+
+    in_edge_zone = lumo_input_in_edge_zone(compositor,
+        lumo_input_output_for_layout_coords(compositor, lx, ly), lx, ly);
+
+    if (!point->captured && point->delivered && point->surface != NULL) {
+        wlr_seat_touch_notify_motion(compositor->seat, event->time_msec,
+            event->touch_id, target.sx, target.sy);
+        point->lx = lx;
+        point->ly = ly;
+        point->sx = target.sx;
+        point->sy = target.sy;
+        return;
+    }
+
+    if (point->captured) {
+        lumo_input_touch_sample_append(point, LUMO_TOUCH_SAMPLE_MOTION,
+            event->time_msec, lx, ly, target.sx, target.sy);
+        if (!point->gesture_triggered && in_edge_zone &&
+                lumo_input_touch_point_dist_exceeded(point, lx, ly, threshold)) {
+            lumo_input_touch_point_trigger_gesture(compositor, point,
+                event->time_msec);
+        }
+
+        lumo_input_maybe_start_gesture_timer(compositor);
+        point->lx = lx;
+        point->ly = ly;
+        point->sx = target.sx;
+        point->sy = target.sy;
+        return;
+    }
+
+    if (point->surface != NULL) {
+        wlr_seat_touch_notify_motion(compositor->seat, event->time_msec,
+            event->touch_id, target.sx, target.sy);
+    }
+
+    point->lx = lx;
+    point->ly = ly;
+    point->sx = target.sx;
+    point->sy = target.sy;
+}
+
+static void lumo_input_touch_down(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_touch_down);
+    struct wlr_touch_down_event *event = data;
+    struct lumo_touch_point *point;
+    struct lumo_surface_target target = {0};
+    struct lumo_output *output = NULL;
+    bool edge_zone;
+
+    if (compositor == NULL || event == NULL || compositor->seat == NULL) {
+        return;
+    }
+
+    point = lumo_input_touch_point_for_id(compositor, event->touch_id);
+    if (point != NULL) {
+        wlr_log(WLR_ERROR, "input: duplicate touch id %d", event->touch_id);
+        return;
+    }
+
+    point = calloc(1, sizeof(*point));
+    if (point == NULL) {
+        wlr_log_errno(WLR_ERROR, "input: failed to allocate touch point");
+        return;
+    }
+
+    point->touch_id = event->touch_id;
+    point->owner = compositor;
+    point->kind = LUMO_TOUCH_TARGET_NONE;
+    wl_list_init(&point->surface_destroy.link);
+    wl_list_init(&point->samples);
+    wl_list_insert(&compositor->touch_points, &point->link);
+
+    lumo_input_transform_touch_coords(compositor, &event->touch->base, event->x,
+        event->y, &point->lx, &point->ly, &output);
+    lumo_input_surface_target_at(compositor, point->lx, point->ly, &target);
+    point->down_lx = point->lx;
+    point->down_ly = point->ly;
+    point->sx = target.sx;
+    point->sy = target.sy;
+    point->down_time_msec = event->time_msec;
+    point->hitbox = lumo_protocol_hitbox_at(compositor, point->lx, point->ly);
+
+    lumo_input_touch_sample_append(point, LUMO_TOUCH_SAMPLE_DOWN,
+        event->time_msec, point->lx, point->ly, point->sx, point->sy);
+    lumo_input_touch_point_bind_surface(point, target.surface);
+
+    if (lumo_input_target_is_shell(&target)) {
+        lumo_input_touch_point_deliver_now(compositor, point, &target,
+            event->time_msec);
+        lumo_input_focus_surface(compositor, point->surface);
+        return;
+    }
+
+    if (point->hitbox != NULL &&
+            point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE) {
+        lumo_input_touch_point_begin_capture(compositor, point, &target,
+            event->time_msec);
+        return;
+    }
+
+    edge_zone = lumo_input_in_edge_zone(compositor, output, point->lx, point->ly);
+    if (edge_zone) {
+        lumo_input_touch_point_begin_capture(compositor, point, &target,
+            event->time_msec);
+        return;
+    }
+
+    if (target.surface != NULL) {
+        lumo_input_touch_point_deliver_now(compositor, point, &target,
+            event->time_msec);
+        lumo_input_focus_surface(compositor, point->surface);
+        return;
+    }
+
+    wlr_log(WLR_INFO, "input: touch %d ignored outside shell/app regions",
+        point->touch_id);
+    lumo_input_remove_touch_point(compositor, point);
+}
+
+static void lumo_input_touch_up(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_touch_up);
+    struct wlr_touch_up_event *event = data;
+    struct lumo_touch_point *point;
+
+    if (compositor == NULL || event == NULL || compositor->seat == NULL) {
+        return;
+    }
+
+    point = lumo_input_touch_point_for_id(compositor, event->touch_id);
+    if (point == NULL) {
+        return;
+    }
+
+    if (point->captured && !point->delivered) {
+        if (!point->gesture_triggered && point->surface != NULL) {
+            lumo_input_replay_touch_point(compositor, point);
+        }
+
+        if (point->gesture_triggered) {
+            wlr_log(WLR_INFO, "input: touch %d gesture completed", point->touch_id);
+        }
+    }
+
+    if (point->delivered && point->surface != NULL) {
+        wlr_seat_touch_notify_up(compositor->seat, event->time_msec,
+            event->touch_id);
+    }
+
+    if (point->delivered || point->captured) {
+        wlr_seat_touch_notify_frame(compositor->seat);
+    }
+
+    lumo_input_remove_touch_point(compositor, point);
+    lumo_input_maybe_start_gesture_timer(compositor);
+}
+
+static void lumo_input_touch_cancel(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_touch_cancel);
+    struct wlr_touch_cancel_event *event = data;
+    struct lumo_touch_point *point;
+
+    if (compositor == NULL || event == NULL || compositor->seat == NULL) {
+        return;
+    }
+
+    point = lumo_input_touch_point_for_id(compositor, event->touch_id);
+    if (point != NULL) {
+        if (point->delivered && point->surface != NULL) {
+            struct wlr_touch_point *seat_point =
+                wlr_seat_touch_get_point(compositor->seat, point->touch_id);
+            if (seat_point != NULL) {
+                wlr_seat_touch_notify_cancel(compositor->seat,
+                    seat_point->client);
+            }
+        }
+
+        lumo_input_remove_touch_point(compositor, point);
+    }
+}
+
+static void lumo_input_touch_frame(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, cursor_touch_frame);
+
+    if (compositor == NULL || compositor->seat == NULL) {
+        return;
+    }
+
+    wlr_seat_touch_notify_frame(compositor->seat);
+    (void)data;
+}
+
+static void lumo_input_backend_new_input(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, backend_new_input);
+    struct wlr_input_device *device = data;
+
+    if (compositor == NULL || device == NULL) {
+        return;
+    }
+
+    switch (device->type) {
+    case WLR_INPUT_DEVICE_KEYBOARD:
+        lumo_input_keyboard_attach(compositor, device);
+        return;
+    case WLR_INPUT_DEVICE_POINTER:
+    case WLR_INPUT_DEVICE_TOUCH:
+    case WLR_INPUT_DEVICE_TABLET:
+        lumo_input_pointer_device_attach(compositor, device);
+        return;
+    case WLR_INPUT_DEVICE_TABLET_PAD:
+    case WLR_INPUT_DEVICE_SWITCH:
+    default:
+        wlr_log(WLR_INFO, "input: ignoring unsupported device '%s'",
+            device->name != NULL ? device->name : "(unknown)");
+        return;
+    }
+}
+
 int lumo_input_start(struct lumo_compositor *compositor) {
-    (void)compositor;
+    struct lumo_input_state *state;
+
+    if (compositor == NULL || compositor->display == NULL ||
+            compositor->output_layout == NULL) {
+        return -1;
+    }
+    if (compositor->input_started) {
+        return 0;
+    }
+
+    state = calloc(1, sizeof(*state));
+    if (state == NULL) {
+        wlr_log_errno(WLR_ERROR, "input: failed to allocate input state");
+        return -1;
+    }
+
+    compositor->seat = wlr_seat_create(compositor->display, "seat0");
+    if (compositor->seat == NULL) {
+        wlr_log(WLR_ERROR, "input: failed to create seat");
+        free(state);
+        return -1;
+    }
+
+    compositor->xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+    if (compositor->xkb_context == NULL) {
+        wlr_log(WLR_ERROR, "input: failed to create xkb context");
+        wlr_seat_destroy(compositor->seat);
+        compositor->seat = NULL;
+        free(state);
+        return -1;
+    }
+
+    compositor->cursor = wlr_cursor_create();
+    if (compositor->cursor == NULL) {
+        wlr_log(WLR_ERROR, "input: failed to create cursor");
+        xkb_context_unref(compositor->xkb_context);
+        compositor->xkb_context = NULL;
+        wlr_seat_destroy(compositor->seat);
+        compositor->seat = NULL;
+        free(state);
+        return -1;
+    }
+
+    compositor->cursor_mgr = wlr_xcursor_manager_create(NULL, 24);
+    if (compositor->cursor_mgr == NULL) {
+        wlr_log(WLR_ERROR, "input: failed to create cursor theme manager");
+        wlr_cursor_destroy(compositor->cursor);
+        compositor->cursor = NULL;
+        xkb_context_unref(compositor->xkb_context);
+        compositor->xkb_context = NULL;
+        wlr_seat_destroy(compositor->seat);
+        compositor->seat = NULL;
+        free(state);
+        return -1;
+    }
+
+    wlr_cursor_attach_output_layout(compositor->cursor, compositor->output_layout);
+
+    compositor->backend_new_input.notify = lumo_input_backend_new_input;
+    wl_signal_add(&compositor->backend->events.new_input,
+        &compositor->backend_new_input);
+
+    compositor->cursor_motion.notify = lumo_input_pointer_motion;
+    wl_signal_add(&compositor->cursor->events.motion, &compositor->cursor_motion);
+    compositor->cursor_motion_absolute.notify = lumo_input_pointer_motion_absolute;
+    wl_signal_add(&compositor->cursor->events.motion_absolute,
+        &compositor->cursor_motion_absolute);
+    compositor->cursor_button.notify = lumo_input_pointer_button;
+    wl_signal_add(&compositor->cursor->events.button, &compositor->cursor_button);
+    compositor->cursor_axis.notify = lumo_input_pointer_axis;
+    wl_signal_add(&compositor->cursor->events.axis, &compositor->cursor_axis);
+    compositor->cursor_frame.notify = lumo_input_pointer_frame;
+    wl_signal_add(&compositor->cursor->events.frame, &compositor->cursor_frame);
+    compositor->cursor_swipe_begin.notify = lumo_input_pointer_swipe_begin;
+    wl_signal_add(&compositor->cursor->events.swipe_begin,
+        &compositor->cursor_swipe_begin);
+    compositor->cursor_swipe_update.notify = lumo_input_pointer_swipe_update;
+    wl_signal_add(&compositor->cursor->events.swipe_update,
+        &compositor->cursor_swipe_update);
+    compositor->cursor_swipe_end.notify = lumo_input_pointer_swipe_end;
+    wl_signal_add(&compositor->cursor->events.swipe_end,
+        &compositor->cursor_swipe_end);
+    compositor->cursor_pinch_begin.notify = lumo_input_pointer_pinch_begin;
+    wl_signal_add(&compositor->cursor->events.pinch_begin,
+        &compositor->cursor_pinch_begin);
+    compositor->cursor_pinch_update.notify = lumo_input_pointer_pinch_update;
+    wl_signal_add(&compositor->cursor->events.pinch_update,
+        &compositor->cursor_pinch_update);
+    compositor->cursor_pinch_end.notify = lumo_input_pointer_pinch_end;
+    wl_signal_add(&compositor->cursor->events.pinch_end,
+        &compositor->cursor_pinch_end);
+    compositor->cursor_hold_begin.notify = lumo_input_pointer_hold_begin;
+    wl_signal_add(&compositor->cursor->events.hold_begin,
+        &compositor->cursor_hold_begin);
+    compositor->cursor_hold_end.notify = lumo_input_pointer_hold_end;
+    wl_signal_add(&compositor->cursor->events.hold_end,
+        &compositor->cursor_hold_end);
+    compositor->cursor_touch_down.notify = lumo_input_touch_down;
+    wl_signal_add(&compositor->cursor->events.touch_down,
+        &compositor->cursor_touch_down);
+    compositor->cursor_touch_motion.notify = lumo_input_touch_motion;
+    wl_signal_add(&compositor->cursor->events.touch_motion,
+        &compositor->cursor_touch_motion);
+    compositor->cursor_touch_up.notify = lumo_input_touch_up;
+    wl_signal_add(&compositor->cursor->events.touch_up,
+        &compositor->cursor_touch_up);
+    compositor->cursor_touch_cancel.notify = lumo_input_touch_cancel;
+    wl_signal_add(&compositor->cursor->events.touch_cancel,
+        &compositor->cursor_touch_cancel);
+    compositor->cursor_touch_frame.notify = lumo_input_touch_frame;
+    wl_signal_add(&compositor->cursor->events.touch_frame,
+        &compositor->cursor_touch_frame);
+
+    compositor->seat_request_cursor.notify = lumo_input_request_set_cursor;
+    wl_signal_add(&compositor->seat->events.request_set_cursor,
+        &compositor->seat_request_cursor);
+    compositor->seat_request_set_selection.notify = lumo_input_request_set_selection;
+    wl_signal_add(&compositor->seat->events.request_set_selection,
+        &compositor->seat_request_set_selection);
+
+    compositor->input_state = state;
+    compositor->input_started = true;
+    lumo_input_refresh_capabilities(compositor);
+    lumo_input_maybe_start_gesture_timer(compositor);
+    wlr_log(WLR_INFO, "input: ready for touchscreen and pointer devices");
     return 0;
 }
 
 void lumo_input_stop(struct lumo_compositor *compositor) {
-    (void)compositor;
+    struct lumo_input_state *state;
+    struct lumo_touch_point *point, *point_tmp;
+
+    if (compositor == NULL || !compositor->input_started) {
+        return;
+    }
+
+    state = lumo_input_state_from(compositor);
+    if (state != NULL && state->gesture_timer != NULL) {
+        wl_event_source_remove(state->gesture_timer);
+        state->gesture_timer = NULL;
+    }
+
+    wl_list_for_each_safe(point, point_tmp, &compositor->touch_points, link) {
+        lumo_input_remove_touch_point(compositor, point);
+    }
+
+    if (compositor->cursor != NULL) {
+        wl_list_remove(&compositor->cursor_motion.link);
+        wl_list_remove(&compositor->cursor_motion_absolute.link);
+        wl_list_remove(&compositor->cursor_button.link);
+        wl_list_remove(&compositor->cursor_axis.link);
+        wl_list_remove(&compositor->cursor_frame.link);
+        wl_list_remove(&compositor->cursor_swipe_begin.link);
+        wl_list_remove(&compositor->cursor_swipe_update.link);
+        wl_list_remove(&compositor->cursor_swipe_end.link);
+        wl_list_remove(&compositor->cursor_pinch_begin.link);
+        wl_list_remove(&compositor->cursor_pinch_update.link);
+        wl_list_remove(&compositor->cursor_pinch_end.link);
+        wl_list_remove(&compositor->cursor_hold_begin.link);
+        wl_list_remove(&compositor->cursor_hold_end.link);
+        wl_list_remove(&compositor->cursor_touch_down.link);
+        wl_list_remove(&compositor->cursor_touch_motion.link);
+        wl_list_remove(&compositor->cursor_touch_up.link);
+        wl_list_remove(&compositor->cursor_touch_cancel.link);
+        wl_list_remove(&compositor->cursor_touch_frame.link);
+        wlr_cursor_destroy(compositor->cursor);
+        compositor->cursor = NULL;
+    }
+
+    if (compositor->cursor_mgr != NULL) {
+        wlr_xcursor_manager_destroy(compositor->cursor_mgr);
+        compositor->cursor_mgr = NULL;
+    }
+
+    if (compositor->seat != NULL) {
+        wl_list_remove(&compositor->seat_request_cursor.link);
+        wl_list_remove(&compositor->seat_request_set_selection.link);
+        wlr_seat_destroy(compositor->seat);
+        compositor->seat = NULL;
+    }
+
+    if (compositor->xkb_context != NULL) {
+        xkb_context_unref(compositor->xkb_context);
+        compositor->xkb_context = NULL;
+    }
+
+    if (compositor->backend_new_input.link.prev != NULL &&
+            compositor->backend_new_input.link.next != NULL) {
+        wl_list_remove(&compositor->backend_new_input.link);
+    }
+
+    free(state);
+    compositor->input_state = NULL;
+    compositor->input_started = false;
+    compositor->pointer_devices = 0;
+    compositor->touch_devices = 0;
+    compositor->keyboard_devices = 0;
 }
 
 void lumo_input_set_rotation(
@@ -19,4 +1691,3 @@ void lumo_input_set_rotation(
 
     compositor->active_rotation = rotation;
 }
-
