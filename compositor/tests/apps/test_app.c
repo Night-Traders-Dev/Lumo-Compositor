@@ -70,8 +70,20 @@ static void test_app_render(void) {
     for (uint32_t i = 0; i < lumo_app_count(); i++) {
         memset(inactive, 0, pixel_count * sizeof(*inactive));
         memset(active, 0, pixel_count * sizeof(*active));
-        lumo_app_render((enum lumo_app_id)i, inactive, width, height, false);
-        lumo_app_render((enum lumo_app_id)i, active, width, height, true);
+        {
+            struct lumo_app_render_context ctx_inactive = {
+                .app_id = (enum lumo_app_id)i,
+                .close_active = false,
+                .browse_path = "/tmp",
+            };
+            struct lumo_app_render_context ctx_active = {
+                .app_id = (enum lumo_app_id)i,
+                .close_active = true,
+                .browse_path = "/tmp",
+            };
+            lumo_app_render(&ctx_inactive, inactive, width, height);
+            lumo_app_render(&ctx_active, active, width, height);
+        }
         assert(lumo_test_any_nonzero(inactive, pixel_count));
         assert(lumo_test_any_nonzero(active, pixel_count));
         assert(memcmp(inactive, active, pixel_count * sizeof(*inactive)) != 0);

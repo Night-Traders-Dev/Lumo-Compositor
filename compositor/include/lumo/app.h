@@ -34,12 +34,23 @@ bool lumo_app_close_rect(
     uint32_t height,
     struct lumo_rect *rect
 );
+struct lumo_app_render_context {
+    enum lumo_app_id app_id;
+    bool close_active;
+    const char *browse_path;
+};
+
 void lumo_app_render(
-    enum lumo_app_id app_id,
+    const struct lumo_app_render_context *ctx,
     uint32_t *pixels,
     uint32_t width,
+    uint32_t height
+);
+int lumo_app_files_entry_at(
+    uint32_t width,
     uint32_t height,
-    bool close_active
+    double x,
+    double y
 );
 
 #endif

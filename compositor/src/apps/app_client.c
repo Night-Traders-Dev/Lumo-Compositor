@@ -1,7 +1,10 @@
+#define _DEFAULT_SOURCE
 #include "lumo/app.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -9,6 +12,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <wayland-client.h>
@@ -54,6 +58,9 @@ struct lumo_app_client {
     int32_t active_touch_id;
     double pointer_x;
     double pointer_y;
+    char browse_path[1024];
+    double touch_down_x;
+    double touch_down_y;
 };
 
 static bool lumo_app_client_redraw(struct lumo_app_client *client);
@@ -193,8 +200,14 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
     buffer->release.release = lumo_app_buffer_release;
     wl_buffer_add_listener(buffer->buffer, &buffer->release, buffer);
 
-    lumo_app_render(client->app_id, buffer->data, client->width, client->height,
-        client->close_active);
+    {
+        struct lumo_app_render_context ctx = {
+            .app_id = client->app_id,
+            .close_active = client->close_active,
+            .browse_path = client->browse_path,
+        };
+        lumo_app_render(&ctx, buffer->data, client->width, client->height);
+    }
     wl_surface_attach(client->surface, buffer->buffer, 0, 0);
     wl_surface_damage_buffer(client->surface, 0, 0, (int)client->width,
         (int)client->height);
@@ -457,9 +470,11 @@ static void lumo_app_touch_handle_down(
 
     client->touch_pressed = true;
     client->active_touch_id = id;
+    client->touch_down_x = wl_fixed_to_double(x);
+    client->touch_down_y = wl_fixed_to_double(y);
     lumo_app_client_set_close_active(client,
-        lumo_app_client_close_contains(client, wl_fixed_to_double(x),
-            wl_fixed_to_double(y)));
+        lumo_app_client_close_contains(client, client->touch_down_x,
+            client->touch_down_y));
 }
 
 static void lumo_app_touch_handle_up(
@@ -486,6 +501,51 @@ static void lumo_app_touch_handle_up(
     lumo_app_client_set_close_active(client, false);
     if (should_close) {
         client->running = false;
+        return;
+    }
+
+    if (client->app_id == LUMO_APP_FILES && client->width > 0 &&
+            client->height > 0) {
+        int entry_idx = lumo_app_files_entry_at(client->width, client->height,
+            client->touch_down_x, client->touch_down_y);
+        if (entry_idx >= 0) {
+            DIR *dir = opendir(client->browse_path);
+            if (dir != NULL) {
+                struct dirent *entry;
+                int visible = 0;
+                while ((entry = readdir(dir)) != NULL) {
+                    if (entry->d_name[0] == '.') {
+                        continue;
+                    }
+                    if (visible == entry_idx) {
+                        if (entry->d_type == DT_DIR) {
+                            size_t plen = strlen(client->browse_path);
+                            if (plen + 1 + strlen(entry->d_name) + 1 <
+                                    sizeof(client->browse_path)) {
+                                if (plen > 1) {
+                                    strcat(client->browse_path, "/");
+                                }
+                                strcat(client->browse_path, entry->d_name);
+                                (void)lumo_app_client_redraw(client);
+                            }
+                        }
+                        break;
+                    }
+                    visible++;
+                }
+                closedir(dir);
+            }
+        } else if (client->touch_down_y < 130.0 &&
+                client->touch_down_y > 100.0) {
+            char *last_slash = strrchr(client->browse_path, '/');
+            if (last_slash != NULL && last_slash != client->browse_path) {
+                *last_slash = '\0';
+                (void)lumo_app_client_redraw(client);
+            } else if (last_slash == client->browse_path) {
+                client->browse_path[1] = '\0';
+                (void)lumo_app_client_redraw(client);
+            }
+        }
     }
 }
 
@@ -817,6 +877,16 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    {
+        const char *home = getenv("HOME");
+        if (home != NULL && strlen(home) < sizeof(client.browse_path)) {
+            strncpy(client.browse_path, home, sizeof(client.browse_path) - 1);
+        } else {
+            strncpy(client.browse_path, "/home", sizeof(client.browse_path) - 1);
+        }
+        client.browse_path[sizeof(client.browse_path) - 1] = '\0';
+    }
+
     client.display = wl_display_connect(NULL);
     if (client.display == NULL) {
         fprintf(stderr, "lumo-app: failed to connect to Wayland display\n");
@@ -840,7 +910,48 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    while (client.running && wl_display_dispatch(client.display) != -1) {
+    {
+        int display_fd = wl_display_get_fd(client.display);
+        bool needs_periodic = client.app_id == LUMO_APP_CLOCK ||
+            client.app_id == LUMO_APP_SETTINGS;
+        int timeout_ms = needs_periodic ? 1000 : -1;
+
+        while (client.running) {
+            struct pollfd pfd = {
+                .fd = display_fd,
+                .events = POLLIN,
+            };
+            int ret;
+
+            if (wl_display_dispatch_pending(client.display) == -1) {
+                break;
+            }
+            if (wl_display_flush(client.display) < 0 && errno != EAGAIN) {
+                break;
+            }
+
+            ret = poll(&pfd, 1, timeout_ms);
+            if (ret < 0) {
+                if (errno == EINTR) {
+                    continue;
+                }
+                break;
+            }
+
+            if (ret == 0 && needs_periodic) {
+                (void)lumo_app_client_redraw(&client);
+                continue;
+            }
+
+            if (pfd.revents & POLLIN) {
+                if (wl_display_dispatch(client.display) == -1) {
+                    break;
+                }
+            }
+            if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                break;
+            }
+        }
     }
 
     lumo_app_client_destroy(&client);

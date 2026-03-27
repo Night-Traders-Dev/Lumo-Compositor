@@ -414,6 +414,17 @@ void lumo_protocol_refresh_shell_hitboxes(struct lumo_compositor *compositor) {
             LUMO_HITBOX_EDGE_GESTURE, true, true);
     }
 
+    if (lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_STATUS,
+            (uint32_t)workarea.width, (uint32_t)workarea.height,
+            &shell_config)) {
+        rect.x = workarea.x;
+        rect.y = 0;
+        rect.width = workarea.width;
+        rect.height = (int)shell_config.height;
+        lumo_protocol_register_hitbox(compositor, "shell-edge-top", &rect,
+            LUMO_HITBOX_EDGE_GESTURE, true, true);
+    }
+
     if (compositor->keyboard_visible &&
             lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_OSK,
                 (uint32_t)workarea.width, (uint32_t)workarea.height,
@@ -1132,6 +1143,22 @@ void lumo_protocol_set_quick_settings_visible(
 
     compositor->quick_settings_visible = visible;
     wlr_log(WLR_INFO, "protocol: quick_settings %s",
+        visible ? "visible" : "hidden");
+    lumo_shell_state_broadcast_launcher_visible(compositor,
+        compositor->launcher_visible);
+    lumo_protocol_mark_layers_dirty(compositor);
+}
+
+void lumo_protocol_set_time_panel_visible(
+    struct lumo_compositor *compositor,
+    bool visible
+) {
+    if (compositor == NULL || compositor->time_panel_visible == visible) {
+        return;
+    }
+
+    compositor->time_panel_visible = visible;
+    wlr_log(WLR_INFO, "protocol: time_panel %s",
         visible ? "visible" : "hidden");
     lumo_shell_state_broadcast_launcher_visible(compositor,
         compositor->launcher_visible);

@@ -373,6 +373,34 @@ static void lumo_app_card_text(
     }
 }
 
+static const int lumo_files_row_height = 44;
+static const int lumo_files_header_height = 148;
+
+int lumo_app_files_entry_at(
+    uint32_t width,
+    uint32_t height,
+    double x,
+    double y
+) {
+    int row_y = lumo_files_header_height;
+    int max_rows = ((int)height - row_y - 60) / lumo_files_row_height;
+
+    (void)width;
+    if (x < 28.0 || x > (double)width - 28.0) {
+        return -1;
+    }
+    if (y < (double)row_y) {
+        return -1;
+    }
+
+    int index = (int)(y - row_y) / lumo_files_row_height;
+    if (index < 0 || index >= max_rows) {
+        return -1;
+    }
+
+    return index;
+}
+
 static void lumo_app_render_clock(
     uint32_t *pixels,
     uint32_t width,
@@ -396,7 +424,7 @@ static void lumo_app_render_clock(
     int cx = (int)width / 2;
 
     localtime_r(&now, &tm_now);
-    strftime(time_buf, sizeof(time_buf), "%H:%M", &tm_now);
+    strftime(time_buf, sizeof(time_buf), "%H:%M:%S", &tm_now);
     strftime(date_buf, sizeof(date_buf), "%Y-%m-%d", &tm_now);
 
     memset(pixels, 0, (size_t)width * height * 4);
@@ -456,7 +484,8 @@ static void lumo_app_render_files(
     uint32_t *pixels,
     uint32_t width,
     uint32_t height,
-    bool close_active
+    bool close_active,
+    const char *browse_path_override
 ) {
     struct lumo_rect full = {0, 0, (int)width, (int)height};
     struct lumo_rect close_rect = {0};
@@ -481,9 +510,13 @@ static void lumo_app_render_files(
     lumo_app_draw_text(pixels, width, height, 28, 60, 4, text_primary,
         "Files");
 
-    browse_path = getenv("HOME");
-    if (browse_path == NULL) {
-        browse_path = "/home";
+    if (browse_path_override != NULL && browse_path_override[0] != '\0') {
+        browse_path = browse_path_override;
+    } else {
+        browse_path = getenv("HOME");
+        if (browse_path == NULL) {
+            browse_path = "/home";
+        }
     }
 
     lumo_app_draw_text(pixels, width, height, 28, 108, 2,
@@ -744,18 +777,28 @@ static void lumo_app_render_settings(
 }
 
 void lumo_app_render(
-    enum lumo_app_id app_id,
+    const struct lumo_app_render_context *ctx,
     uint32_t *pixels,
     uint32_t width,
-    uint32_t height,
-    bool close_active
+    uint32_t height
 ) {
+    enum lumo_app_id app_id;
+    bool close_active;
+
+    if (ctx == NULL) {
+        return;
+    }
+
+    app_id = ctx->app_id;
+    close_active = ctx->close_active;
+
     if (app_id == LUMO_APP_CLOCK) {
         lumo_app_render_clock(pixels, width, height, close_active);
         return;
     }
     if (app_id == LUMO_APP_FILES) {
-        lumo_app_render_files(pixels, width, height, close_active);
+        lumo_app_render_files(pixels, width, height, close_active,
+            ctx->browse_path);
         return;
     }
     if (app_id == LUMO_APP_SETTINGS) {

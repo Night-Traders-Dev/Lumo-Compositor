@@ -845,19 +845,22 @@ static void lumo_input_touch_point_trigger_edge_action(
             point->down_lx > (double)top_output->wlr_output->width / 2.0;
 
         if (is_right_half) {
+            if (compositor->time_panel_visible) {
+                lumo_protocol_set_time_panel_visible(compositor, false);
+            }
             lumo_protocol_set_quick_settings_visible(compositor,
                 !compositor->quick_settings_visible);
             wlr_log(WLR_INFO,
                 "input: touch %d toggled top-right quick settings at %u",
                 point->touch_id, time_msec);
-        } else if (lumo_touch_audit_debug_gesture_enabled(compositor)) {
-            lumo_touch_audit_set_active(compositor,
-                !compositor->touch_audit_active);
-            wlr_log(WLR_INFO, "input: touch %d toggled top-edge audit at %u",
-                point->touch_id, time_msec);
         } else {
+            if (compositor->quick_settings_visible) {
+                lumo_protocol_set_quick_settings_visible(compositor, false);
+            }
+            lumo_protocol_set_time_panel_visible(compositor,
+                !compositor->time_panel_visible);
             wlr_log(WLR_INFO,
-                "input: touch %d ignored top-edge gesture at %u",
+                "input: touch %d toggled top-left time panel at %u",
                 point->touch_id, time_msec);
         }
         return;
@@ -865,6 +868,8 @@ static void lumo_input_touch_point_trigger_edge_action(
     case LUMO_EDGE_LEFT:
         if (compositor->touch_audit_active) {
             lumo_touch_audit_set_active(compositor, false);
+        } else if (compositor->time_panel_visible) {
+            lumo_protocol_set_time_panel_visible(compositor, false);
         } else if (compositor->quick_settings_visible) {
             lumo_protocol_set_quick_settings_visible(compositor, false);
         } else if (compositor->launcher_visible) {
@@ -1566,11 +1571,16 @@ static void lumo_input_touch_down(
         point->sy = 0.0;
     }
 
-    if (compositor->quick_settings_visible &&
+    if ((compositor->quick_settings_visible || compositor->time_panel_visible) &&
             !lumo_input_target_is_shell(&target)) {
-        lumo_protocol_set_quick_settings_visible(compositor, false);
+        if (compositor->quick_settings_visible) {
+            lumo_protocol_set_quick_settings_visible(compositor, false);
+        }
+        if (compositor->time_panel_visible) {
+            lumo_protocol_set_time_panel_visible(compositor, false);
+        }
         wlr_log(WLR_INFO,
-            "input: touch %d dismissed quick settings (outside tap)",
+            "input: touch %d dismissed panel (outside tap)",
             point->touch_id);
         lumo_input_remove_touch_point(compositor, point);
         return;
