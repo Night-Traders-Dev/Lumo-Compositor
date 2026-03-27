@@ -761,14 +761,65 @@ static void lumo_draw_launcher(
     if (client != NULL && (client->compositor_quick_settings_visible ||
             client->compositor_time_panel_visible) &&
             !client->compositor_launcher_visible) {
-        int bar_h = 40;
+        int bar_h = 48;
 
         if (client->compositor_quick_settings_visible) {
             lumo_draw_quick_settings_panel(pixels, width, height, bar_h,
                 client);
         }
         if (client->compositor_time_panel_visible) {
-            lumo_draw_status(pixels, width, height, client);
+            uint32_t tp_bg = lumo_argb(0xF0, 0x2C, 0x00, 0x1E);
+            uint32_t tp_stroke = lumo_argb(0x60, 0x77, 0x21, 0x6F);
+            uint32_t tp_label = lumo_argb(0xFF, 0xAE, 0xA7, 0x9F);
+            uint32_t tp_text = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
+            uint32_t tp_accent = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
+            struct lumo_rect tp;
+            time_t now = time(NULL);
+            struct tm tm_now = {0};
+            char tbuf[16], dbuf[32], wbuf[16];
+            int pw = (int)(width / 2);
+
+            localtime_r(&now, &tm_now);
+            strftime(tbuf, sizeof(tbuf), "%H:%M", &tm_now);
+            strftime(dbuf, sizeof(dbuf), "%Y-%m-%d", &tm_now);
+            snprintf(wbuf, sizeof(wbuf), "WEEK %d",
+                (tm_now.tm_yday / 7) + 1);
+
+            if (pw < 200) pw = 200;
+            tp.x = 8;
+            tp.y = bar_h + 4;
+            tp.width = pw;
+            tp.height = 160;
+            lumo_fill_rounded_rect(pixels, width, height, &tp, 14, tp_bg);
+            lumo_draw_outline(pixels, width, height, &tp, 1, tp_stroke);
+
+            {
+                int tw = lumo_text_width(tbuf, 5);
+                lumo_draw_text(pixels, width, height,
+                    tp.x + tp.width / 2 - tw / 2, tp.y + 16,
+                    5, tp_accent, tbuf);
+            }
+            {
+                int dw = lumo_text_width(dbuf, 2);
+                lumo_draw_text(pixels, width, height,
+                    tp.x + tp.width / 2 - dw / 2, tp.y + 64,
+                    2, tp_text, dbuf);
+            }
+            {
+                int ww = lumo_text_width(wbuf, 2);
+                lumo_draw_text(pixels, width, height,
+                    tp.x + tp.width / 2 - ww / 2, tp.y + 90,
+                    2, tp_label, wbuf);
+            }
+
+            {
+                char day_name[16];
+                strftime(day_name, sizeof(day_name), "%A", &tm_now);
+                int dnw = lumo_text_width(day_name, 3);
+                lumo_draw_text(pixels, width, height,
+                    tp.x + tp.width / 2 - dnw / 2, tp.y + 118,
+                    3, tp_text, day_name);
+            }
         }
         return;
     }
@@ -1480,6 +1531,20 @@ static void lumo_shell_client_update_input_region(
                 lumo_shell_launcher_panel_rect(width, height, &rect)) {
             wl_region_add(region, rect.x, rect.y, rect.width, rect.height);
         }
+        if (!client->compositor_launcher_visible &&
+                (client->compositor_quick_settings_visible ||
+                    client->compositor_time_panel_visible)) {
+            int bar_h = 48;
+            int pw = (int)width / 2;
+            if (pw < 200) pw = 200;
+            if (client->compositor_quick_settings_visible) {
+                wl_region_add(region, (int)width - pw - 8, bar_h,
+                    pw + 8, (int)height - bar_h);
+            }
+            if (client->compositor_time_panel_visible) {
+                wl_region_add(region, 0, bar_h, pw + 16, 200);
+            }
+        }
         break;
     case LUMO_SHELL_MODE_OSK:
         wl_region_add(region, 0, 0, (int)width, (int)height);
@@ -1865,8 +1930,7 @@ static int lumo_shell_status_button_hit(
 ) {
     int panel_w, bar_h, panel_x, btn_y, btn_h, btn_w;
 
-    if (client == NULL || client->mode != LUMO_SHELL_MODE_STATUS ||
-            !client->compositor_quick_settings_visible) {
+    if (client == NULL || !client->compositor_quick_settings_visible) {
         return 0;
     }
 
@@ -2628,7 +2692,7 @@ static void lumo_shell_touch_handle_up(
     client->touch_pressed = false;
     client->active_touch_id = -1;
 
-    if (client->mode == LUMO_SHELL_MODE_STATUS) {
+    {
         int btn = lumo_shell_status_button_hit(client,
             client->pointer_x, client->pointer_y);
         if (btn == 1) {
