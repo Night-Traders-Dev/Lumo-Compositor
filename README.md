@@ -138,6 +138,9 @@ On the OrangePi RV2, the most useful markers are:
 
 - whether `lumo-compositor` gets as far as `output ...: ready`
 - whether the shell bridge starts and `lumo-shell` connects
+- whether tapping or dragging the bottom gesture pill leaves a temporary touch
+  debug marker on that surface, which tells us the compositor is receiving and
+  classifying touchscreen input even if the launcher does not open yet
 - whether the failure happens before or after the first shell surface arrives
 
 If you see the colored launcher tiles and keyboard outline on-screen, the

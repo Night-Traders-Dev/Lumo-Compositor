@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.28] - 2026-03-27
+- Taught the compositor input pipeline to treat a short tap on the bottom `shell-gesture` handle as a launcher-open action, so the gesture pill works even before a full edge-swipe gesture is completed.
+- Added a temporary compositor-driven touch debug overlay on the gesture surface and expanded shell protocol state so we can see touch position and routing while debugging the OrangePi touchscreen path.
+- Added regression coverage for the new touch debug helpers and shell coordinate mapping utilities.
+
 ## [0.0.27] - 2026-03-27
 - Reorganized the compositor source tree into category directories under `src/core`, `src/protocol`, `src/shell`, and `src/tools`, with matching grouped test directories.
 - Kept the new screenshot utility in the tools category and broadened its wl_shm format handling so screencopy works with common XRGB and XBGR-style buffers.

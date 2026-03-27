@@ -101,3 +101,8 @@ surface bring-up rather than the GDM session entry itself.
 If the device shows the launcher rectangles and keyboard outline before the
 session drops, the crash is later in rendering or surface teardown, not in the
 session selection path.
+If the session stays up but the launcher does not open, tap or drag on the
+bottom gesture pill and look for the temporary touch debug marker on that
+surface. That marker confirms the compositor is receiving and classifying touch
+input, which helps narrow the problem to gesture policy versus missing device
+events.

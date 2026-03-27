@@ -81,6 +81,13 @@ struct lumo_shell_client {
     bool compositor_keyboard_resize_pending;
     bool compositor_keyboard_resize_acked;
     uint32_t compositor_keyboard_resize_serial;
+    bool touch_debug_seen;
+    bool touch_debug_active;
+    double touch_debug_x;
+    double touch_debug_y;
+    uint32_t touch_debug_id;
+    enum lumo_shell_touch_debug_phase touch_debug_phase;
+    enum lumo_shell_touch_debug_target touch_debug_target;
     bool target_visible;
     bool surface_hidden;
     bool animation_active;
@@ -724,7 +731,10 @@ static void lumo_draw_gesture(
     uint32_t accent = lumo_argb(0xFF, 0x69, 0xD1, 0xFF);
     uint32_t base = lumo_argb(0xFF, 0x0E, 0x16, 0x22);
     uint32_t highlight = lumo_argb(0xFF, 0xF3, 0xF6, 0xFD);
+    uint32_t debug_color = lumo_argb(0xC0, 0xFF, 0xB8, 0x4D);
     struct lumo_rect handle_rect = {0};
+    double local_x = 0.0;
+    double local_y = 0.0;
 
     if (!lumo_shell_gesture_handle_rect(width, height, &handle_rect)) {
         return;
@@ -748,6 +758,55 @@ static void lumo_draw_gesture(
     if (active_target != NULL &&
             active_target->kind == LUMO_SHELL_TARGET_GESTURE_HANDLE) {
         lumo_draw_outline(pixels, width, height, &handle_rect, 2, highlight);
+    }
+
+    if (client == NULL || !client->touch_debug_seen ||
+            client->output_width_hint == 0 || client->output_height_hint == 0 ||
+            !lumo_shell_surface_local_coords(LUMO_SHELL_MODE_GESTURE,
+                client->output_width_hint, client->output_height_hint,
+                width, height, client->touch_debug_x, client->touch_debug_y,
+                &local_x, &local_y)) {
+        return;
+    }
+
+    if (client->touch_debug_target == LUMO_SHELL_TOUCH_DEBUG_TARGET_SURFACE) {
+        debug_color = lumo_argb(client->touch_debug_active ? 0xD8 : 0xB0,
+            0x6C, 0xF0, 0x8D);
+    } else if (client->touch_debug_target ==
+            LUMO_SHELL_TOUCH_DEBUG_TARGET_HITBOX) {
+        debug_color = lumo_argb(client->touch_debug_active ? 0xD8 : 0xB0,
+            0xFF, 0xB8, 0x4D);
+    } else {
+        debug_color = lumo_argb(client->touch_debug_active ? 0xD8 : 0xB0,
+            0xFF, 0x6B, 0x6B);
+    }
+
+    {
+        struct lumo_rect track_rect = {
+            .x = (int)local_x - 1,
+            .y = 0,
+            .width = 3,
+            .height = (int)height,
+        };
+        struct lumo_rect dot_rect = {
+            .x = (int)local_x - 12,
+            .y = (int)local_y - 12,
+            .width = 24,
+            .height = 24,
+        };
+        struct lumo_rect badge_rect = {
+            .x = 12,
+            .y = 6,
+            .width = 96,
+            .height = 14,
+        };
+
+        lumo_fill_rect(pixels, width, height, track_rect.x, track_rect.y,
+            track_rect.width, track_rect.height, debug_color);
+        lumo_fill_rounded_rect(pixels, width, height, &dot_rect, 12,
+            debug_color);
+        lumo_fill_rounded_rect(pixels, width, height, &badge_rect, 7,
+            debug_color);
     }
 }
 
@@ -1443,6 +1502,60 @@ static void lumo_shell_client_apply_state_frame(
         fprintf(stderr, "lumo-shell: keyboard resize serial=%u\n",
             timeout_value);
         changed = true;
+    }
+
+    if (lumo_shell_protocol_frame_get_bool(frame, "touch_debug_active",
+            &bool_value) &&
+            client->touch_debug_active != bool_value) {
+        client->touch_debug_active = bool_value;
+        changed = true;
+    }
+
+    if (lumo_shell_protocol_frame_get_u32(frame, "touch_debug_id",
+            &timeout_value) &&
+            client->touch_debug_id != timeout_value) {
+        client->touch_debug_id = timeout_value;
+        changed = true;
+    }
+
+    if (lumo_shell_protocol_frame_get_double(frame, "touch_debug_x",
+            &double_value) &&
+            client->touch_debug_x != double_value) {
+        client->touch_debug_x = double_value;
+        client->touch_debug_seen = true;
+        changed = true;
+    }
+
+    if (lumo_shell_protocol_frame_get_double(frame, "touch_debug_y",
+            &double_value) &&
+            client->touch_debug_y != double_value) {
+        client->touch_debug_y = double_value;
+        client->touch_debug_seen = true;
+        changed = true;
+    }
+
+    if (lumo_shell_protocol_frame_get(frame, "touch_debug_phase", &value)) {
+        enum lumo_shell_touch_debug_phase phase =
+            LUMO_SHELL_TOUCH_DEBUG_NONE;
+
+        if (lumo_shell_touch_debug_phase_parse(value, &phase) &&
+                client->touch_debug_phase != phase) {
+            client->touch_debug_phase = phase;
+            client->touch_debug_seen = true;
+            changed = true;
+        }
+    }
+
+    if (lumo_shell_protocol_frame_get(frame, "touch_debug_target", &value)) {
+        enum lumo_shell_touch_debug_target target =
+            LUMO_SHELL_TOUCH_DEBUG_TARGET_NONE;
+
+        if (lumo_shell_touch_debug_target_parse(value, &target) &&
+                client->touch_debug_target != target) {
+            client->touch_debug_target = target;
+            client->touch_debug_seen = true;
+            changed = true;
+        }
     }
 
     if (lumo_shell_protocol_frame_get_u32(frame, "output_width", &output_size) &&

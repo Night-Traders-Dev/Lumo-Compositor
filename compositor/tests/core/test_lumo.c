@@ -277,6 +277,38 @@ static void test_hitbox_state(void) {
     lumo_compositor_destroy(compositor);
 }
 
+static void test_touch_debug_helpers(void) {
+    struct lumo_hitbox gesture_hitbox = {
+        .name = "shell-gesture",
+        .kind = LUMO_HITBOX_EDGE_GESTURE,
+    };
+    struct lumo_hitbox other_hitbox = {
+        .name = "launcher-scrim",
+        .kind = LUMO_HITBOX_SCRIM,
+    };
+
+    assert(strcmp(lumo_touch_target_kind_name(LUMO_TOUCH_TARGET_NONE),
+        "none") == 0);
+    assert(strcmp(lumo_touch_target_kind_name(LUMO_TOUCH_TARGET_HITBOX),
+        "hitbox") == 0);
+    assert(strcmp(lumo_touch_target_kind_name(LUMO_TOUCH_TARGET_SURFACE),
+        "surface") == 0);
+
+    assert(strcmp(lumo_touch_sample_type_name(LUMO_TOUCH_SAMPLE_DOWN),
+        "down") == 0);
+    assert(strcmp(lumo_touch_sample_type_name(LUMO_TOUCH_SAMPLE_MOTION),
+        "motion") == 0);
+    assert(strcmp(lumo_touch_sample_type_name(LUMO_TOUCH_SAMPLE_UP),
+        "up") == 0);
+    assert(strcmp(lumo_touch_sample_type_name(LUMO_TOUCH_SAMPLE_CANCEL),
+        "cancel") == 0);
+
+    assert(lumo_hitbox_is_shell_gesture(&gesture_hitbox));
+    assert(!lumo_hitbox_is_shell_gesture(&other_hitbox));
+    gesture_hitbox.name = NULL;
+    assert(!lumo_hitbox_is_shell_gesture(&gesture_hitbox));
+}
+
 static void test_shell_hitbox_refresh(void) {
     const struct lumo_compositor_config config = {
         .session_name = "lumo-test",
@@ -536,6 +568,7 @@ int main(void) {
     test_compositor_defaults();
     test_layer_configuration_dirty_without_outputs();
     test_hitbox_state();
+    test_touch_debug_helpers();
     test_shell_hitbox_refresh();
     test_xwayland_workarea_collection();
     test_xwayland_toggle();

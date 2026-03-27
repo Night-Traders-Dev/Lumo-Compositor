@@ -202,9 +202,58 @@ static void test_gesture_hitbox(void) {
     assert(target.index == 0);
 }
 
+static void test_touch_debug_names(void) {
+    enum lumo_shell_touch_debug_phase phase = LUMO_SHELL_TOUCH_DEBUG_NONE;
+    enum lumo_shell_touch_debug_target target =
+        LUMO_SHELL_TOUCH_DEBUG_TARGET_NONE;
+
+    assert(strcmp(lumo_shell_touch_debug_phase_name(
+        LUMO_SHELL_TOUCH_DEBUG_DOWN), "down") == 0);
+    assert(strcmp(lumo_shell_touch_debug_phase_name(
+        LUMO_SHELL_TOUCH_DEBUG_MOTION), "motion") == 0);
+    assert(strcmp(lumo_shell_touch_debug_phase_name(
+        LUMO_SHELL_TOUCH_DEBUG_UP), "up") == 0);
+    assert(strcmp(lumo_shell_touch_debug_phase_name(
+        LUMO_SHELL_TOUCH_DEBUG_CANCEL), "cancel") == 0);
+    assert(strcmp(lumo_shell_touch_debug_phase_name(
+        LUMO_SHELL_TOUCH_DEBUG_NONE), "none") == 0);
+    assert(lumo_shell_touch_debug_phase_parse("motion", &phase));
+    assert(phase == LUMO_SHELL_TOUCH_DEBUG_MOTION);
+    assert(!lumo_shell_touch_debug_phase_parse("drag", &phase));
+
+    assert(strcmp(lumo_shell_touch_debug_target_name(
+        LUMO_SHELL_TOUCH_DEBUG_TARGET_HITBOX), "hitbox") == 0);
+    assert(strcmp(lumo_shell_touch_debug_target_name(
+        LUMO_SHELL_TOUCH_DEBUG_TARGET_SURFACE), "surface") == 0);
+    assert(strcmp(lumo_shell_touch_debug_target_name(
+        LUMO_SHELL_TOUCH_DEBUG_TARGET_NONE), "none") == 0);
+    assert(lumo_shell_touch_debug_target_parse("surface", &target));
+    assert(target == LUMO_SHELL_TOUCH_DEBUG_TARGET_SURFACE);
+    assert(!lumo_shell_touch_debug_target_parse("edge", &target));
+}
+
+static void test_surface_local_coords(void) {
+    double local_x = -1.0;
+    double local_y = -1.0;
+
+    assert(lumo_shell_surface_local_coords(LUMO_SHELL_MODE_LAUNCHER,
+        1280, 800, 1280, 800, 512.0, 240.0, &local_x, &local_y));
+    assert(local_x == 512.0);
+    assert(local_y == 240.0);
+
+    assert(lumo_shell_surface_local_coords(LUMO_SHELL_MODE_GESTURE,
+        1280, 800, 1280, 28, 640.0, 790.0, &local_x, &local_y));
+    assert(local_x == 640.0);
+    assert(local_y == 18.0);
+
+    assert(!lumo_shell_surface_local_coords(LUMO_SHELL_MODE_GESTURE,
+        1280, 800, 1280, 28, 640.0, 700.0, &local_x, &local_y));
+}
+
 int main(void) {
     test_mode_names();
     test_target_kind_parse();
+    test_touch_debug_names();
     test_osk_key_text();
     test_shell_labels();
     test_layout_counts();
@@ -216,6 +265,7 @@ int main(void) {
     test_launcher_hitboxes();
     test_osk_hitboxes();
     test_gesture_hitbox();
+    test_surface_local_coords();
     puts("lumo shell tests passed");
     return 0;
 }

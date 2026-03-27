@@ -60,6 +60,20 @@ enum lumo_shell_target_kind {
     LUMO_SHELL_TARGET_GESTURE_HANDLE,
 };
 
+enum lumo_shell_touch_debug_phase {
+    LUMO_SHELL_TOUCH_DEBUG_NONE = 0,
+    LUMO_SHELL_TOUCH_DEBUG_DOWN,
+    LUMO_SHELL_TOUCH_DEBUG_MOTION,
+    LUMO_SHELL_TOUCH_DEBUG_UP,
+    LUMO_SHELL_TOUCH_DEBUG_CANCEL,
+};
+
+enum lumo_shell_touch_debug_target {
+    LUMO_SHELL_TOUCH_DEBUG_TARGET_NONE = 0,
+    LUMO_SHELL_TOUCH_DEBUG_TARGET_HITBOX,
+    LUMO_SHELL_TOUCH_DEBUG_TARGET_SURFACE,
+};
+
 struct lumo_shell_target {
     enum lumo_shell_target_kind kind;
     uint32_t index;
@@ -68,6 +82,20 @@ struct lumo_shell_target {
 
 const char *lumo_shell_mode_name(enum lumo_shell_mode mode);
 const char *lumo_shell_target_kind_name(enum lumo_shell_target_kind kind);
+const char *lumo_shell_touch_debug_phase_name(
+    enum lumo_shell_touch_debug_phase phase
+);
+bool lumo_shell_touch_debug_phase_parse(
+    const char *value,
+    enum lumo_shell_touch_debug_phase *phase
+);
+const char *lumo_shell_touch_debug_target_name(
+    enum lumo_shell_touch_debug_target target
+);
+bool lumo_shell_touch_debug_target_parse(
+    const char *value,
+    enum lumo_shell_touch_debug_target *target
+);
 const char *lumo_shell_launcher_tile_label(uint32_t tile_index);
 const char *lumo_shell_osk_key_label(uint32_t key_index);
 const char *lumo_shell_osk_key_text(uint32_t key_index);
@@ -134,6 +162,17 @@ bool lumo_shell_target_for_mode(
     double x,
     double y,
     struct lumo_shell_target *target
+);
+bool lumo_shell_surface_local_coords(
+    enum lumo_shell_mode mode,
+    uint32_t output_width,
+    uint32_t output_height,
+    uint32_t surface_width,
+    uint32_t surface_height,
+    double global_x,
+    double global_y,
+    double *local_x,
+    double *local_y
 );
 
 #endif

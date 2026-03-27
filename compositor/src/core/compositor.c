@@ -40,6 +40,13 @@ struct lumo_compositor *lumo_compositor_create(
     compositor->keyboard_resize_serial = 0;
     compositor->keyboard_resize_pending = false;
     compositor->keyboard_resize_acked = true;
+    compositor->touch_debug_active = false;
+    compositor->touch_debug_id = -1;
+    compositor->touch_debug_lx = 0.0;
+    compositor->touch_debug_ly = 0.0;
+    compositor->touch_debug_target = LUMO_TOUCH_TARGET_NONE;
+    compositor->touch_debug_phase = LUMO_TOUCH_SAMPLE_CANCEL;
+    compositor->touch_debug_hitbox_kind = LUMO_HITBOX_CUSTOM;
     compositor->layer_config_dirty = true;
     compositor->input_state = NULL;
     compositor->protocol_state = NULL;

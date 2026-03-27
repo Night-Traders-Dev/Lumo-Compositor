@@ -427,11 +427,34 @@ struct lumo_hitbox {
     void *userdata;
 };
 
+static inline bool lumo_hitbox_is_shell_gesture(
+    const struct lumo_hitbox *hitbox
+) {
+    return hitbox != NULL &&
+        hitbox->kind == LUMO_HITBOX_EDGE_GESTURE &&
+        hitbox->name != NULL &&
+        strcmp(hitbox->name, "shell-gesture") == 0;
+}
+
 enum lumo_touch_target_kind {
     LUMO_TOUCH_TARGET_NONE = 0,
     LUMO_TOUCH_TARGET_HITBOX,
     LUMO_TOUCH_TARGET_SURFACE,
 };
+
+static inline const char *lumo_touch_target_kind_name(
+    enum lumo_touch_target_kind kind
+) {
+    switch (kind) {
+    case LUMO_TOUCH_TARGET_HITBOX:
+        return "hitbox";
+    case LUMO_TOUCH_TARGET_SURFACE:
+        return "surface";
+    case LUMO_TOUCH_TARGET_NONE:
+    default:
+        return "none";
+    }
+}
 
 enum lumo_touch_sample_type {
     LUMO_TOUCH_SAMPLE_DOWN = 0,
@@ -439,6 +462,23 @@ enum lumo_touch_sample_type {
     LUMO_TOUCH_SAMPLE_UP,
     LUMO_TOUCH_SAMPLE_CANCEL,
 };
+
+static inline const char *lumo_touch_sample_type_name(
+    enum lumo_touch_sample_type type
+) {
+    switch (type) {
+    case LUMO_TOUCH_SAMPLE_DOWN:
+        return "down";
+    case LUMO_TOUCH_SAMPLE_MOTION:
+        return "motion";
+    case LUMO_TOUCH_SAMPLE_UP:
+        return "up";
+    case LUMO_TOUCH_SAMPLE_CANCEL:
+        return "cancel";
+    default:
+        return "unknown";
+    }
+}
 
 struct lumo_touch_sample {
     struct wl_list link;
@@ -514,6 +554,13 @@ struct lumo_compositor {
     uint32_t keyboard_resize_serial;
     bool keyboard_resize_pending;
     bool keyboard_resize_acked;
+    bool touch_debug_active;
+    int32_t touch_debug_id;
+    double touch_debug_lx;
+    double touch_debug_ly;
+    enum lumo_touch_target_kind touch_debug_target;
+    enum lumo_touch_sample_type touch_debug_phase;
+    enum lumo_hitbox_kind touch_debug_hitbox_kind;
     bool layer_config_dirty;
     struct wl_list outputs;
     struct wl_list keyboards;
@@ -701,6 +748,7 @@ void lumo_shell_state_broadcast_rotation(
     struct lumo_compositor *compositor,
     enum lumo_rotation rotation
 );
+void lumo_shell_state_broadcast_touch_debug(struct lumo_compositor *compositor);
 
 int lumo_xwayland_start(struct lumo_compositor *compositor);
 void lumo_xwayland_stop(struct lumo_compositor *compositor);

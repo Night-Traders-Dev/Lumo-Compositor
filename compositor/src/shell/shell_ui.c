@@ -123,6 +123,94 @@ const char *lumo_shell_target_kind_name(enum lumo_shell_target_kind kind) {
     }
 }
 
+const char *lumo_shell_touch_debug_phase_name(
+    enum lumo_shell_touch_debug_phase phase
+) {
+    switch (phase) {
+    case LUMO_SHELL_TOUCH_DEBUG_DOWN:
+        return "down";
+    case LUMO_SHELL_TOUCH_DEBUG_MOTION:
+        return "motion";
+    case LUMO_SHELL_TOUCH_DEBUG_UP:
+        return "up";
+    case LUMO_SHELL_TOUCH_DEBUG_CANCEL:
+        return "cancel";
+    case LUMO_SHELL_TOUCH_DEBUG_NONE:
+    default:
+        return "none";
+    }
+}
+
+bool lumo_shell_touch_debug_phase_parse(
+    const char *value,
+    enum lumo_shell_touch_debug_phase *phase
+) {
+    if (value == NULL || phase == NULL) {
+        return false;
+    }
+
+    if (strcmp(value, "down") == 0) {
+        *phase = LUMO_SHELL_TOUCH_DEBUG_DOWN;
+        return true;
+    }
+    if (strcmp(value, "motion") == 0) {
+        *phase = LUMO_SHELL_TOUCH_DEBUG_MOTION;
+        return true;
+    }
+    if (strcmp(value, "up") == 0) {
+        *phase = LUMO_SHELL_TOUCH_DEBUG_UP;
+        return true;
+    }
+    if (strcmp(value, "cancel") == 0) {
+        *phase = LUMO_SHELL_TOUCH_DEBUG_CANCEL;
+        return true;
+    }
+    if (strcmp(value, "none") == 0) {
+        *phase = LUMO_SHELL_TOUCH_DEBUG_NONE;
+        return true;
+    }
+
+    return false;
+}
+
+const char *lumo_shell_touch_debug_target_name(
+    enum lumo_shell_touch_debug_target target
+) {
+    switch (target) {
+    case LUMO_SHELL_TOUCH_DEBUG_TARGET_HITBOX:
+        return "hitbox";
+    case LUMO_SHELL_TOUCH_DEBUG_TARGET_SURFACE:
+        return "surface";
+    case LUMO_SHELL_TOUCH_DEBUG_TARGET_NONE:
+    default:
+        return "none";
+    }
+}
+
+bool lumo_shell_touch_debug_target_parse(
+    const char *value,
+    enum lumo_shell_touch_debug_target *target
+) {
+    if (value == NULL || target == NULL) {
+        return false;
+    }
+
+    if (strcmp(value, "hitbox") == 0) {
+        *target = LUMO_SHELL_TOUCH_DEBUG_TARGET_HITBOX;
+        return true;
+    }
+    if (strcmp(value, "surface") == 0) {
+        *target = LUMO_SHELL_TOUCH_DEBUG_TARGET_SURFACE;
+        return true;
+    }
+    if (strcmp(value, "none") == 0) {
+        *target = LUMO_SHELL_TOUCH_DEBUG_TARGET_NONE;
+        return true;
+    }
+
+    return false;
+}
+
 const char *lumo_shell_launcher_tile_label(uint32_t tile_index) {
     if (tile_index >= sizeof(lumo_shell_launcher_labels) /
             sizeof(lumo_shell_launcher_labels[0])) {
@@ -231,6 +319,53 @@ bool lumo_shell_target_for_mode(
     default:
         return false;
     }
+}
+
+bool lumo_shell_surface_local_coords(
+    enum lumo_shell_mode mode,
+    uint32_t output_width,
+    uint32_t output_height,
+    uint32_t surface_width,
+    uint32_t surface_height,
+    double global_x,
+    double global_y,
+    double *local_x,
+    double *local_y
+) {
+    double origin_x = 0.0;
+    double origin_y = 0.0;
+    double x;
+    double y;
+
+    if (output_width == 0 || output_height == 0 || surface_width == 0 ||
+            surface_height == 0 || local_x == NULL || local_y == NULL) {
+        return false;
+    }
+
+    switch (mode) {
+    case LUMO_SHELL_MODE_LAUNCHER:
+        origin_x = 0.0;
+        origin_y = 0.0;
+        break;
+    case LUMO_SHELL_MODE_OSK:
+    case LUMO_SHELL_MODE_GESTURE:
+        origin_x = 0.0;
+        origin_y = (double)output_height - (double)surface_height;
+        break;
+    default:
+        return false;
+    }
+
+    x = global_x - origin_x;
+    y = global_y - origin_y;
+    if (x < 0.0 || y < 0.0 || x >= (double)surface_width ||
+            y >= (double)surface_height) {
+        return false;
+    }
+
+    *local_x = x;
+    *local_y = y;
+    return true;
 }
 
 bool lumo_shell_surface_config_for_mode(

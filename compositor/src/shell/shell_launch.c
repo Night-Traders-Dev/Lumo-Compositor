@@ -418,6 +418,26 @@ static bool lumo_shell_bridge_build_state_frame(
             return false;
         }
     }
+    if (!lumo_shell_protocol_frame_add_bool(frame, "touch_debug_active",
+            compositor->touch_debug_active) ||
+            !lumo_shell_protocol_frame_add_u32(frame, "touch_debug_id",
+                compositor->touch_debug_id >= 0
+                    ? (uint32_t)compositor->touch_debug_id
+                    : UINT32_MAX) ||
+            !lumo_shell_protocol_frame_add_double(frame, "touch_debug_x",
+                compositor->touch_debug_lx) ||
+            !lumo_shell_protocol_frame_add_double(frame, "touch_debug_y",
+                compositor->touch_debug_ly) ||
+            !lumo_shell_protocol_frame_add_string(frame, "touch_debug_phase",
+                lumo_touch_sample_type_name(compositor->touch_debug_phase)) ||
+            !lumo_shell_protocol_frame_add_string(frame, "touch_debug_target",
+                lumo_touch_target_kind_name(compositor->touch_debug_target)) ||
+            !lumo_shell_protocol_frame_add_string(frame, "touch_debug_hitbox",
+                compositor->touch_debug_target == LUMO_TOUCH_TARGET_HITBOX
+                    ? lumo_hitbox_kind_name(compositor->touch_debug_hitbox_kind)
+                    : "none")) {
+        return false;
+    }
 
     return true;
 }
@@ -1330,5 +1350,9 @@ void lumo_shell_state_broadcast_rotation(
     enum lumo_rotation rotation
 ) {
     (void)rotation;
+    lumo_shell_bridge_broadcast_state(compositor);
+}
+
+void lumo_shell_state_broadcast_touch_debug(struct lumo_compositor *compositor) {
     lumo_shell_bridge_broadcast_state(compositor);
 }

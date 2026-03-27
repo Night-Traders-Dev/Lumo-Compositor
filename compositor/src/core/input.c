@@ -351,6 +351,32 @@ static void lumo_input_touch_sample_append(
     wl_list_insert(point->samples.prev, &sample->link);
 }
 
+static void lumo_input_touch_debug_update(
+    struct lumo_compositor *compositor,
+    const struct lumo_touch_point *point,
+    enum lumo_touch_sample_type phase,
+    bool active,
+    double lx,
+    double ly
+) {
+    if (compositor == NULL) {
+        return;
+    }
+
+    compositor->touch_debug_active = active;
+    compositor->touch_debug_id = point != NULL ? point->touch_id : -1;
+    compositor->touch_debug_lx = lx;
+    compositor->touch_debug_ly = ly;
+    compositor->touch_debug_phase = phase;
+    compositor->touch_debug_target =
+        point != NULL ? point->kind : LUMO_TOUCH_TARGET_NONE;
+    compositor->touch_debug_hitbox_kind =
+        point != NULL && point->hitbox != NULL
+            ? point->hitbox->kind
+            : LUMO_HITBOX_CUSTOM;
+    lumo_shell_state_broadcast_touch_debug(compositor);
+}
+
 static void lumo_input_touch_samples_clear(struct lumo_touch_point *point) {
     struct lumo_touch_sample *sample, *tmp;
 
@@ -1331,6 +1357,8 @@ static void lumo_input_touch_motion(
         point->ly = ly;
         point->sx = target.sx;
         point->sy = target.sy;
+        lumo_input_touch_debug_update(compositor, point,
+            LUMO_TOUCH_SAMPLE_MOTION, true, point->lx, point->ly);
         return;
     }
 
@@ -1351,6 +1379,8 @@ static void lumo_input_touch_motion(
         point->ly = ly;
         point->sx = target.sx;
         point->sy = target.sy;
+        lumo_input_touch_debug_update(compositor, point,
+            LUMO_TOUCH_SAMPLE_MOTION, true, point->lx, point->ly);
         return;
     }
 
@@ -1363,6 +1393,8 @@ static void lumo_input_touch_motion(
     point->ly = ly;
     point->sx = target.sx;
     point->sy = target.sy;
+    lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_MOTION,
+        true, point->lx, point->ly);
 }
 
 static void lumo_input_touch_down(
@@ -1418,12 +1450,16 @@ static void lumo_input_touch_down(
         lumo_input_touch_point_deliver_now(compositor, point, &target,
             event->time_msec);
         lumo_input_focus_surface(compositor, point->surface);
+        lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
+            true, point->lx, point->ly);
         return;
     }
 
     if (lumo_input_hitbox_is_shell_reserved(point->hitbox)) {
         lumo_input_touch_point_begin_capture(compositor, point, &target,
             event->time_msec);
+        lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
+            true, point->lx, point->ly);
         return;
     }
 
@@ -1431,6 +1467,8 @@ static void lumo_input_touch_down(
             point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE) {
         lumo_input_touch_point_begin_capture(compositor, point, &target,
             event->time_msec);
+        lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
+            true, point->lx, point->ly);
         return;
     }
 
@@ -1438,6 +1476,8 @@ static void lumo_input_touch_down(
     if (edge_zone) {
         lumo_input_touch_point_begin_capture(compositor, point, &target,
             event->time_msec);
+        lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
+            true, point->lx, point->ly);
         return;
     }
 
@@ -1445,11 +1485,15 @@ static void lumo_input_touch_down(
         lumo_input_touch_point_deliver_now(compositor, point, &target,
             event->time_msec);
         lumo_input_focus_surface(compositor, point->surface);
+        lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
+            true, point->lx, point->ly);
         return;
     }
 
     wlr_log(WLR_INFO, "input: touch %d ignored outside shell/app regions",
         point->touch_id);
+    lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
+        false, point->lx, point->ly);
     lumo_input_remove_touch_point(compositor, point);
 }
 
@@ -1472,6 +1516,18 @@ static void lumo_input_touch_up(
     }
 
     if (point->captured && !point->delivered) {
+        if (!point->gesture_triggered &&
+                lumo_hitbox_is_shell_gesture(point->hitbox) &&
+                !lumo_input_touch_point_dist_exceeded(point, point->lx,
+                    point->ly, compositor->gesture_threshold > 0.0
+                        ? compositor->gesture_threshold
+                        : 24.0)) {
+            lumo_input_touch_point_trigger_gesture(compositor, point,
+                event->time_msec);
+            wlr_log(WLR_INFO, "input: touch %d tapped gesture handle",
+                point->touch_id);
+        }
+
         if (!point->gesture_triggered && point->surface != NULL &&
                 point->hitbox != NULL &&
                 point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE) {
@@ -1497,6 +1553,9 @@ static void lumo_input_touch_up(
         wlr_seat_touch_notify_frame(compositor->seat);
     }
 
+    lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_UP,
+        false, point->lx, point->ly);
+
     lumo_input_remove_touch_point(compositor, point);
     lumo_input_maybe_start_gesture_timer(compositor);
 }
@@ -1516,6 +1575,8 @@ static void lumo_input_touch_cancel(
 
     point = lumo_input_touch_point_for_id(compositor, event->touch_id);
     if (point != NULL) {
+        lumo_input_touch_debug_update(compositor, point,
+            LUMO_TOUCH_SAMPLE_CANCEL, false, point->lx, point->ly);
         if (point->delivered && point->surface != NULL) {
             struct wlr_touch_point *seat_point =
                 wlr_seat_touch_get_point(compositor->seat, point->touch_id);
