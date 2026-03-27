@@ -1,12 +1,255 @@
 #include "lumo/compositor.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+
+static void lumo_output_apply_rotation(
+    struct lumo_output *output,
+    enum lumo_rotation rotation
+) {
+    if (output == NULL || output->wlr_output == NULL) {
+        return;
+    }
+
+    struct wlr_output_state state;
+    wlr_output_state_init(&state);
+    wlr_output_state_set_transform(&state, lumo_rotation_to_transform(rotation));
+
+    if (!wlr_output_commit_state(output->wlr_output, &state)) {
+        wlr_log(WLR_ERROR,
+            "output %s: failed to apply rotation %s",
+            output->wlr_output->name,
+            lumo_rotation_name(rotation));
+    }
+
+    wlr_output_state_finish(&state);
+}
+
+static void lumo_output_configure_scene(struct lumo_output *output) {
+    if (output == NULL || output->compositor == NULL) {
+        return;
+    }
+
+    lumo_protocol_configure_layers(output->compositor, output);
+}
+
+static void lumo_output_frame(struct wl_listener *listener, void *data) {
+    struct lumo_output *output = wl_container_of(listener, output, frame);
+
+    lumo_output_configure_scene(output);
+
+    if (output->scene_output == NULL) {
+        return;
+    }
+
+    if (!wlr_scene_output_commit(output->scene_output, NULL)) {
+        wlr_log(WLR_ERROR,
+            "output %s: failed to render scene",
+            output->wlr_output->name);
+        return;
+    }
+
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    wlr_scene_output_send_frame_done(output->scene_output, &now);
+    (void)data;
+}
+
+static void lumo_output_request_state(struct wl_listener *listener, void *data) {
+    struct lumo_output *output = wl_container_of(listener, output, request_state);
+    const struct wlr_output_event_request_state *event = data;
+
+    if (!wlr_output_commit_state(output->wlr_output, event->state)) {
+        wlr_log(WLR_ERROR,
+            "output %s: failed to commit backend-requested state",
+            output->wlr_output->name);
+    }
+}
+
+static void lumo_output_destroy(struct wl_listener *listener, void *data) {
+    struct lumo_output *output = wl_container_of(listener, output, destroy);
+
+    if (output->compositor != NULL && output->compositor->output_layout != NULL) {
+        wlr_output_layout_remove(output->compositor->output_layout,
+            output->wlr_output);
+    }
+
+    if (output->scene_output != NULL) {
+        wlr_scene_output_destroy(output->scene_output);
+        output->scene_output = NULL;
+    }
+
+    wl_list_remove(&output->frame.link);
+    wl_list_remove(&output->request_state.link);
+    wl_list_remove(&output->destroy.link);
+    wl_list_remove(&output->link);
+    free(output);
+    (void)data;
+}
+
+static void lumo_output_add(
+    struct lumo_compositor *compositor,
+    struct wlr_output *wlr_output
+) {
+    if (!wlr_output_init_render(wlr_output, compositor->allocator, compositor->renderer)) {
+        wlr_log(WLR_ERROR,
+            "output %s: failed to initialize renderer bindings",
+            wlr_output->name);
+        return;
+    }
+
+    struct wlr_output_state state;
+    wlr_output_state_init(&state);
+    wlr_output_state_set_enabled(&state, true);
+
+    struct wlr_output_mode *mode = wlr_output_preferred_mode(wlr_output);
+    if (mode != NULL) {
+        wlr_output_state_set_mode(&state, mode);
+    }
+    wlr_output_state_set_transform(
+        &state,
+        lumo_rotation_to_transform(compositor->active_rotation)
+    );
+
+    if (!wlr_output_commit_state(wlr_output, &state)) {
+        wlr_log(WLR_ERROR,
+            "output %s: failed to enable output",
+            wlr_output->name);
+        wlr_output_state_finish(&state);
+        return;
+    }
+    wlr_output_state_finish(&state);
+
+    struct lumo_output *output = calloc(1, sizeof(*output));
+    if (output == NULL) {
+        wlr_log_errno(WLR_ERROR, "output %s: allocation failed", wlr_output->name);
+        return;
+    }
+
+    output->compositor = compositor;
+    output->wlr_output = wlr_output;
+    wl_signal_add(&wlr_output->events.frame, &output->frame);
+    output->frame.notify = lumo_output_frame;
+    wl_signal_add(&wlr_output->events.request_state, &output->request_state);
+    output->request_state.notify = lumo_output_request_state;
+    wl_signal_add(&wlr_output->events.destroy, &output->destroy);
+    output->destroy.notify = lumo_output_destroy;
+
+    output->layout_output = wlr_output_layout_add_auto(
+        compositor->output_layout,
+        wlr_output
+    );
+    if (output->layout_output == NULL) {
+        wlr_log(WLR_ERROR, "output %s: failed to add output to layout",
+            wlr_output->name);
+        wl_list_remove(&output->frame.link);
+        wl_list_remove(&output->request_state.link);
+        wl_list_remove(&output->destroy.link);
+        free(output);
+        return;
+    }
+
+    output->scene_output = wlr_scene_output_create(compositor->scene, wlr_output);
+    if (output->scene_output == NULL) {
+        wlr_log(WLR_ERROR, "output %s: failed to create scene viewport",
+            wlr_output->name);
+        wlr_output_layout_remove(compositor->output_layout, wlr_output);
+        wl_list_remove(&output->frame.link);
+        wl_list_remove(&output->request_state.link);
+        wl_list_remove(&output->destroy.link);
+        free(output);
+        return;
+    }
+
+    wlr_scene_output_layout_add_output(
+        compositor->scene_layout,
+        output->layout_output,
+        output->scene_output
+    );
+
+    wl_list_insert(&compositor->outputs, &output->link);
+    lumo_output_configure_scene(output);
+    wlr_log(WLR_INFO, "output %s: ready", wlr_output->name);
+}
+
+static void lumo_backend_new_output(struct wl_listener *listener, void *data) {
+    struct lumo_compositor *compositor =
+        wl_container_of(listener, compositor, backend_new_output);
+    struct wlr_output *wlr_output = data;
+
+    lumo_output_add(compositor, wlr_output);
+}
+
 int lumo_output_start(struct lumo_compositor *compositor) {
-    (void)compositor;
+    if (compositor == NULL || compositor->display == NULL) {
+        return -1;
+    }
+
+    wl_list_init(&compositor->outputs);
+
+    compositor->output_layout = wlr_output_layout_create(compositor->display);
+    if (compositor->output_layout == NULL) {
+        wlr_log(WLR_ERROR, "output: failed to create output layout");
+        return -1;
+    }
+
+    compositor->scene = wlr_scene_create();
+    if (compositor->scene == NULL) {
+        wlr_log(WLR_ERROR, "output: failed to create scene graph");
+        wlr_output_layout_destroy(compositor->output_layout);
+        compositor->output_layout = NULL;
+        return -1;
+    }
+
+    compositor->scene_layout = wlr_scene_attach_output_layout(
+        compositor->scene,
+        compositor->output_layout
+    );
+    if (compositor->scene_layout == NULL) {
+        wlr_log(WLR_ERROR, "output: failed to attach output layout to scene");
+        wlr_scene_node_destroy(&compositor->scene->tree.node);
+        compositor->scene = NULL;
+        wlr_output_layout_destroy(compositor->output_layout);
+        compositor->output_layout = NULL;
+        return -1;
+    }
+
+    compositor->backend_new_output.notify = lumo_backend_new_output;
+    wl_signal_add(&compositor->backend->events.new_output,
+        &compositor->backend_new_output);
+
+    compositor->output_started = true;
     return 0;
 }
 
 void lumo_output_stop(struct lumo_compositor *compositor) {
-    (void)compositor;
+    if (compositor == NULL || !compositor->output_started) {
+        return;
+    }
+
+    wl_list_remove(&compositor->backend_new_output.link);
+
+    struct lumo_output *output, *tmp;
+    wl_list_for_each_safe(output, tmp, &compositor->outputs, link) {
+        if (output->scene_output != NULL) {
+            wlr_scene_output_destroy(output->scene_output);
+            output->scene_output = NULL;
+        }
+    }
+
+    if (compositor->scene != NULL) {
+        wlr_scene_node_destroy(&compositor->scene->tree.node);
+        compositor->scene = NULL;
+        compositor->scene_layout = NULL;
+    }
+
+    if (compositor->output_layout != NULL) {
+        wlr_output_layout_destroy(compositor->output_layout);
+        compositor->output_layout = NULL;
+    }
+
+    compositor->output_started = false;
 }
 
 void lumo_output_set_rotation(
@@ -14,11 +257,27 @@ void lumo_output_set_rotation(
     const char *output_name,
     enum lumo_rotation rotation
 ) {
-    (void)output_name;
     if (compositor == NULL) {
         return;
     }
 
     compositor->active_rotation = rotation;
-}
 
+    bool matched = false;
+    struct lumo_output *output;
+    wl_list_for_each(output, &compositor->outputs, link) {
+        if (output_name != NULL && strcmp(output->wlr_output->name, output_name) != 0) {
+            continue;
+        }
+
+        matched = true;
+        lumo_output_apply_rotation(output, rotation);
+        lumo_output_configure_scene(output);
+    }
+
+    if (output_name != NULL && !matched) {
+        wlr_log(WLR_INFO,
+            "output: rotation request for unknown output '%s'",
+            output_name);
+    }
+}

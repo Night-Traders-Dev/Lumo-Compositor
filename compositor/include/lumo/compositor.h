@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <wayland-server-core.h>
+#include <xkbcommon/xkbcommon.h>
 #include <wlr/backend.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
@@ -39,6 +40,12 @@ enum lumo_hitbox_kind {
     LUMO_HITBOX_SCRIM,
 };
 
+enum lumo_scrim_state {
+    LUMO_SCRIM_HIDDEN = 0,
+    LUMO_SCRIM_DIMMED,
+    LUMO_SCRIM_MODAL,
+};
+
 struct lumo_rect {
     int x;
     int y;
@@ -61,6 +68,11 @@ struct lumo_popup;
 struct lumo_layer_surface;
 struct lumo_hitbox;
 
+enum lumo_scene_object_role {
+    LUMO_SCENE_OBJECT_TOPLEVEL = 0,
+    LUMO_SCENE_OBJECT_LAYER_SURFACE,
+};
+
 static inline enum wl_output_transform lumo_rotation_to_transform(
     enum lumo_rotation rotation
 ) {
@@ -74,6 +86,26 @@ static inline enum wl_output_transform lumo_rotation_to_transform(
     case LUMO_ROTATION_NORMAL:
     default:
         return WL_OUTPUT_TRANSFORM_NORMAL;
+    }
+}
+
+static inline enum lumo_rotation lumo_transform_to_rotation(
+    enum wl_output_transform transform
+) {
+    switch (transform) {
+    case WL_OUTPUT_TRANSFORM_90:
+    case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+        return LUMO_ROTATION_90;
+    case WL_OUTPUT_TRANSFORM_180:
+    case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+        return LUMO_ROTATION_180;
+    case WL_OUTPUT_TRANSFORM_270:
+    case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+        return LUMO_ROTATION_270;
+    case WL_OUTPUT_TRANSFORM_NORMAL:
+    case WL_OUTPUT_TRANSFORM_FLIPPED:
+    default:
+        return LUMO_ROTATION_NORMAL;
     }
 }
 
@@ -142,6 +174,8 @@ struct lumo_keyboard {
 struct lumo_toplevel {
     struct wl_list link;
     struct lumo_compositor *compositor;
+    enum lumo_scene_object_role role;
+    struct wlr_xdg_surface *xdg_surface;
     struct wlr_xdg_toplevel *xdg_toplevel;
     struct wlr_scene_tree *scene_tree;
     struct wl_listener map;
@@ -162,6 +196,7 @@ struct lumo_popup {
 struct lumo_layer_surface {
     struct wl_list link;
     struct lumo_compositor *compositor;
+    enum lumo_scene_object_role role;
     struct wlr_layer_surface_v1 *layer_surface;
     struct wlr_scene_layer_surface_v1 *scene_surface;
     struct lumo_output *output;
@@ -187,15 +222,41 @@ enum lumo_touch_target_kind {
     LUMO_TOUCH_TARGET_SURFACE,
 };
 
+enum lumo_touch_sample_type {
+    LUMO_TOUCH_SAMPLE_DOWN = 0,
+    LUMO_TOUCH_SAMPLE_MOTION,
+    LUMO_TOUCH_SAMPLE_UP,
+    LUMO_TOUCH_SAMPLE_CANCEL,
+};
+
+struct lumo_touch_sample {
+    struct wl_list link;
+    enum lumo_touch_sample_type type;
+    uint32_t time_msec;
+    double lx;
+    double ly;
+    double sx;
+    double sy;
+};
+
 struct lumo_touch_point {
     struct wl_list link;
     int32_t touch_id;
     enum lumo_touch_target_kind kind;
     const struct lumo_hitbox *hitbox;
     struct wlr_surface *surface;
+    struct wlr_seat_client *seat_client;
     void *owner;
+    struct wlr_scene_tree *scene_tree;
     double lx;
     double ly;
+    double sx;
+    double sy;
+    uint32_t down_time_msec;
+    bool delivered;
+    bool captured;
+    bool gesture_triggered;
+    struct wl_list samples;
 };
 
 struct lumo_compositor {
@@ -217,20 +278,31 @@ struct lumo_compositor {
     struct wlr_cursor *cursor;
     struct wlr_xcursor_manager *cursor_mgr;
     struct wlr_seat *seat;
+    struct xkb_context *xkb_context;
     struct wlr_text_input_manager_v3 *text_input_manager;
     struct wlr_input_method_manager_v2 *input_method_manager;
     struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_manager;
     struct wlr_pointer_gestures_v1 *pointer_gestures;
     bool running;
     bool keyboard_visible;
+    bool launcher_visible;
     enum lumo_rotation active_rotation;
+    enum lumo_scrim_state scrim_state;
+    double gesture_threshold;
+    uint32_t gesture_timeout_ms;
+    uint32_t keyboard_resize_serial;
+    bool keyboard_resize_pending;
+    bool keyboard_resize_acked;
     struct wl_list outputs;
     struct wl_list keyboards;
     struct wl_list toplevels;
     struct wl_list popups;
     struct wl_list layer_surfaces;
     struct wl_list hitboxes;
+    struct wl_list input_devices;
     struct wl_list touch_points;
+    void *input_state;
+    void *protocol_state;
     size_t pointer_devices;
     size_t touch_devices;
     size_t keyboard_devices;
@@ -259,6 +331,10 @@ struct lumo_compositor {
     struct wl_listener cursor_touch_frame;
     struct wl_listener seat_request_cursor;
     struct wl_listener seat_request_set_selection;
+    bool backend_started;
+    bool output_started;
+    bool protocol_started;
+    bool input_started;
 };
 
 struct lumo_compositor *lumo_compositor_create(
@@ -304,6 +380,22 @@ const struct lumo_hitbox *lumo_protocol_hitbox_at(
     struct lumo_compositor *compositor,
     double lx,
     double ly
+);
+void lumo_protocol_set_gesture_threshold(
+    struct lumo_compositor *compositor,
+    double threshold
+);
+void lumo_protocol_set_launcher_visible(
+    struct lumo_compositor *compositor,
+    bool visible
+);
+void lumo_protocol_set_scrim_state(
+    struct lumo_compositor *compositor,
+    enum lumo_scrim_state state
+);
+void lumo_protocol_ack_keyboard_resize(
+    struct lumo_compositor *compositor,
+    uint32_t serial
 );
 void lumo_protocol_set_keyboard_visible(
     struct lumo_compositor *compositor,
