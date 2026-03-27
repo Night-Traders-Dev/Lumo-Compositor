@@ -70,6 +70,7 @@ struct lumo_hitbox;
 
 enum lumo_scene_object_role {
     LUMO_SCENE_OBJECT_TOPLEVEL = 0,
+    LUMO_SCENE_OBJECT_POPUP,
     LUMO_SCENE_OBJECT_LAYER_SURFACE,
 };
 
@@ -181,12 +182,22 @@ struct lumo_toplevel {
     struct wl_listener map;
     struct wl_listener unmap;
     struct wl_listener commit;
+    struct wl_listener request_maximize;
+    struct wl_listener request_fullscreen;
+    struct wl_listener request_minimize;
+    struct wl_listener request_move;
+    struct wl_listener request_resize;
+    struct wl_listener request_show_window_menu;
+    struct wl_listener set_parent;
+    struct wl_listener set_title;
+    struct wl_listener set_app_id;
     struct wl_listener destroy;
 };
 
 struct lumo_popup {
     struct wl_list link;
     struct lumo_compositor *compositor;
+    enum lumo_scene_object_role role;
     struct wlr_xdg_popup *xdg_popup;
     struct wlr_scene_tree *scene_tree;
     struct wl_listener commit;
