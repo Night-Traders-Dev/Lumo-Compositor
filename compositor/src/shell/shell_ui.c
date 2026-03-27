@@ -648,9 +648,12 @@ bool lumo_shell_surface_bootstrap_config(
     switch (mode) {
     case LUMO_SHELL_MODE_LAUNCHER:
         config->name = "launcher";
-        config->width = 1;
-        config->height = 1;
-        config->anchor = LUMO_SHELL_ANCHOR_TOP | LUMO_SHELL_ANCHOR_LEFT;
+        config->width = 0;
+        config->height = 0;
+        config->anchor = LUMO_SHELL_ANCHOR_TOP |
+            LUMO_SHELL_ANCHOR_BOTTOM |
+            LUMO_SHELL_ANCHOR_LEFT |
+            LUMO_SHELL_ANCHOR_RIGHT;
         config->exclusive_zone = 0;
         config->keyboard_interactive = false;
         config->background_rgba = 0x00000000;

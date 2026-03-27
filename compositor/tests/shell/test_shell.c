@@ -116,8 +116,13 @@ static void test_bootstrap_config(void) {
     struct lumo_shell_surface_config config = {0};
 
     assert(lumo_shell_surface_bootstrap_config(LUMO_SHELL_MODE_LAUNCHER, &config));
-    assert(config.width == 1);
-    assert(config.height == 1);
+    assert(config.width == 0);
+    assert(config.height == 0);
+    assert(config.anchor == (LUMO_SHELL_ANCHOR_TOP |
+        LUMO_SHELL_ANCHOR_BOTTOM |
+        LUMO_SHELL_ANCHOR_LEFT |
+        LUMO_SHELL_ANCHOR_RIGHT));
+    assert(config.exclusive_zone == 0);
     assert(!config.keyboard_interactive);
 
     assert(lumo_shell_surface_bootstrap_config(LUMO_SHELL_MODE_OSK, &config));

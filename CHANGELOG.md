@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.41] - 2026-03-27
+- Fixed the launcher shell bootstrap so the app drawer is created as a full-screen overlay from the start instead of a hidden `1x1` layer surface.
+- Added a regression test for the launcher bootstrap geometry so the drawer no longer depends on a later resize to become visible.
+
 ## [0.0.40] - 2026-03-27
 - Fixed a layer-shell timing bug where the app drawer could be reconfigured before the launcher client committed its full-screen overlay request, which left it stuck at the hidden `1x1` bootstrap size.
 - Added a shared `lumo_protocol_mark_layers_dirty()` path that schedules output frames instead of forcing immediate reconfiguration, and wired layer-surface commits into that dirty path so shell resizes are applied after client commits arrive.
