@@ -26,6 +26,27 @@ static void test_rotation_helpers(void) {
         LUMO_ROTATION_270);
 }
 
+static void test_backend_helpers(void) {
+    enum lumo_backend_mode mode = LUMO_BACKEND_AUTO;
+
+    assert(strcmp(lumo_backend_mode_name(LUMO_BACKEND_AUTO), "auto") == 0);
+    assert(strcmp(lumo_backend_mode_name(LUMO_BACKEND_DRM), "drm") == 0);
+    assert(strcmp(lumo_backend_mode_name(LUMO_BACKEND_WAYLAND), "wayland") == 0);
+    assert(strcmp(lumo_backend_mode_name(LUMO_BACKEND_HEADLESS), "headless") == 0);
+    assert(strcmp(lumo_backend_mode_name(LUMO_BACKEND_X11), "x11") == 0);
+    assert(lumo_backend_mode_parse("auto", &mode));
+    assert(mode == LUMO_BACKEND_AUTO);
+    assert(lumo_backend_mode_parse("drm", &mode));
+    assert(mode == LUMO_BACKEND_DRM);
+    assert(lumo_backend_mode_parse("wayland", &mode));
+    assert(mode == LUMO_BACKEND_WAYLAND);
+    assert(lumo_backend_mode_parse("headless", &mode));
+    assert(mode == LUMO_BACKEND_HEADLESS);
+    assert(lumo_backend_mode_parse("x11", &mode));
+    assert(mode == LUMO_BACKEND_X11);
+    assert(!lumo_backend_mode_parse("bogus", &mode));
+}
+
 struct lumo_shell_protocol_capture {
     bool called;
     struct lumo_shell_protocol_frame frame;
@@ -408,6 +429,7 @@ static void test_shell_state_helpers(void) {
 }
 
 int main(void) {
+    test_backend_helpers();
     test_rotation_helpers();
     test_compositor_defaults();
     test_hitbox_state();

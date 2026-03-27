@@ -9,7 +9,7 @@
 
 static void lumo_print_usage(const char *argv0) {
     fprintf(stderr,
-        "usage: %s [--debug] [--session NAME] [--socket NAME] [--shell PATH] [--rotation normal|90|180|270]\n",
+        "usage: %s [--debug] [--session NAME] [--socket NAME] [--shell PATH] [--rotation normal|90|180|270] [--backend auto|drm|wayland|headless|x11]\n",
         argv0);
 }
 
@@ -45,6 +45,7 @@ int main(int argc, char **argv) {
         .executable_path = argv[0],
         .shell_path = NULL,
         .initial_rotation = LUMO_ROTATION_NORMAL,
+        .backend_mode = LUMO_BACKEND_AUTO,
         .debug = false,
     };
 
@@ -72,6 +73,14 @@ int main(int argc, char **argv) {
         if (strcmp(argv[i], "--rotation") == 0 && i + 1 < argc) {
             if (!lumo_parse_rotation(argv[++i], &config.initial_rotation)) {
                 fprintf(stderr, "invalid rotation value: %s\n", argv[i]);
+                lumo_print_usage(argv[0]);
+                return 1;
+            }
+            continue;
+        }
+        if (strcmp(argv[i], "--backend") == 0 && i + 1 < argc) {
+            if (!lumo_backend_mode_parse(argv[++i], &config.backend_mode)) {
+                fprintf(stderr, "invalid backend value: %s\n", argv[i]);
                 lumo_print_usage(argv[0]);
                 return 1;
             }

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.16] - 2026-03-27
+- Added a runtime `--backend` mode so the compositor can be forced into DRM, nested Wayland, X11, or headless debug paths.
+- Added backend helper parsing tests and clearer failure logs for backend bring-up issues.
+- Updated the README and compositor notes for the OrangePi RV2 Ubuntu 24.04 riscv64 target.
+
 ## [0.0.15] - 2026-03-27
 - Added a repo-root `build.sh` wrapper for the common Meson configure, build, and test flow.
 - Exposed the xWayland feature toggle, build directory, build type, and test switch through the wrapper.

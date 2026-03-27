@@ -63,10 +63,19 @@ The compositor binaries land in `compositor/build/` by default:
 ./compositor/build/lumo-compositor --help
 ./compositor/build/lumo-compositor --debug
 ./compositor/build/lumo-compositor --rotation 180
+./compositor/build/lumo-compositor --backend drm
+./compositor/build/lumo-compositor --backend headless
 ./compositor/build/lumo-shell --mode launcher
 ./compositor/build/lumo-shell --mode osk
 ./compositor/build/lumo-shell --mode gesture
 ```
+
+On the OrangePi RV2 running Ubuntu 24.04 riscv64, `--backend drm` is the
+normal direct-to-display path. Use `--backend headless`, `--backend wayland`,
+or `--backend x11` when you want to debug nested sessions or isolate backend
+bring-up issues.
+Avoid launching `lumo-shell` directly with `sudo`; the compositor owns shell
+startup and the shell expects a normal Wayland runtime.
 
 ## Design Notes
 
@@ -77,6 +86,7 @@ Lumo is being built around a few core ideas:
 - the on-screen keyboard commits text through text-input-v3 when a field is focused, with compositor-managed focus tracking
 - xWayland support is optional at build time so minimal images can omit it when needed
 - the repo-root `build.sh` script keeps the common Meson options in one place
+- the runtime backend mode can be forced for OrangePi RV2 bring-up and nested debugging
 - touch hitboxes and OSK behavior need to work well on a compact display, not a desktop monitor
 - the shared shell geometry helper keeps compositor hitboxes and shell surfaces aligned
 

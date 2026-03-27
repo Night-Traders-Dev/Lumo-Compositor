@@ -32,3 +32,18 @@ the repository root, the same flag is available through `build.sh`:
 
 Leave the option enabled for normal desktop-app compatibility. Disable it for
 smaller builds or environments where xWayland is not available.
+
+## Runtime Backends
+
+Lumo can be launched with an explicit backend mode:
+
+```sh
+./build/lumo-compositor --backend drm
+./build/lumo-compositor --backend headless
+./build/lumo-compositor --backend wayland
+./build/lumo-compositor --backend x11
+```
+
+The OrangePi RV2 on Ubuntu 24.04 riscv64 should normally use `drm` for the
+physical touchscreen. `headless`, `wayland`, and `x11` are there to make
+debugging and nested bring-up easier when we want to isolate backend problems.

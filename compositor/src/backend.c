@@ -9,12 +9,43 @@ int lumo_backend_start(struct lumo_compositor *compositor) {
         return -1;
     }
 
+    if (compositor->config != NULL) {
+        if (compositor->config->backend_mode != LUMO_BACKEND_AUTO) {
+            const char *backend_name =
+                lumo_backend_mode_name(compositor->config->backend_mode);
+
+            if (setenv("WLR_BACKENDS", backend_name, 1) != 0) {
+                wlr_log_errno(WLR_ERROR,
+                    "backend: failed to set WLR_BACKENDS=%s", backend_name);
+                return -1;
+            }
+            wlr_log(WLR_INFO, "backend: forcing WLR_BACKENDS=%s", backend_name);
+        } else {
+            const char *override = getenv("WLR_BACKENDS");
+
+            if (override != NULL && override[0] != '\0') {
+                wlr_log(WLR_INFO, "backend: honoring WLR_BACKENDS=%s", override);
+            } else {
+                wlr_log(WLR_INFO, "backend: using wlroots backend autocreate");
+            }
+        }
+    }
+
     compositor->backend = wlr_backend_autocreate(
         compositor->event_loop,
         &compositor->session
     );
     if (compositor->backend == NULL) {
         wlr_log(WLR_ERROR, "backend: failed to autocreate wlroots backend");
+        if (compositor->config != NULL &&
+                compositor->config->backend_mode == LUMO_BACKEND_DRM) {
+            wlr_log(WLR_ERROR,
+                "backend: DRM mode failed; verify wlroots DRM support and /dev/dri access");
+        } else if (compositor->config != NULL &&
+                compositor->config->backend_mode == LUMO_BACKEND_AUTO) {
+            wlr_log(WLR_ERROR,
+                "backend: try --backend drm, --backend wayland, --backend x11, or --backend headless for a clearer failure mode");
+        }
         return -1;
     }
 

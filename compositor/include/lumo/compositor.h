@@ -46,6 +46,14 @@ enum lumo_rotation {
     LUMO_ROTATION_270 = 3,
 };
 
+enum lumo_backend_mode {
+    LUMO_BACKEND_AUTO = 0,
+    LUMO_BACKEND_DRM,
+    LUMO_BACKEND_WAYLAND,
+    LUMO_BACKEND_HEADLESS,
+    LUMO_BACKEND_X11,
+};
+
 enum lumo_hitbox_kind {
     LUMO_HITBOX_CUSTOM = 0,
     LUMO_HITBOX_LAUNCHER_TILE,
@@ -66,6 +74,7 @@ struct lumo_compositor_config {
     const char *executable_path;
     const char *shell_path;
     enum lumo_rotation initial_rotation;
+    enum lumo_backend_mode backend_mode;
     bool debug;
 };
 
@@ -155,6 +164,56 @@ static inline bool lumo_rotation_parse(
     }
     if (strcmp(value, "270") == 0) {
         *rotation = LUMO_ROTATION_270;
+        return true;
+    }
+
+    return false;
+}
+
+static inline const char *lumo_backend_mode_name(
+    enum lumo_backend_mode mode
+) {
+    switch (mode) {
+    case LUMO_BACKEND_DRM:
+        return "drm";
+    case LUMO_BACKEND_WAYLAND:
+        return "wayland";
+    case LUMO_BACKEND_HEADLESS:
+        return "headless";
+    case LUMO_BACKEND_X11:
+        return "x11";
+    case LUMO_BACKEND_AUTO:
+    default:
+        return "auto";
+    }
+}
+
+static inline bool lumo_backend_mode_parse(
+    const char *value,
+    enum lumo_backend_mode *mode
+) {
+    if (value == NULL || mode == NULL) {
+        return false;
+    }
+
+    if (strcmp(value, "auto") == 0) {
+        *mode = LUMO_BACKEND_AUTO;
+        return true;
+    }
+    if (strcmp(value, "drm") == 0) {
+        *mode = LUMO_BACKEND_DRM;
+        return true;
+    }
+    if (strcmp(value, "wayland") == 0) {
+        *mode = LUMO_BACKEND_WAYLAND;
+        return true;
+    }
+    if (strcmp(value, "headless") == 0) {
+        *mode = LUMO_BACKEND_HEADLESS;
+        return true;
+    }
+    if (strcmp(value, "x11") == 0) {
+        *mode = LUMO_BACKEND_X11;
         return true;
     }
 
