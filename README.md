@@ -117,11 +117,13 @@ sessions still bring up touchscreen and keyboard devices alongside the scanout
 backend.
 The current reserved edge behavior is:
 
-- top edge is reserved in normal sessions; touch audit entry is limited to debug sessions and explicit tooling
-- left edge dismisses launcher, audit, or keyboard state
+- top-left edge opens the time/date panel
+- top-right edge opens the quick settings panel
+- left edge dismisses any open panel, launcher, audit, or keyboard state
 - right edge opens the launcher
 - bottom gesture handle toggles the launcher drawer
 - bottom-edge upward swipes close the currently focused native Lumo app, Wayland app, or XWayland app
+- tapping outside an open panel dismisses it
 
 Touch rotation is corrected dynamically from the active output transform inside
 the compositor, so rotated displays should not need a global 180-degree
@@ -217,9 +219,32 @@ More detailed notes live in:
 
 ## Status
 
-The repository is in active compositor bring-up. The next milestones focus on:
+The project is at v0.0.50 with a functional mobile shell running on OrangePi RV2 hardware.
 
-- xWayland focus and workarea policy
-- xWayland build toggle and feature gating
-- shell/UI clients in C
-- compositor-side gesture disambiguation for mobile touch interaction
+Current capabilities:
+
+- full DRM compositor with pixman software rendering
+- Ubuntu-themed color palette (aubergine, orange, warm grey)
+- animated procedural background that adapts to time of day
+- status bar with live clock, WiFi signal bars, and LUMO branding
+- quick settings panel (top-right swipe) with WiFi, display, session info, reload and rotate buttons
+- time/date panel (top-left swipe) with large clock, date, day name, week number
+- app drawer with 12 native touch apps launched via bottom gesture
+- functional Clock app with live seconds and interactive stopwatch
+- functional Files app with directory browsing, scroll, and navigation
+- functional Settings app with live system info (hostname, kernel, uptime, memory, WiFi)
+- functional Notes app with add and select
+- on-screen keyboard with text-input-v3 integration
+- screen rotation via quick settings with correct touch matrix remapping
+- shell child supervision with automatic respawn
+- double-buffered SHM rendering for shell clients
+- coalesced state broadcasts for performance
+- systemd ready notification for GDM session registration
+- optional xWayland support at build time
+
+Next milestones:
+
+- Vulkan/EGL rendering path when hardware supports it
+- more complete native app functionality
+- window management UX for third-party Wayland apps
+- notification system

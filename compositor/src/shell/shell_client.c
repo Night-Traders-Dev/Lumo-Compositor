@@ -990,27 +990,39 @@ static void lumo_draw_gesture(
     const struct lumo_shell_client *client,
     const struct lumo_shell_target *active_target
 ) {
-    uint32_t accent = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
-    uint32_t base = lumo_argb(0xFF, 0x2C, 0x00, 0x1E);
-    uint32_t highlight = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
     struct lumo_rect handle_rect = {0};
+    uint32_t pill_w;
+    uint32_t pill_h;
 
     (void)client;
+    (void)active_target;
 
     if (!lumo_shell_gesture_handle_rect(width, height, &handle_rect)) {
         return;
     }
 
-    lumo_fill_rounded_rect(pixels, width, height, &handle_rect, handle_rect.height / 2,
-        base);
-    handle_rect.x += 10;
-    handle_rect.width -= 20;
-    lumo_fill_rounded_rect(pixels, width, height, &handle_rect, handle_rect.height / 2,
-        accent);
+    pill_w = (uint32_t)(handle_rect.width - 20);
+    pill_h = (uint32_t)handle_rect.height;
 
-    if (active_target != NULL &&
-            active_target->kind == LUMO_SHELL_TARGET_GESTURE_HANDLE) {
-        lumo_draw_outline(pixels, width, height, &handle_rect, 2, highlight);
+    for (uint32_t y = 0; y < pill_h; y++) {
+        uint32_t alpha;
+        uint32_t row_y_abs = (uint32_t)handle_rect.y + y;
+        if (y < pill_h / 3) {
+            alpha = 0x10 + (y * 0x60) / (pill_h / 3);
+        } else if (y < pill_h * 2 / 3) {
+            alpha = 0x70;
+        } else {
+            alpha = 0x70 - ((y - pill_h * 2 / 3) * 0x60) / (pill_h / 3);
+        }
+
+        uint32_t color = lumo_argb((uint8_t)alpha, 0xAE, 0xA7, 0x9F);
+        uint32_t *row = pixels + row_y_abs * width;
+        uint32_t start = (uint32_t)handle_rect.x + 10;
+        uint32_t end = start + pill_w;
+        if (end > width) end = width;
+        for (uint32_t x = start; x < end; x++) {
+            row[x] = color;
+        }
     }
 }
 
@@ -1183,8 +1195,30 @@ static void lumo_draw_status(
     lumo_draw_text(pixels, width, height, 14, bar_height / 2 - 7,
         2, accent_color, "LUMO");
 
-    lumo_draw_wifi_bars(pixels, width, height,
-        (int)width - 42, bar_height / 2 - 8, 3, accent_color, wifi_dim);
+    {
+        int wifi_bars = 0;
+        FILE *wfp = fopen("/proc/net/wireless", "r");
+        if (wfp != NULL) {
+            char wline[256];
+            while (fgets(wline, sizeof(wline), wfp) != NULL) {
+                float level = 0;
+                char ifn[32] = {0};
+                if (sscanf(wline, " %31[^:]: %*d %*f %f", ifn, &level) >= 1 &&
+                        ifn[0] != '\0' && ifn[0] != '|') {
+                    if (level > -50) wifi_bars = 4;
+                    else if (level > -60) wifi_bars = 3;
+                    else if (level > -70) wifi_bars = 2;
+                    else if (level > -80) wifi_bars = 1;
+                    else wifi_bars = 1;
+                    break;
+                }
+            }
+            fclose(wfp);
+        }
+        lumo_draw_wifi_bars(pixels, width, height,
+            (int)width - 42, bar_height / 2 - 8, wifi_bars,
+            accent_color, wifi_dim);
+    }
 }
 
 static void lumo_draw_animated_bg(

@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.50] - 2026-03-27
+- Switched the entire shell to Ubuntu's stock color palette: aubergine backgrounds, orange accents, warm grey secondary text, and white primary text.
+- Removed the gesture pill touch debug overlay so the bottom handle is a clean orange bar with no diagnostic dots or crosshairs.
+- Added a procedurally generated animated background that adapts its hue to the time of day: warm sunrise mornings, standard midday, deep evening reds, and dark night purples.
+- Added a time/date panel triggered by swiping down from the top-left edge, showing a large clock, full date, day name, and week number.
+- Added RELOAD and ROTATE buttons to the quick settings panel for session restart and screen rotation cycling.
+- Moved panel rendering from the status bar surface to the launcher overlay so panels no longer occlude the animated background.
+- Fixed touch on launcher tiles and panel buttons by replaying scrim-captured taps to the overlay layer surface.
+- Fixed screen rotation touch mapping with correct inverse transform for 90, 180, and 270 degree rotations.
+- Registered a compositor-owned top-edge hitbox so top-edge gestures work even when apps are focused.
+- Modularized native apps into separate source files: app_clock.c, app_files.c, app_settings.c, app_notes.c with a shared app_render.h API.
+- Made Clock app live-updating with seconds display and interactive stopwatch (tap to start/stop, tap to reset).
+- Made Files app navigable with tap-to-enter folders, tap path bar to go up, swipe-to-scroll, file selection highlight, and storage info.
+- Made Settings app show live system data: hostname, kernel, uptime, memory, WiFi status with 5-second refresh.
+- Added Notes app with add/select touch interaction.
+- Implemented double-buffered SHM rendering for shell clients to eliminate per-frame mmap/munmap overhead.
+- Implemented broadcast coalescing via dirty flag so rapid state changes produce one broadcast per output frame instead of one per change.
+- Pre-format the state broadcast buffer once and send the same bytes to all bridge clients.
+- Replaced the blocking popen(nmcli) call in Settings with instant /proc/net/wireless reads.
+- Fixed protocol frame field limit from 24 to 32 to accommodate quick_settings_visible and time_panel_visible state fields.
+- Added digits 0-9, colon, dash, slash, and plus to the shell client bitmap font.
+- Bumped process array from 4 to 5 for the background shell client.
+
 ## [0.0.48] - 2026-03-27
 - Added a visible clock to the status bar rendered at scale 3 in the center, with WiFi signal bars on the right side and LUMO branding on the left.
 - Added a quick settings panel triggered by dragging down from the top-right edge of the screen, showing WiFi status, display rotation, session info, and device name.

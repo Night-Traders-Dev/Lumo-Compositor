@@ -3,6 +3,7 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <sys/statvfs.h>
 
 static const int files_row_height = 44;
@@ -97,9 +98,36 @@ void lumo_app_render_files(
 
             lumo_app_draw_text(pixels, width, height, row_rect.x + 42,
                 row_rect.y + 12, 2, text_primary, entry->d_name);
-            lumo_app_draw_text(pixels, width, height,
-                row_rect.x + row_rect.width - 60, row_rect.y + 12, 2,
-                text_secondary, is_dir ? "DIR" : "FILE");
+            if (!is_dir) {
+                char path_buf[1100];
+                struct stat st;
+                snprintf(path_buf, sizeof(path_buf), "%s/%s",
+                    browse_path, entry->d_name);
+                if (stat(path_buf, &st) == 0) {
+                    char size_buf[16];
+                    if (st.st_size < 1024) {
+                        snprintf(size_buf, sizeof(size_buf), "%ldB",
+                            (long)st.st_size);
+                    } else if (st.st_size < 1024 * 1024) {
+                        snprintf(size_buf, sizeof(size_buf), "%ldK",
+                            (long)(st.st_size / 1024));
+                    } else {
+                        snprintf(size_buf, sizeof(size_buf), "%ldM",
+                            (long)(st.st_size / (1024 * 1024)));
+                    }
+                    lumo_app_draw_text(pixels, width, height,
+                        row_rect.x + row_rect.width - 80, row_rect.y + 12,
+                        2, text_secondary, size_buf);
+                } else {
+                    lumo_app_draw_text(pixels, width, height,
+                        row_rect.x + row_rect.width - 60, row_rect.y + 12,
+                        2, text_secondary, "FILE");
+                }
+            } else {
+                lumo_app_draw_text(pixels, width, height,
+                    row_rect.x + row_rect.width - 60, row_rect.y + 12,
+                    2, text_secondary, "DIR");
+            }
 
             row_y += files_row_height;
             count++;

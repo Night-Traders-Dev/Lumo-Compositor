@@ -72,6 +72,8 @@ struct lumo_app_client {
 };
 
 static bool lumo_app_client_redraw(struct lumo_app_client *client);
+static void lumo_app_notes_save(const struct lumo_app_client *client);
+static void lumo_app_notes_load(struct lumo_app_client *client);
 
 static int lumo_app_create_shm_file(size_t size) {
     char template[] = "/tmp/lumo-app-XXXXXX";
@@ -618,6 +620,7 @@ static void lumo_app_touch_handle_up(
                 snprintf(client->notes[client->note_count],
                     sizeof(client->notes[0]), "NOTE %d", client->note_count + 1);
                 client->note_count++;
+                lumo_app_notes_save(client);
                 (void)lumo_app_client_redraw(client);
             }
         }
@@ -946,6 +949,45 @@ static void lumo_app_client_destroy(struct lumo_app_client *client) {
     }
 }
 
+static void lumo_app_notes_load(struct lumo_app_client *client) {
+    char path[1100];
+    FILE *fp;
+
+    snprintf(path, sizeof(path), "%s/.lumo-notes", client->browse_path);
+    fp = fopen(path, "r");
+    if (fp == NULL) {
+        return;
+    }
+
+    client->note_count = 0;
+    while (client->note_count < 8 &&
+            fgets(client->notes[client->note_count],
+                sizeof(client->notes[0]), fp) != NULL) {
+        char *nl = strchr(client->notes[client->note_count], '\n');
+        if (nl) *nl = '\0';
+        if (client->notes[client->note_count][0] != '\0') {
+            client->note_count++;
+        }
+    }
+    fclose(fp);
+}
+
+static void lumo_app_notes_save(const struct lumo_app_client *client) {
+    char path[1100];
+    FILE *fp;
+
+    snprintf(path, sizeof(path), "%s/.lumo-notes", client->browse_path);
+    fp = fopen(path, "w");
+    if (fp == NULL) {
+        return;
+    }
+
+    for (int i = 0; i < client->note_count; i++) {
+        fprintf(fp, "%s\n", client->notes[i]);
+    }
+    fclose(fp);
+}
+
 static void lumo_app_print_usage(const char *argv0) {
     fprintf(stderr,
         "usage: %s [--app phone|messages|browser|camera|maps|music|photos|videos|clock|notes|files|settings]\n",
@@ -988,6 +1030,10 @@ int main(int argc, char **argv) {
             strncpy(client.browse_path, "/home", sizeof(client.browse_path) - 1);
         }
         client.browse_path[sizeof(client.browse_path) - 1] = '\0';
+    }
+
+    if (client.app_id == LUMO_APP_NOTES) {
+        lumo_app_notes_load(&client);
     }
 
     client.display = wl_display_connect(NULL);
