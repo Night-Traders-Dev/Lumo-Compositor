@@ -436,6 +436,31 @@ static void test_touch_debug_helpers(void) {
     assert(!lumo_touch_point_is_launcher_capture(&generic_edge_capture));
 }
 
+static void test_scene_surface_helper_ignores_rect_buffers(void) {
+    struct wlr_scene *scene;
+    struct wlr_scene_rect *rect;
+    struct wlr_scene_node *node = NULL;
+    struct wlr_scene_buffer *buffer = NULL;
+    struct wlr_scene_surface *surface = NULL;
+    const float color[4] = {0.02f, 0.04f, 0.08f, 1.0f};
+    double sx = 0.0;
+    double sy = 0.0;
+
+    scene = wlr_scene_create();
+    assert(scene != NULL);
+
+    rect = wlr_scene_rect_create(&scene->tree, 128, 64, color);
+    assert(rect != NULL);
+
+    node = wlr_scene_node_at(&scene->tree.node, 32.0, 16.0, &sx, &sy);
+    assert(node != NULL);
+
+    surface = lumo_scene_surface_from_node(node, &buffer);
+    assert(surface == NULL);
+
+    wlr_scene_node_destroy(&scene->tree.node);
+}
+
 static void test_shell_hitbox_refresh(void) {
     const struct lumo_compositor_config config = {
         .session_name = "lumo-test",
@@ -631,6 +656,34 @@ static void test_state_setters(void) {
     lumo_compositor_destroy(compositor);
 }
 
+static void test_touch_audit_debug_gesture_policy(void) {
+    const struct lumo_compositor_config release_config = {
+        .session_name = "lumo-release",
+        .socket_name = "lumo-release-socket",
+        .initial_rotation = LUMO_ROTATION_NORMAL,
+        .debug = false,
+    };
+    const struct lumo_compositor_config debug_config = {
+        .session_name = "lumo-debug",
+        .socket_name = "lumo-debug-socket",
+        .initial_rotation = LUMO_ROTATION_NORMAL,
+        .debug = true,
+    };
+    struct lumo_compositor *release_compositor =
+        lumo_compositor_create(&release_config);
+    struct lumo_compositor *debug_compositor =
+        lumo_compositor_create(&debug_config);
+
+    assert(!lumo_touch_audit_debug_gesture_enabled(NULL));
+    assert(release_compositor != NULL);
+    assert(debug_compositor != NULL);
+    assert(!lumo_touch_audit_debug_gesture_enabled(release_compositor));
+    assert(lumo_touch_audit_debug_gesture_enabled(debug_compositor));
+
+    lumo_compositor_destroy(release_compositor);
+    lumo_compositor_destroy(debug_compositor);
+}
+
 static void test_shell_binary_resolution(void) {
     struct lumo_compositor_config config = {
         .session_name = "lumo-test",
@@ -707,11 +760,13 @@ int main(void) {
     test_layer_configuration_dirty_without_outputs();
     test_hitbox_state();
     test_touch_debug_helpers();
+    test_scene_surface_helper_ignores_rect_buffers();
     test_shell_hitbox_refresh();
     test_xwayland_workarea_collection();
     test_xwayland_toggle();
     test_xwayland_ready_gate();
     test_state_setters();
+    test_touch_audit_debug_gesture_policy();
     test_shell_protocol_roundtrip();
     test_protocol_listener_owner();
     test_shell_binary_resolution();

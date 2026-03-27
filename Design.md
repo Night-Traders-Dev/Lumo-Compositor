@@ -80,7 +80,7 @@ Current system-edge roles:
 - bottom edge: open the launcher drawer
 - right edge: open the launcher drawer from the side reserve zone
 - left edge: dismiss launcher, audit, or keyboard state like a mobile back gesture
-- top edge: toggle the touch audit overlay used for panel verification and calibration review
+- top edge: reserved for future system surfaces in normal sessions; touch audit is only exposed from debug sessions and explicit tooling so the app drawer cannot be displaced accidentally
 
 ### Touch Audit
 
@@ -92,6 +92,7 @@ Design goals:
 - visible 8-point walk through for corners and edge centers
 - saved per-device profile data after a successful pass
 - geometry shared between compositor hit-testing and shell rendering so the audit UI and the compositor agree on what counts as a correct tap
+- debug-only gesture entry so production touch use keeps the launcher path stable
 
 ## Motion
 

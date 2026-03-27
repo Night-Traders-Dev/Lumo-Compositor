@@ -30,7 +30,7 @@ The compositor module already has a working scaffold for:
 - xWayland startup and basic window management
 - a companion `lumo-shell` client scaffold for launcher, OSK, and gesture surfaces
 - compositor-owned shell hitboxes for scrims, OSK zones, and edge gestures
-- multi-edge mobile gesture zones plus a built-in touch audit flow that saves per-device profiles
+- multi-edge mobile gesture zones plus a built-in touch audit flow that saves per-device profiles without taking over the launcher path in normal sessions
 
 ## Build
 
@@ -111,7 +111,7 @@ sessions still bring up touchscreen and keyboard devices alongside the scanout
 backend.
 The current reserved edge behavior is:
 
-- top edge toggles the touch audit overlay
+- top edge is reserved in normal sessions; touch audit entry is limited to debug sessions and explicit tooling
 - left edge dismisses launcher, audit, or keyboard state
 - right edge opens the launcher
 - bottom edge opens the launcher
@@ -143,8 +143,9 @@ You can also override the socket explicitly:
 ./compositor/build/lumo-screenshot --socket lumo-shell --output live.png
 ```
 
-When you want to walk the touchscreen itself, log into `Lumo` and swipe or tap
-the top edge once to open the built-in touch audit overlay. It guides you
+When you want to walk the touchscreen itself, use a debug-enabled `Lumo`
+session or an explicit shell-protocol request to open the built-in touch audit
+overlay. It guides you
 through 8 edge and corner targets and saves a JSON profile under
 `$XDG_CONFIG_HOME/lumo/touch-profiles/` or `~/.config/lumo/touch-profiles/`
 when the pass completes.
@@ -165,7 +166,7 @@ On the OrangePi RV2, the most useful markers are:
 - whether tapping or dragging the bottom gesture pill leaves a temporary touch
   debug marker on that surface, which tells us the compositor is receiving and
   classifying touchscreen input even if the launcher does not open yet
-- whether the top-edge audit overlay advances through its 8 target points and
+- whether the touch-audit overlay advances through its 8 target points and
   writes a profile file into the user's `lumo/touch-profiles` directory
 - whether `lumo-compositor` logs `input: touch ... audit ...` lines with the
   expected raw and logical percentages plus `top-left`, `bottom-center`, and
@@ -197,7 +198,7 @@ Lumo is being built around a few core ideas:
 - the installed Wayland sessions launch the compositor, and the compositor autostarts the bundled shell clients
 - touch hitboxes and OSK behavior need to work well on a compact display, not a desktop monitor
 - the shared shell geometry helper keeps compositor hitboxes and shell surfaces aligned
-- touch audit and saved device profiles are part of the normal compositor workflow, not a one-off external script
+- touch audit and saved device profiles are part of the compositor workflow, but normal mobile sessions keep audit entry out of the default edge-gesture path so the launcher stays reliable
 
 More detailed notes live in:
 

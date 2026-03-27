@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.37] - 2026-03-27
+- Made the top-edge touch-audit gesture debug-only so normal mobile sessions no longer displace the launcher with an accidental calibration overlay.
+- Restored an escape path from touch-audit mode by allowing the left-edge dismiss gesture even while audit is active.
+- Added regression coverage for the new audit-gesture policy and updated the design and README docs to match the production launcher behavior.
+
+## [0.0.36] - 2026-03-27
+- Fixed a touch-path crash where non-surface scene buffers, including the compositor background rect, could be misclassified as real client surfaces during touch hit-testing.
+- Unified pointer and touch scene-buffer lookup behind a shared helper so both input paths now agree on what counts as an actual `wlr_surface`.
+- Added regression coverage to prove that plain scene rect buffers do not resolve as touchable surfaces.
+
 ## [0.0.35] - 2026-03-27
 - Added app launching so launcher tiles now spawn real applications: Browser opens Epiphany, Notes opens gnome-text-editor, Files opens Nautilus, and Settings opens gnome-control-center.
 - Added a status bar shell surface anchored to the top edge with a live clock, LUMO branding, and rotation indicator.

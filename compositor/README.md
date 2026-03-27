@@ -85,7 +85,7 @@ keyboard devices stay available in the direct-display session instead of
 starting a scanout-only backend.
 The current mobile edge behavior reserves:
 
-- top edge for the touch audit overlay
+- top edge for future system surfaces in normal sessions; touch audit entry is kept to debug flows
 - left edge for dismiss or back-style shell actions
 - right edge for launcher open
 - bottom edge for launcher open
@@ -137,4 +137,6 @@ we can compare the physical panel input against compositor hitboxes without a
 separate calibration tool.
 Once the in-session touch audit overlay completes its 8-point walk, Lumo also
 saves a per-device JSON profile under the user's `lumo/touch-profiles`
-directory for later review.
+directory for later review. In production-style sessions, that audit is
+intentionally entered through debug tooling rather than the top-edge gesture so
+the launcher path stays predictable on touch devices.

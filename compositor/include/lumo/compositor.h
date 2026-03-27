@@ -688,6 +688,30 @@ static inline const char *lumo_touch_sample_type_name(
     }
 }
 
+static inline struct wlr_scene_surface *lumo_scene_surface_from_node(
+    struct wlr_scene_node *node,
+    struct wlr_scene_buffer **buffer_out
+) {
+    struct wlr_scene_buffer *scene_buffer = NULL;
+
+    if (buffer_out != NULL) {
+        *buffer_out = NULL;
+    }
+
+    if (node == NULL || node->type != WLR_SCENE_NODE_BUFFER) {
+        return NULL;
+    }
+
+    scene_buffer = wlr_scene_buffer_from_node(node);
+    if (buffer_out != NULL) {
+        *buffer_out = scene_buffer;
+    }
+
+    return scene_buffer != NULL
+        ? wlr_scene_surface_try_from_buffer(scene_buffer)
+        : NULL;
+}
+
 struct lumo_touch_sample {
     struct wl_list link;
     enum lumo_touch_sample_type type;
@@ -841,6 +865,14 @@ struct lumo_compositor {
     bool protocol_started;
     bool input_started;
 };
+
+static inline bool lumo_touch_audit_debug_gesture_enabled(
+    const struct lumo_compositor *compositor
+) {
+    return compositor != NULL &&
+        compositor->config != NULL &&
+        compositor->config->debug;
+}
 
 struct lumo_compositor *lumo_compositor_create(
     const struct lumo_compositor_config *config

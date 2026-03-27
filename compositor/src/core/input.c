@@ -168,8 +168,7 @@ static bool lumo_input_surface_target_at(
     struct lumo_surface_target *target
 ) {
     struct wlr_scene_node *node;
-    struct wlr_scene_buffer *scene_buffer;
-    struct wlr_scene_surface *scene_surface;
+    struct wlr_scene_surface *scene_surface = NULL;
     double sx = 0.0;
     double sy = 0.0;
 
@@ -186,12 +185,7 @@ static bool lumo_input_surface_target_at(
         return false;
     }
 
-    if (node->type == WLR_SCENE_NODE_BUFFER) {
-        scene_buffer = wlr_scene_buffer_from_node(node);
-        if (scene_buffer != NULL) {
-            scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
-        }
-    }
+    scene_surface = lumo_scene_surface_from_node(node, NULL);
     if (scene_surface != NULL) {
         target->surface = scene_surface->surface;
         target->sx = sx;
@@ -843,9 +837,16 @@ static void lumo_input_touch_point_trigger_edge_action(
 
     switch (point->capture_edge) {
     case LUMO_EDGE_TOP:
-        lumo_touch_audit_set_active(compositor, !compositor->touch_audit_active);
-        wlr_log(WLR_INFO, "input: touch %d toggled top-edge audit at %u",
-            point->touch_id, time_msec);
+        if (lumo_touch_audit_debug_gesture_enabled(compositor)) {
+            lumo_touch_audit_set_active(compositor,
+                !compositor->touch_audit_active);
+            wlr_log(WLR_INFO, "input: touch %d toggled top-edge audit at %u",
+                point->touch_id, time_msec);
+        } else {
+            wlr_log(WLR_INFO,
+                "input: touch %d ignored top-edge audit gesture at %u (debug disabled)",
+                point->touch_id, time_msec);
+        }
         return;
     case LUMO_EDGE_LEFT:
         if (compositor->touch_audit_active) {
@@ -913,7 +914,7 @@ static void lumo_input_pointer_notify_surface(
 ) {
     struct wlr_surface *focused = NULL;
     struct wlr_scene_node *node = NULL;
-    struct wlr_scene_buffer *scene_buffer = NULL;
+    struct wlr_scene_surface *scene_surface = NULL;
     double sx = 0.0;
     double sy = 0.0;
 
@@ -924,13 +925,8 @@ static void lumo_input_pointer_notify_surface(
 
     node = wlr_scene_node_at(&compositor->scene->tree.node, compositor->cursor->x,
         compositor->cursor->y, &sx, &sy);
-    if (node != NULL && node->type == WLR_SCENE_NODE_BUFFER) {
-        struct wlr_scene_surface *scene_surface = NULL;
-
-        scene_buffer = wlr_scene_buffer_from_node(node);
-        if (scene_buffer != NULL) {
-            scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
-        }
+    if (node != NULL) {
+        scene_surface = lumo_scene_surface_from_node(node, NULL);
         if (scene_surface != NULL) {
             focused = scene_surface->surface;
         }
@@ -1565,9 +1561,11 @@ static void lumo_input_touch_down(
         return;
     }
 
-    edge_zone = !compositor->touch_audit_active
-        ? lumo_input_system_edge_zone(compositor, output, point->lx, point->ly)
-        : LUMO_EDGE_NONE;
+    edge_zone = lumo_input_system_edge_zone(compositor, output, point->lx,
+        point->ly);
+    if (compositor->touch_audit_active && edge_zone != LUMO_EDGE_LEFT) {
+        edge_zone = LUMO_EDGE_NONE;
+    }
     if (edge_zone != LUMO_EDGE_NONE) {
         point->capture_edge = edge_zone;
         lumo_input_touch_point_begin_capture(compositor, point, &target,
