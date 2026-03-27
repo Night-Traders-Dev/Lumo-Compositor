@@ -57,6 +57,7 @@ struct lumo_shell_surface_config {
 enum lumo_shell_target_kind {
     LUMO_SHELL_TARGET_NONE = 0,
     LUMO_SHELL_TARGET_LAUNCHER_TILE,
+    LUMO_SHELL_TARGET_LAUNCHER_CLOSE,
     LUMO_SHELL_TARGET_OSK_KEY,
     LUMO_SHELL_TARGET_GESTURE_HANDLE,
 };
@@ -136,6 +137,10 @@ static inline bool lumo_shell_target_kind_parse(
         *kind = LUMO_SHELL_TARGET_LAUNCHER_TILE;
         return true;
     }
+    if (strcmp(value, "launcher-close") == 0 || strcmp(value, "launcher_close") == 0) {
+        *kind = LUMO_SHELL_TARGET_LAUNCHER_CLOSE;
+        return true;
+    }
     if (strcmp(value, "osk-key") == 0 || strcmp(value, "osk_key") == 0) {
         *kind = LUMO_SHELL_TARGET_OSK_KEY;
         return true;
@@ -170,6 +175,11 @@ bool lumo_shell_launcher_tile_rect(
     struct lumo_rect *rect
 );
 bool lumo_shell_launcher_panel_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+);
+bool lumo_shell_launcher_close_rect(
     uint32_t output_width,
     uint32_t output_height,
     struct lumo_rect *rect

@@ -7,10 +7,11 @@ category so the compositor can keep scaling without turning into one giant
 flat directory:
 
 - `src/core/` owns backend startup, compositor orchestration, input, output, XWayland, and the main entrypoint
+- `src/apps/` owns native touch-first application clients launched from the drawer
 - `src/protocol/` owns the custom `lumo-shell` protocol and shared shell wire helpers
 - `src/shell/` owns shell launch and the shell-side UI helpers such as launcher and OSK layout
 - `src/tools/` owns standalone utilities such as `lumo-screenshot`
-- `tests/core/`, `tests/shell/`, and `tests/tools/` mirror those runtime categories
+- `tests/apps/`, `tests/core/`, `tests/shell/`, and `tests/tools/` mirror those runtime categories
 
 The real wlroots integration will come next. This scaffold gives us the module boundary first so shell-client work can move in parallel.
 
@@ -20,6 +21,7 @@ When the implementation lands, this compositor should:
 - support layer-shell shell surfaces
 - manage output rotation and touch mapping
 - expose shell state to launcher, OSK, bar, and gesture surfaces
+- ship native app clients that match the drawer tiles and run without desktop-environment dependencies
 - forward OSK text into focused text-input-v3 clients before falling back to lower-level keyboard handling
 - keep shared touch-audit geometry and saved device profiles close to the input pipeline so OrangePi bring-up stays debuggable
 
@@ -76,6 +78,7 @@ Lumo can be launched with an explicit backend mode:
 ./build/lumo-compositor --backend headless
 ./build/lumo-compositor --backend wayland
 ./build/lumo-compositor --backend x11
+./build/lumo-app --app settings
 ./build/lumo-screenshot --output live.png
 ```
 

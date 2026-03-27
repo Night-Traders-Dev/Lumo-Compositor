@@ -21,18 +21,18 @@ static const char *const lumo_shell_launcher_labels[] = {
     "SETTINGS",
 };
 static const char *const lumo_shell_launcher_commands[] = {
-    NULL,
-    NULL,
-    "epiphany",
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    NULL,
-    "gnome-text-editor",
-    "nautilus",
-    "gnome-control-center",
+    "lumo-app:phone",
+    "lumo-app:messages",
+    "lumo-app:browser",
+    "lumo-app:camera",
+    "lumo-app:maps",
+    "lumo-app:music",
+    "lumo-app:photos",
+    "lumo-app:videos",
+    "lumo-app:clock",
+    "lumo-app:notes",
+    "lumo-app:files",
+    "lumo-app:settings",
 };
 static const char *const lumo_shell_touch_audit_names[] = {
     "top-left",
@@ -99,6 +99,28 @@ static bool lumo_shell_launcher_panel_geometry(
     rect->width = (int)(output_width - inset_x * 2);
     rect->height = (int)(output_height - top_y - inset_bottom);
     return rect->width > 0 && rect->height > 0;
+}
+
+static bool lumo_shell_launcher_close_geometry(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+) {
+    struct lumo_rect panel;
+    uint32_t size;
+
+    if (rect == NULL ||
+            !lumo_shell_launcher_panel_geometry(output_width, output_height,
+                &panel)) {
+        return false;
+    }
+
+    size = lumo_shell_clamp_u32(output_width / 20, 44, 60);
+    rect->width = (int)size;
+    rect->height = (int)size;
+    rect->x = panel.x + panel.width - (int)size - 24;
+    rect->y = panel.y + 18;
+    return true;
 }
 
 static bool lumo_shell_launcher_geometry(
@@ -219,6 +241,8 @@ const char *lumo_shell_target_kind_name(enum lumo_shell_target_kind kind) {
     switch (kind) {
     case LUMO_SHELL_TARGET_LAUNCHER_TILE:
         return "launcher-tile";
+    case LUMO_SHELL_TARGET_LAUNCHER_CLOSE:
+        return "launcher-close";
     case LUMO_SHELL_TARGET_OSK_KEY:
         return "osk-key";
     case LUMO_SHELL_TARGET_GESTURE_HANDLE:
@@ -388,6 +412,15 @@ bool lumo_shell_launcher_panel_rect(
         rect);
 }
 
+bool lumo_shell_launcher_close_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+) {
+    return lumo_shell_launcher_close_geometry(output_width, output_height,
+        rect);
+}
+
 bool lumo_shell_gesture_handle_rect(
     uint32_t output_width,
     uint32_t output_height,
@@ -512,6 +545,15 @@ bool lumo_shell_target_for_mode(
 
     switch (mode) {
     case LUMO_SHELL_MODE_LAUNCHER:
+        if (lumo_shell_launcher_close_geometry(output_width, output_height,
+                &rect) &&
+                lumo_rect_contains(&rect, x, y)) {
+            target->kind = LUMO_SHELL_TARGET_LAUNCHER_CLOSE;
+            target->index = 0;
+            target->rect = rect;
+            return true;
+        }
+
         count = (uint32_t)lumo_shell_launcher_tile_count();
         for (uint32_t i = 0; i < count; i++) {
             if (!lumo_shell_launcher_geometry(output_width, output_height, i,

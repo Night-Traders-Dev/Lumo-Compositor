@@ -28,8 +28,35 @@ Design goals:
 - transparent outer surface with a dark drawer sheet inside it
 - 3-column touch cards with clear labels and generous spacing
 - accent color bars and simplified icon blocks instead of debug rectangles
+- bottom gesture trigger acts as a true toggle, and a top-corner close control is always available when the drawer is open
 
 Current app drawer labels:
+
+- Phone
+- Messages
+- Browser
+- Camera
+- Maps
+- Music
+- Photos
+- Videos
+- Clock
+- Notes
+- Files
+- Settings
+
+### Native Apps
+
+Launcher tiles now open native `lumo-app` clients instead of desktop wrappers.
+
+Design goals:
+
+- every launcher tile should resolve to a working in-session app
+- apps should be full-screen, touch-first Wayland clients
+- app visuals should carry the same Ubuntu Touch plus webOS blend as the shell
+- each app should feel coherent on its own even before deeper data integrations land
+
+Current native app set:
 
 - Phone
 - Messages

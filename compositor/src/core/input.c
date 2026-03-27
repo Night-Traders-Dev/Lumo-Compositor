@@ -866,6 +866,15 @@ static void lumo_input_touch_point_trigger_edge_action(
         if (compositor->touch_audit_active) {
             lumo_touch_audit_set_active(compositor, false);
         }
+        if (lumo_hitbox_is_shell_gesture(point->hitbox) &&
+                compositor->launcher_visible) {
+            lumo_protocol_set_launcher_visible(compositor, false);
+            wlr_log(WLR_INFO,
+                "input: touch %d toggled %s-edge launcher closed at %u",
+                point->touch_id, lumo_edge_zone_name(point->capture_edge),
+                time_msec);
+            return;
+        }
         lumo_protocol_set_launcher_visible(compositor, true);
         lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_MODAL);
         wlr_log(WLR_INFO,
@@ -1533,14 +1542,14 @@ static void lumo_input_touch_down(
         event->time_msec, point->lx, point->ly, point->sx, point->sy);
     lumo_input_touch_point_bind_surface(point, target.surface);
 
-    if (lumo_touch_hitbox_triggers_launcher_immediately(point->hitbox,
-            compositor->launcher_visible)) {
+    if (lumo_touch_hitbox_uses_immediate_launcher_toggle(point->hitbox)) {
         point->capture_edge = lumo_hitbox_edge_zone(point->hitbox);
         lumo_input_touch_point_begin_capture(compositor, point, &target,
             event->time_msec);
         lumo_input_touch_point_trigger_edge_action(compositor, point,
             event->time_msec);
-        wlr_log(WLR_INFO, "input: touch %d opened launcher from gesture handle",
+        wlr_log(WLR_INFO,
+            "input: touch %d toggled launcher from gesture handle",
             point->touch_id);
         lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
             true, point->lx, point->ly);

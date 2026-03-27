@@ -684,6 +684,8 @@ static void lumo_draw_launcher(
     const uint32_t tile_fill = lumo_argb(0xFF, 0x14, 0x1A, 0x26);
     const uint32_t tile_stroke = lumo_argb(0xFF, 0x2A, 0x38, 0x4B);
     const uint32_t highlight = lumo_argb(0xFF, 0xF3, 0xF6, 0xFD);
+    const uint32_t close_fill = lumo_argb(0xFF, 0x1A, 0x24, 0x33);
+    const uint32_t close_label = lumo_argb(0xFF, 0xD6, 0xE2, 0xEE);
     const uint32_t accent_colors[] = {
         lumo_argb(0xFF, 0x40, 0x6B, 0xFF),
         lumo_argb(0xFF, 0x22, 0xD3, 0xEE),
@@ -693,6 +695,8 @@ static void lumo_draw_launcher(
     struct lumo_rect panel_rect;
     struct lumo_rect accent_rect;
     struct lumo_rect title_badge;
+    struct lumo_rect close_rect = {0};
+    struct lumo_rect close_label_rect = {0};
     size_t tile_count = lumo_shell_launcher_tile_count();
     int slide_y;
 
@@ -705,13 +709,11 @@ static void lumo_draw_launcher(
         return;
     }
 
-    panel_rect.x = (int)lumo_u32_max(width / 24, 24);
-    panel_rect.y = (int)(height / 18 + (1.0 - visibility) * (height / 7));
-    panel_rect.width = (int)(width - panel_rect.x * 2);
-    panel_rect.height = (int)(height - panel_rect.y - (int)lumo_u32_max(height / 28, 18));
-    if (panel_rect.width <= 0 || panel_rect.height <= 0) {
+    slide_y = (int)((1.0 - visibility) * (height / 8));
+    if (!lumo_shell_launcher_panel_rect(width, height, &panel_rect)) {
         return;
     }
+    panel_rect.y += slide_y;
 
     lumo_fill_vertical_gradient(pixels, width, height, &panel_rect,
         panel_top, panel_bottom);
@@ -728,14 +730,26 @@ static void lumo_draw_launcher(
     lumo_draw_text(pixels, width, height, panel_rect.x + 26,
         panel_rect.y + 64, 3, title_color, "LUMO");
 
+    if (lumo_shell_launcher_close_rect(width, height, &close_rect)) {
+        close_rect.y += slide_y;
+        lumo_fill_rounded_rect(pixels, width, height, &close_rect, 18,
+            close_fill);
+        lumo_draw_outline(pixels, width, height, &close_rect, 2,
+            active_target != NULL &&
+                active_target->kind == LUMO_SHELL_TARGET_LAUNCHER_CLOSE
+                ? highlight
+                : tile_stroke);
+        close_label_rect = close_rect;
+        lumo_draw_text_centered(pixels, width, height, &close_label_rect, 2,
+            close_label, "CLOSE");
+    }
+
     accent_rect.x = panel_rect.x + panel_rect.width - 126;
     accent_rect.y = panel_rect.y + 24;
     accent_rect.width = 92;
     accent_rect.height = 10;
     lumo_fill_rounded_rect(pixels, width, height, &accent_rect, 5,
         lumo_argb(0xFF, 0x57, 0xD2, 0xFF));
-
-    slide_y = (int)((1.0 - visibility) * (height / 8));
     for (uint32_t tile_index = 0; tile_index < tile_count; tile_index++) {
         struct lumo_rect tile_rect;
         struct lumo_rect icon_rect;

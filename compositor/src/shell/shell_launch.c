@@ -723,12 +723,36 @@ static const char *lumo_shell_bridge_commit_osk_text(
     return NULL;
 }
 
-static void lumo_shell_launch_app(const char *command) {
+static void lumo_shell_launch_app(
+    struct lumo_compositor *compositor,
+    const char *command
+) {
     pid_t pid;
+    struct lumo_shell_state *state = compositor != NULL
+        ? compositor->shell_state
+        : NULL;
+    const char *native_prefix = "lumo-app:";
+    const char *app_id = NULL;
+    const char *binary = "lumo-app";
 
     if (command == NULL || command[0] == '\0') {
         wlr_log(WLR_INFO, "shell: no command mapped for this tile");
         return;
+    }
+
+    if (strncmp(command, native_prefix, strlen(native_prefix)) == 0) {
+        app_id = command + strlen(native_prefix);
+        if (state != NULL && state->binary_path[0] != '\0') {
+            static char app_path[PATH_MAX];
+            char parent_directory[PATH_MAX];
+
+            if (lumo_shell_parent_directory(state->binary_path,
+                    parent_directory, sizeof(parent_directory)) &&
+                    lumo_shell_join_path(app_path, sizeof(app_path),
+                        parent_directory, "lumo-app")) {
+                binary = app_path;
+            }
+        }
     }
 
     pid = fork();
@@ -739,7 +763,11 @@ static void lumo_shell_launch_app(const char *command) {
 
     if (pid == 0) {
         setsid();
-        execlp(command, command, (char *)NULL);
+        if (app_id != NULL && app_id[0] != '\0') {
+            execlp(binary, binary, "--app", app_id, (char *)NULL);
+        } else {
+            execlp(command, command, (char *)NULL);
+        }
         _exit(127);
     }
 
@@ -779,16 +807,23 @@ static void lumo_shell_bridge_handle_request_frame(
                 index,
                 app_command != NULL ? app_command : "none");
             if (app_command != NULL) {
-                lumo_shell_launch_app(app_command);
+                lumo_shell_launch_app(client->compositor, app_command);
             }
             lumo_protocol_set_launcher_visible(client->compositor, false);
             handled = true;
             break;
         }
+        case LUMO_SHELL_TARGET_LAUNCHER_CLOSE:
+            wlr_log(WLR_INFO,
+                "shell: activate_target launcher close requested");
+            lumo_protocol_set_launcher_visible(client->compositor, false);
+            handled = true;
+            break;
         case LUMO_SHELL_TARGET_GESTURE_HANDLE:
             wlr_log(WLR_INFO,
                 "shell: activate_target gesture handle requested");
-            lumo_protocol_set_launcher_visible(client->compositor, true);
+            lumo_protocol_set_launcher_visible(client->compositor,
+                !client->compositor->launcher_visible);
             handled = true;
             break;
         case LUMO_SHELL_TARGET_OSK_KEY:

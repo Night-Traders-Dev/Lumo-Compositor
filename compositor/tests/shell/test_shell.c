@@ -11,6 +11,8 @@ static void test_mode_names(void) {
     assert(strcmp(lumo_shell_target_kind_name(LUMO_SHELL_TARGET_NONE), "none") == 0);
     assert(strcmp(lumo_shell_target_kind_name(LUMO_SHELL_TARGET_LAUNCHER_TILE),
         "launcher-tile") == 0);
+    assert(strcmp(lumo_shell_target_kind_name(LUMO_SHELL_TARGET_LAUNCHER_CLOSE),
+        "launcher-close") == 0);
     assert(strcmp(lumo_shell_target_kind_name(LUMO_SHELL_TARGET_OSK_KEY),
         "osk-key") == 0);
     assert(strcmp(lumo_shell_target_kind_name(LUMO_SHELL_TARGET_GESTURE_HANDLE),
@@ -22,6 +24,8 @@ static void test_target_kind_parse(void) {
 
     assert(lumo_shell_target_kind_parse("launcher-tile", &kind));
     assert(kind == LUMO_SHELL_TARGET_LAUNCHER_TILE);
+    assert(lumo_shell_target_kind_parse("launcher_close", &kind));
+    assert(kind == LUMO_SHELL_TARGET_LAUNCHER_CLOSE);
     assert(lumo_shell_target_kind_parse("osk_key", &kind));
     assert(kind == LUMO_SHELL_TARGET_OSK_KEY);
     assert(lumo_shell_target_kind_parse("gesture-handle", &kind));
@@ -152,6 +156,7 @@ static void test_invalid_config(void) {
 static void test_launcher_hitboxes(void) {
     struct lumo_rect rect = {0};
     struct lumo_rect panel = {0};
+    struct lumo_rect close_rect = {0};
     struct lumo_shell_target target = {0};
 
     assert(lumo_shell_launcher_panel_rect(1024, 600, &panel));
@@ -159,6 +164,17 @@ static void test_launcher_hitboxes(void) {
     assert(panel.y > 0);
     assert(panel.width < 1024);
     assert(panel.height < 600);
+
+    assert(lumo_shell_launcher_close_rect(1024, 600, &close_rect));
+    assert(close_rect.x > panel.x);
+    assert(close_rect.y >= panel.y);
+    assert(close_rect.x + close_rect.width <= panel.x + panel.width);
+
+    assert(lumo_shell_target_for_mode(LUMO_SHELL_MODE_LAUNCHER,
+        1024, 600, close_rect.x + close_rect.width / 2.0,
+        close_rect.y + close_rect.height / 2.0, &target));
+    assert(target.kind == LUMO_SHELL_TARGET_LAUNCHER_CLOSE);
+    assert(target.index == 0);
 
     assert(lumo_shell_launcher_tile_rect(1024, 600, 0, &rect));
     assert(rect.x >= 0);

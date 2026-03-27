@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.45',
+  version: '0.0.46',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -30,6 +30,11 @@ if libsystemd.found()
 endif
 
 shell_deps = [
+  dependency('wayland-client', required: true),
+  dependency('wayland-protocols', required: true),
+]
+
+app_deps = [
   dependency('wayland-client', required: true),
   dependency('wayland-protocols', required: true),
 ]
@@ -68,13 +73,22 @@ protocol_headers = [
   ),
 ]
 
-shell_protocol_files = [
+xdg_client_protocol_files = [
+  custom_target(
+    'xdg-shell-client-protocol-header',
+    input: join_paths(wayland_protocols_dir, 'stable/xdg-shell/xdg-shell.xml'),
+    output: 'xdg-shell-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  ),
   custom_target(
     'xdg-shell-client-protocol-code',
     input: join_paths(wayland_protocols_dir, 'stable/xdg-shell/xdg-shell.xml'),
     output: 'xdg-shell-client-protocol.c',
     command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
   ),
+]
+
+shell_protocol_files = [
   custom_target(
     'wlr-layer-shell-client-protocol-header',
     input: files('protocol/wlr-layer-shell-unstable-v1.xml'),
@@ -123,7 +137,13 @@ shell_sources = files(
   'src/shell/shell_ui.c',
   'src/shell/shell_client.c',
   'src/protocol/shell_protocol.c',
-) + shell_protocol_files
+) + shell_protocol_files + xdg_client_protocol_files
+
+app_sources = files(
+  'src/apps/app_catalog.c',
+  'src/apps/app_ui.c',
+  'src/apps/app_client.c',
+) + xdg_client_protocol_files
 
 screenshot_sources = files(
   'src/tools/screenshot.c',
@@ -156,6 +176,14 @@ executable(
   shell_sources,
   include_directories: lumo_inc,
   dependencies: shell_deps,
+  install: true,
+)
+
+executable(
+  'lumo-app',
+  app_sources,
+  include_directories: lumo_inc,
+  dependencies: app_deps,
   install: true,
 )
 
@@ -206,6 +234,19 @@ shell_test_exe = executable(
 )
 
 test('lumo-shell', shell_test_exe)
+
+app_test_exe = executable(
+  'lumo-app-tests',
+  files(
+    'src/apps/app_catalog.c',
+    'src/apps/app_ui.c',
+    'tests/apps/test_app.c',
+  ),
+  include_directories: lumo_inc,
+  install: false,
+)
+
+test('lumo-app', app_test_exe)
 
 screenshot_test_exe = executable(
   'lumo-screenshot-tests',

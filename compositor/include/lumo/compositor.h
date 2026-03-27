@@ -562,11 +562,10 @@ static inline bool lumo_hitbox_is_shell_gesture(
         strcmp(hitbox->name, "shell-gesture") == 0;
 }
 
-static inline bool lumo_touch_hitbox_triggers_launcher_immediately(
-    const struct lumo_hitbox *hitbox,
-    bool launcher_visible
+static inline bool lumo_touch_hitbox_uses_immediate_launcher_toggle(
+    const struct lumo_hitbox *hitbox
 ) {
-    return !launcher_visible && lumo_hitbox_is_shell_gesture(hitbox);
+    return lumo_hitbox_is_shell_gesture(hitbox);
 }
 
 static inline enum lumo_edge_zone lumo_hitbox_edge_zone(

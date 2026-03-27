@@ -14,8 +14,9 @@ leans toward:
 ## Current Layout
 
 - `compositor/` contains the wlroots-based compositor core in C.
-  The compositor sources are grouped by category under `src/core`, `src/protocol`,
-  `src/shell`, and `src/tools`, with matching grouped test directories.
+  The compositor sources are grouped by category under `src/apps`, `src/core`,
+  `src/protocol`, `src/shell`, and `src/tools`, with matching grouped test
+  directories.
 - `docs/` contains the architecture and migration notes.
 - `Design.md` captures the touch-first shell direction and visual language.
 - `CHANGELOG.md` tracks semver-style progress starting at `0.0.1`.
@@ -29,6 +30,7 @@ The compositor module already has a working scaffold for:
 - text input and input-method hooks
 - xWayland startup and basic window management
 - a companion `lumo-shell` client scaffold for launcher, OSK, and gesture surfaces
+- a native `lumo-app` client that powers the launcher tiles with built-in Lumo apps
 - compositor-owned shell hitboxes for scrims, OSK zones, and edge gestures
 - multi-edge mobile gesture zones plus a built-in touch audit flow that saves per-device profiles without taking over the launcher path in normal sessions
 
@@ -101,6 +103,7 @@ The compositor binaries land in `compositor/build/` by default:
 ./compositor/build/lumo-shell --mode launcher
 ./compositor/build/lumo-shell --mode osk
 ./compositor/build/lumo-shell --mode gesture
+./compositor/build/lumo-app --app browser
 ./compositor/build/lumo-screenshot --output live.png
 ```
 
@@ -192,7 +195,7 @@ compositor bring-up bugs.
 Lumo is being built around a few core ideas:
 
 - the compositor owns input arbitration, output transforms, and reserved gesture zones
-- the shell/UI is made of separate C clients for launcher, on-screen keyboard, bar, and overlays
+- the shell/UI is made of separate C clients for launcher, on-screen keyboard, bar, overlays, and native touch apps
 - the on-screen keyboard commits text through text-input-v3 when a field is focused, with compositor-managed focus tracking
 - xWayland support is optional at build time so minimal images can omit it when needed
 - the repo-root `build.sh` script keeps the common Meson options in one place
@@ -201,6 +204,7 @@ Lumo is being built around a few core ideas:
 - the installed Wayland sessions launch the compositor, and the compositor autostarts the bundled shell clients
 - touch hitboxes and OSK behavior need to work well on a compact display, not a desktop monitor
 - the shared shell geometry helper keeps compositor hitboxes and shell surfaces aligned
+- launcher tiles are native Lumo apps rather than wrappers around external desktop programs
 - touch audit and saved device profiles are part of the compositor workflow, but normal mobile sessions keep audit entry out of the default edge-gesture path so the launcher stays reliable
 
 More detailed notes live in:

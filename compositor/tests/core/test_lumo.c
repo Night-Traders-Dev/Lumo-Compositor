@@ -326,17 +326,16 @@ static void test_compositor_defaults(void) {
     lumo_compositor_destroy(compositor);
 }
 
-static void test_immediate_gesture_handle_open_policy(void) {
+static void test_immediate_gesture_handle_toggle_policy(void) {
     struct lumo_hitbox hitbox = {
         .name = "shell-gesture",
         .kind = LUMO_HITBOX_EDGE_GESTURE,
     };
 
-    assert(lumo_touch_hitbox_triggers_launcher_immediately(&hitbox, false));
-    assert(!lumo_touch_hitbox_triggers_launcher_immediately(&hitbox, true));
+    assert(lumo_touch_hitbox_uses_immediate_launcher_toggle(&hitbox));
 
     hitbox.kind = LUMO_HITBOX_SCRIM;
-    assert(!lumo_touch_hitbox_triggers_launcher_immediately(&hitbox, false));
+    assert(!lumo_touch_hitbox_uses_immediate_launcher_toggle(&hitbox));
 }
 
 static void test_layer_configuration_dirty_without_outputs(void) {
@@ -832,7 +831,7 @@ int main(void) {
     test_shell_argv_builder();
     test_shell_state_helpers();
     test_layer_surface_commit_reconfigure_policy();
-    test_immediate_gesture_handle_open_policy();
+    test_immediate_gesture_handle_toggle_policy();
     puts("lumo compositor tests passed");
     return 0;
 }

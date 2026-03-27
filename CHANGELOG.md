@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.46] - 2026-03-27
+- Made the launcher behave like a proper toggle: the bottom gesture trigger now closes the app drawer when it is already open, and the drawer's new top-corner close control routes through the same shell target path.
+- Added a native `lumo-app` Wayland client and wired all 12 launcher tiles to open built-in Lumo apps instead of external desktop applications, giving the app drawer a fully native touch-first launch path.
+- Added app-catalog and renderer coverage, integrated the new apps category into the Meson build, and updated the docs to describe the new `src/apps/` runtime slice.
+
 ## [0.0.45] - 2026-03-27
 - Reduced launcher trigger latency by letting the compositor open the drawer directly from the bottom gesture hitbox before that touch falls through to the gesture shell surface.
 - Shortened shell transition timings for the launcher and OSK, and lowered the default gesture timeout from `180ms` to `90ms` so touch response feels more immediate on the OrangePi panel.
