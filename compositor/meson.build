@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.2',
+  version: '0.0.3',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -14,9 +14,32 @@ lumo_deps = [
   dependency('wlroots-0.18', required: true),
   dependency('wayland-server', required: true),
   dependency('xkbcommon', required: true),
+  dependency('wayland-protocols', required: true),
 ]
 
 add_project_arguments('-DWLR_USE_UNSTABLE', language: 'c')
+add_project_arguments('-D_POSIX_C_SOURCE=200809L', language: 'c')
+
+wayland_scanner = find_program('wayland-scanner', required: true)
+wayland_protocols = dependency('wayland-protocols', required: true)
+wayland_protocols_dir = wayland_protocols.get_variable(
+  pkgconfig: 'pkgdatadir',
+)
+
+protocol_headers = [
+  custom_target(
+    'xdg-shell-protocol',
+    input: join_paths(wayland_protocols_dir, 'stable/xdg-shell/xdg-shell.xml'),
+    output: 'xdg-shell-protocol.h',
+    command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
+  ),
+  custom_target(
+    'wlr-layer-shell-protocol',
+    input: files('protocol/wlr-layer-shell-unstable-v1.xml'),
+    output: 'wlr-layer-shell-unstable-v1-protocol.h',
+    command: [wayland_scanner, 'server-header', '@INPUT@', '@OUTPUT@'],
+  ),
+]
 
 lumo_sources = files(
   'src/backend.c',
@@ -24,7 +47,7 @@ lumo_sources = files(
   'src/input.c',
   'src/output.c',
   'src/protocol.c',
-)
+) + protocol_headers
 
 executable(
   'lumo-compositor',

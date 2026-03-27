@@ -28,11 +28,14 @@ static struct lumo_protocol_state *lumo_protocol_state_from(
 static struct lumo_output *lumo_protocol_first_output(
     struct lumo_compositor *compositor
 ) {
+    struct lumo_output *output;
+
     if (compositor == NULL || wl_list_empty(&compositor->outputs)) {
         return NULL;
     }
 
-    return wl_container_of(compositor->outputs.next, struct lumo_output, link);
+    output = wl_container_of(compositor->outputs.next, output, link);
+    return output;
 }
 
 static struct lumo_output *lumo_protocol_output_for_wlr(

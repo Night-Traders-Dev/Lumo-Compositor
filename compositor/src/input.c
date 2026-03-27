@@ -54,11 +54,14 @@ static uint32_t lumo_input_now_msec(void) {
 static struct lumo_output *lumo_input_first_output(
     struct lumo_compositor *compositor
 ) {
+    struct lumo_output *output;
+
     if (compositor == NULL || wl_list_empty(&compositor->outputs)) {
         return NULL;
     }
 
-    return wl_container_of(compositor->outputs.next, struct lumo_output, link);
+    output = wl_container_of(compositor->outputs.next, output, link);
+    return output;
 }
 
 static struct lumo_output *lumo_input_output_from_wlr(
@@ -174,6 +177,7 @@ static bool lumo_input_surface_target_at(
     struct lumo_surface_target *target
 ) {
     struct wlr_scene_node *node;
+    struct wlr_scene_buffer *scene_buffer;
     struct wlr_scene_surface *scene_surface;
     double sx = 0.0;
     double sy = 0.0;
@@ -191,7 +195,10 @@ static bool lumo_input_surface_target_at(
         return false;
     }
 
-    scene_surface = wlr_scene_surface_try_from_buffer(node);
+    scene_buffer = wlr_scene_buffer_from_node(node);
+    if (scene_buffer != NULL) {
+        scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
+    }
     if (scene_surface != NULL) {
         target->surface = scene_surface->surface;
         target->sx = sx;
@@ -342,6 +349,7 @@ static void lumo_input_touch_point_surface_destroy(
     struct wl_listener *listener,
     void *data
 );
+static int lumo_input_gesture_timeout_cb(void *data);
 
 static void lumo_input_touch_point_bind_surface(
     struct lumo_touch_point *point,
@@ -417,13 +425,13 @@ static void lumo_input_refresh_capabilities(struct lumo_compositor *compositor) 
     }
 
     if (compositor->pointer_devices > 0) {
-        caps |= WLR_SEAT_CAPABILITY_POINTER;
+        caps |= WL_SEAT_CAPABILITY_POINTER;
     }
     if (compositor->keyboard_devices > 0) {
-        caps |= WLR_SEAT_CAPABILITY_KEYBOARD;
+        caps |= WL_SEAT_CAPABILITY_KEYBOARD;
     }
     if (compositor->touch_devices > 0) {
-        caps |= WLR_SEAT_CAPABILITY_TOUCH;
+        caps |= WL_SEAT_CAPABILITY_TOUCH;
     }
 
     wlr_seat_set_capabilities(compositor->seat, caps);
@@ -731,6 +739,7 @@ static void lumo_input_pointer_notify_surface(
 ) {
     struct wlr_surface *focused = NULL;
     struct wlr_scene_node *node = NULL;
+    struct wlr_scene_buffer *scene_buffer = NULL;
     double sx = 0.0;
     double sy = 0.0;
 
@@ -742,9 +751,12 @@ static void lumo_input_pointer_notify_surface(
     node = wlr_scene_node_at(&compositor->scene->tree.node, compositor->cursor->x,
         compositor->cursor->y, &sx, &sy);
     if (node != NULL) {
-        struct wlr_scene_surface *scene_surface =
-            wlr_scene_surface_try_from_buffer(node);
+        struct wlr_scene_surface *scene_surface = NULL;
 
+        scene_buffer = wlr_scene_buffer_from_node(node);
+        if (scene_buffer != NULL) {
+            scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
+        }
         if (scene_surface != NULL) {
             focused = scene_surface->surface;
         }

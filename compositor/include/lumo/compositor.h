@@ -24,6 +24,7 @@
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/util/log.h>
 
 enum lumo_rotation {
     LUMO_ROTATION_NORMAL = 0,

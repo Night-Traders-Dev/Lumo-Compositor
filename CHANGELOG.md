@@ -11,3 +11,8 @@ All notable changes to this project will be documented in this file.
 - Added the first mobile-first input pipeline: touch buffering, edge gesture capture, replay-on-release, and shell-vs-app surface classification.
 - Wired the compositor for pointer, keyboard, touch, and gesture signals with wlroots seat integration.
 - Added a C test harness for compositor state helpers and a repository-level `.gitignore`.
+
+## [0.0.3] - 2026-03-26
+- Added build-time generation for the wlroots XDG shell and layer-shell protocol headers.
+- Vendored the layer-shell XML needed to keep the compositor build self-contained.
+- Kept the compositor moving toward a touch-first shell with input-method and overlay support.
