@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.1',
+  version: '0.0.2',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -9,6 +9,14 @@ project(
 )
 
 lumo_inc = include_directories('include')
+
+lumo_deps = [
+  dependency('wlroots-0.18', required: true),
+  dependency('wayland-server', required: true),
+  dependency('xkbcommon', required: true),
+]
+
+add_project_arguments('-DWLR_USE_UNSTABLE', language: 'c')
 
 lumo_sources = files(
   'src/backend.c',
@@ -23,6 +31,7 @@ executable(
   'lumo-compositor',
   lumo_sources,
   include_directories: lumo_inc,
+  dependencies: lumo_deps,
   install: false,
 )
 
