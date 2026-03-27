@@ -1172,44 +1172,48 @@ static void lumo_draw_animated_bg(
     uint32_t height
 ) {
     struct timespec ts;
-    double t;
-    uint32_t bg_base_r = 0x2C, bg_base_g = 0x00, bg_base_b = 0x1E;
+    uint32_t frame;
 
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    t = (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+    frame = (uint32_t)(ts.tv_sec * 5 + ts.tv_nsec / 200000000);
 
     for (uint32_t y = 0; y < height; y++) {
-        double ny = (double)y / (double)height;
+        uint32_t phase = (y * 3 + frame * 7) % 512;
+        uint32_t wave = phase < 256 ? phase : 511 - phase;
+        uint32_t glow = (wave * wave) >> 14;
+
+        uint32_t grad_r = 0x2C + (y * 0x30) / height;
+        uint32_t grad_g = 0x00 + (y * 0x10) / height;
+        uint32_t grad_b = 0x1E + (y * 0x08) / height;
+
+        uint32_t r = grad_r + (glow * 0x40 >> 8);
+        uint32_t g = grad_g + (glow * 0x18 >> 8);
+        uint32_t b = grad_b + (glow * 0x08 >> 8);
+        if (r > 0xFF) r = 0xFF;
+        if (g > 0xFF) g = 0xFF;
+        if (b > 0xFF) b = 0xFF;
+
+        uint32_t row_color = lumo_argb(0xFF, (uint8_t)r, (uint8_t)g, (uint8_t)b);
+        uint32_t *row_ptr = pixels + y * width;
         for (uint32_t x = 0; x < width; x++) {
-            double nx = (double)x / (double)width;
-            double wave1 = 0.5 + 0.5 * lumo_clamp_unit(
-                0.5 + 0.5 * ((nx - 0.5) * 2.8 +
-                    0.3 * ((ny * 6.28 + t * 0.4) > 0 ?
-                        (1.0 - 2.0 * (((ny * 6.28 + t * 0.4) / 3.14159 -
-                            (int)((ny * 6.28 + t * 0.4) / 3.14159)) > 0.5 ?
-                            1.0 - ((ny * 6.28 + t * 0.4) / 3.14159 -
-                                (int)((ny * 6.28 + t * 0.4) / 3.14159)) :
-                            ((ny * 6.28 + t * 0.4) / 3.14159 -
-                                (int)((ny * 6.28 + t * 0.4) / 3.14159)))) :
-                        0.0) +
-                    0.15 * ((nx * 4.0 + t * 0.2 + ny * 2.0) > 0 ?
-                        (1.0 - 2.0 * (((nx * 4.0 + t * 0.2 + ny * 2.0) / 3.14159 -
-                            (int)((nx * 4.0 + t * 0.2 + ny * 2.0) / 3.14159)) > 0.5 ?
-                            1.0 - ((nx * 4.0 + t * 0.2 + ny * 2.0) / 3.14159 -
-                                (int)((nx * 4.0 + t * 0.2 + ny * 2.0) / 3.14159)) :
-                            ((nx * 4.0 + t * 0.2 + ny * 2.0) / 3.14159 -
-                                (int)((nx * 4.0 + t * 0.2 + ny * 2.0) / 3.14159)))) :
-                        0.0)));
+            row_ptr[x] = row_color;
+        }
 
-            double glow = wave1 * 0.25 * (1.0 - ny * 0.6);
-            uint8_t r = (uint8_t)(bg_base_r + (uint8_t)(glow * 0xE9));
-            uint8_t g = (uint8_t)(bg_base_g + (uint8_t)(glow * 0x54));
-            uint8_t b = (uint8_t)(bg_base_b + (uint8_t)(glow * 0x20));
-
-            if (r < bg_base_r) r = bg_base_r;
-            if (b < bg_base_b) b = bg_base_b;
-
-            pixels[y * width + x] = lumo_argb(0xFF, r, g, b);
+        if (glow > 12) {
+            uint32_t streak_x = (frame * 3 + y * 2) % (width + 200);
+            if (streak_x < width) {
+                uint32_t streak_len = 60 + (y % 40);
+                uint32_t sr = r + 0x20 > 0xFF ? 0xFF : r + 0x20;
+                uint32_t sg = g + 0x10 > 0xFF ? 0xFF : g + 0x10;
+                uint32_t sb = b + 0x06 > 0xFF ? 0xFF : b + 0x06;
+                uint32_t streak_color = lumo_argb(0xFF,
+                    (uint8_t)sr, (uint8_t)sg, (uint8_t)sb);
+                uint32_t end = streak_x + streak_len;
+                if (end > width) end = width;
+                for (uint32_t sx = streak_x; sx < end; sx++) {
+                    row_ptr[sx] = streak_color;
+                }
+            }
         }
     }
 }
@@ -1609,7 +1613,7 @@ static int lumo_shell_client_animation_timeout(
 
     if (client == NULL || !client->animation_active) {
         if (client != NULL && client->mode == LUMO_SHELL_MODE_BACKGROUND) {
-            return 33;
+            return 200;
         }
         if (client != NULL && client->mode == LUMO_SHELL_MODE_STATUS) {
             if (client->compositor_time_panel_visible) {

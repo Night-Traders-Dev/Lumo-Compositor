@@ -734,9 +734,9 @@ bool lumo_shell_surface_config_for_mode(
             LUMO_SHELL_ANCHOR_BOTTOM |
             LUMO_SHELL_ANCHOR_LEFT |
             LUMO_SHELL_ANCHOR_RIGHT;
-        config->exclusive_zone = -1;
+        config->exclusive_zone = 0;
         config->keyboard_interactive = false;
-        config->background_rgba = 0x00000000;
+        config->background_rgba = 0xFF2C001E;
         break;
     default:
         return false;
@@ -810,7 +810,7 @@ bool lumo_shell_surface_bootstrap_config(
             LUMO_SHELL_ANCHOR_BOTTOM |
             LUMO_SHELL_ANCHOR_LEFT |
             LUMO_SHELL_ANCHOR_RIGHT;
-        config->exclusive_zone = -1;
+        config->exclusive_zone = 0;
         config->keyboard_interactive = false;
         config->background_rgba = 0xFF2C001E;
         return true;
