@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.15] - 2026-03-27
+- Added a repo-root `build.sh` wrapper for the common Meson configure, build, and test flow.
+- Exposed the xWayland feature toggle, build directory, build type, and test switch through the wrapper.
+- Updated the README and compositor notes to document the new build entry point.
+
 ## [0.0.14] - 2026-03-27
 - Added text-input focus tracking so OSK commits can reach focused app fields.
 - Added an OSK text helper and unit tests so shell key indices map to deterministic text.

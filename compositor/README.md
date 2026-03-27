@@ -23,12 +23,11 @@ When the implementation lands, this compositor should:
 
 ## Build Toggles
 
-The compositor build accepts a Meson feature flag for xWayland support:
+The compositor build accepts a Meson feature flag for xWayland support. From
+the repository root, the same flag is available through `build.sh`:
 
 ```sh
-meson setup build -Dxwayland=disabled
-meson compile -C build
-meson test -C build --print-errorlogs
+./build.sh --xwayland disabled --test
 ```
 
 Leave the option enabled for normal desktop-app compatibility. Disable it for

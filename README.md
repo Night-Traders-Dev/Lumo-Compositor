@@ -30,7 +30,23 @@ The compositor module already has a working scaffold for:
 
 ## Build
 
-The compositor currently builds from the `compositor/` subdirectory with Meson:
+The easiest way to build Lumo is with the repo-root wrapper:
+
+```sh
+./build.sh
+```
+
+That script wraps the Meson build in `compositor/` and exposes the common
+knobs we use today:
+
+```sh
+./build.sh --xwayland disabled
+./build.sh --buildtype debugoptimized --test
+./build.sh --build-dir build-noxwayland --xwayland disabled --test
+```
+
+If you prefer to run Meson directly, the underlying build still works from the
+`compositor/` subdirectory:
 
 ```sh
 cd compositor
@@ -39,23 +55,17 @@ meson compile -C build
 meson test -C build --print-errorlogs
 ```
 
-To build without xWayland support, pass the Meson feature flag at setup time:
-
-```sh
-meson setup build -Dxwayland=disabled
-```
-
 ## Run
 
-The compositor binary accepts a few useful flags:
+The compositor binaries land in `compositor/build/` by default:
 
 ```sh
-./build/lumo-compositor --help
-./build/lumo-compositor --debug
-./build/lumo-compositor --rotation 180
-./build/lumo-shell --mode launcher
-./build/lumo-shell --mode osk
-./build/lumo-shell --mode gesture
+./compositor/build/lumo-compositor --help
+./compositor/build/lumo-compositor --debug
+./compositor/build/lumo-compositor --rotation 180
+./compositor/build/lumo-shell --mode launcher
+./compositor/build/lumo-shell --mode osk
+./compositor/build/lumo-shell --mode gesture
 ```
 
 ## Design Notes
@@ -66,6 +76,7 @@ Lumo is being built around a few core ideas:
 - the shell/UI is made of separate C clients for launcher, on-screen keyboard, bar, and overlays
 - the on-screen keyboard commits text through text-input-v3 when a field is focused, with compositor-managed focus tracking
 - xWayland support is optional at build time so minimal images can omit it when needed
+- the repo-root `build.sh` script keeps the common Meson options in one place
 - touch hitboxes and OSK behavior need to work well on a compact display, not a desktop monitor
 - the shared shell geometry helper keeps compositor hitboxes and shell surfaces aligned
 
