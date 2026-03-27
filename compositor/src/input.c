@@ -254,6 +254,25 @@ static bool lumo_input_target_is_shell(const struct lumo_surface_target *target)
         target->role == LUMO_SCENE_OBJECT_POPUP;
 }
 
+static bool lumo_input_hitbox_is_shell_reserved(
+    const struct lumo_hitbox *hitbox
+) {
+    if (hitbox == NULL) {
+        return false;
+    }
+
+    switch (hitbox->kind) {
+    case LUMO_HITBOX_LAUNCHER_TILE:
+    case LUMO_HITBOX_OSK_KEY:
+    case LUMO_HITBOX_SCRIM:
+        return true;
+    case LUMO_HITBOX_EDGE_GESTURE:
+    case LUMO_HITBOX_CUSTOM:
+    default:
+        return false;
+    }
+}
+
 static bool lumo_input_in_edge_zone(
     struct lumo_compositor *compositor,
     const struct lumo_output *output,
@@ -552,7 +571,9 @@ static void lumo_input_maybe_start_gesture_timer(struct lumo_compositor *composi
     wl_list_for_each(point, &compositor->touch_points, link) {
         uint32_t deadline;
 
-        if (!point->captured || point->gesture_triggered) {
+        if (!point->captured || point->gesture_triggered ||
+                point->hitbox == NULL ||
+                point->hitbox->kind != LUMO_HITBOX_EDGE_GESTURE) {
             continue;
         }
 
@@ -613,7 +634,8 @@ static int lumo_input_gesture_timeout_cb(void *data) {
             continue;
         }
 
-        if (point->surface != NULL) {
+        if (point->surface != NULL && point->hitbox != NULL &&
+                point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE) {
             lumo_input_replay_touch_point(compositor, point);
             replayed = true;
         }
@@ -645,7 +667,14 @@ static void lumo_input_touch_point_begin_capture(
     point->sy = target != NULL ? target->sy : 0.0;
     point->down_time_msec = time_msec;
 
-    wlr_log(WLR_INFO, "input: touch %d captured for gesture", point->touch_id);
+    if (point->hitbox != NULL) {
+        wlr_log(WLR_INFO, "input: touch %d captured by hitbox %s (%s)",
+            point->touch_id,
+            point->hitbox->name != NULL ? point->hitbox->name : "(unnamed)",
+            lumo_hitbox_kind_name(point->hitbox->kind));
+    } else {
+        wlr_log(WLR_INFO, "input: touch %d captured for gesture", point->touch_id);
+    }
     lumo_input_maybe_start_gesture_timer(compositor);
 }
 
@@ -1253,6 +1282,8 @@ static void lumo_input_touch_motion(
         : 24.0;
 
     if (point->captured && !point->gesture_triggered &&
+            point->hitbox != NULL &&
+            point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE &&
             lumo_input_touch_point_dist_exceeded(point, lx, ly, threshold)) {
         lumo_input_touch_point_trigger_gesture(compositor, point, event->time_msec);
     }
@@ -1273,7 +1304,10 @@ static void lumo_input_touch_motion(
     if (point->captured) {
         lumo_input_touch_sample_append(point, LUMO_TOUCH_SAMPLE_MOTION,
             event->time_msec, lx, ly, target.sx, target.sy);
-        if (!point->gesture_triggered && in_edge_zone &&
+        if (!point->gesture_triggered &&
+                point->hitbox != NULL &&
+                point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE &&
+                in_edge_zone &&
                 lumo_input_touch_point_dist_exceeded(point, lx, ly, threshold)) {
             lumo_input_touch_point_trigger_gesture(compositor, point,
                 event->time_msec);
@@ -1354,6 +1388,12 @@ static void lumo_input_touch_down(
         return;
     }
 
+    if (lumo_input_hitbox_is_shell_reserved(point->hitbox)) {
+        lumo_input_touch_point_begin_capture(compositor, point, &target,
+            event->time_msec);
+        return;
+    }
+
     if (point->hitbox != NULL &&
             point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE) {
         lumo_input_touch_point_begin_capture(compositor, point, &target,
@@ -1399,12 +1439,19 @@ static void lumo_input_touch_up(
     }
 
     if (point->captured && !point->delivered) {
-        if (!point->gesture_triggered && point->surface != NULL) {
+        if (!point->gesture_triggered && point->surface != NULL &&
+                point->hitbox != NULL &&
+                point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE) {
             lumo_input_replay_touch_point(compositor, point);
         }
 
         if (point->gesture_triggered) {
             wlr_log(WLR_INFO, "input: touch %d gesture completed", point->touch_id);
+        } else if (point->hitbox != NULL &&
+                lumo_input_hitbox_is_shell_reserved(point->hitbox)) {
+            wlr_log(WLR_INFO, "input: touch %d consumed by hitbox %s",
+                point->touch_id,
+                point->hitbox->name != NULL ? point->hitbox->name : "(unnamed)");
         }
     }
 

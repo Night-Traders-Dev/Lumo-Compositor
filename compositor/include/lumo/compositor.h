@@ -421,6 +421,7 @@ void lumo_protocol_set_launcher_visible(
     struct lumo_compositor *compositor,
     bool visible
 );
+void lumo_protocol_refresh_shell_hitboxes(struct lumo_compositor *compositor);
 void lumo_protocol_set_scrim_state(
     struct lumo_compositor *compositor,
     enum lumo_scrim_state state

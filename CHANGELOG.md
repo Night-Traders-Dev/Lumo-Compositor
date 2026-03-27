@@ -36,3 +36,8 @@ All notable changes to this project will be documented in this file.
 - Added a C `lumo-shell` client scaffold for launcher, on-screen keyboard, and gesture surfaces.
 - Added pure shell layout helpers so surface geometry and reserved zones can be tested without a compositor.
 - Added shell UI tests and protocol generation for the layer-shell client path.
+
+## [0.0.8] - 2026-03-26
+- Added compositor-owned shell hitboxes for launcher scrims, OSK zones, and the bottom gesture strip.
+- Refined touch capture so reserved shell regions no longer fall through to app surfaces or launcher gestures.
+- Added tests that verify shell hitbox refresh and hitbox prioritization on the compositor side.

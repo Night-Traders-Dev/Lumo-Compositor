@@ -81,6 +81,58 @@ static void test_hitbox_state(void) {
     lumo_compositor_destroy(compositor);
 }
 
+static void test_shell_hitbox_refresh(void) {
+    const struct lumo_compositor_config config = {
+        .session_name = "lumo-test",
+        .socket_name = "lumo-test-socket",
+        .initial_rotation = LUMO_ROTATION_NORMAL,
+        .debug = false,
+    };
+    struct lumo_compositor *compositor = lumo_compositor_create(&config);
+    struct lumo_output output = {0};
+    struct lumo_rect workarea = {
+        .x = 0,
+        .y = 0,
+        .width = 1024,
+        .height = 600,
+    };
+    const struct lumo_hitbox *hitbox;
+
+    assert(compositor != NULL);
+    wl_list_init(&output.link);
+    output.usable_area.x = workarea.x;
+    output.usable_area.y = workarea.y;
+    output.usable_area.width = workarea.width;
+    output.usable_area.height = workarea.height;
+    output.usable_area_valid = true;
+    wl_list_insert(&compositor->outputs, &output.link);
+
+    lumo_protocol_set_keyboard_visible(compositor, true);
+    hitbox = lumo_protocol_hitbox_at(compositor, 64, 588);
+    assert(hitbox != NULL);
+    assert(hitbox->kind == LUMO_HITBOX_OSK_KEY);
+
+    wl_list_remove(&output.link);
+    lumo_compositor_destroy(compositor);
+
+    compositor = lumo_compositor_create(&config);
+    wl_list_init(&output.link);
+    output.usable_area.x = workarea.x;
+    output.usable_area.y = workarea.y;
+    output.usable_area.width = workarea.width;
+    output.usable_area.height = workarea.height;
+    output.usable_area_valid = true;
+    wl_list_insert(&compositor->outputs, &output.link);
+
+    lumo_protocol_set_launcher_visible(compositor, true);
+    hitbox = lumo_protocol_hitbox_at(compositor, 64, 64);
+    assert(hitbox != NULL);
+    assert(hitbox->kind == LUMO_HITBOX_SCRIM);
+
+    wl_list_remove(&output.link);
+    lumo_compositor_destroy(compositor);
+}
+
 static void test_xwayland_workarea_collection(void) {
     const struct lumo_compositor_config config = {
         .session_name = "lumo-test",
@@ -159,6 +211,7 @@ int main(void) {
     test_rotation_helpers();
     test_compositor_defaults();
     test_hitbox_state();
+    test_shell_hitbox_refresh();
     test_xwayland_workarea_collection();
     test_state_setters();
     puts("lumo compositor tests passed");

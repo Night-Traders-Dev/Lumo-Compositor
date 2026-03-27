@@ -1,4 +1,5 @@
 #include "lumo/compositor.h"
+#include "lumo/shell.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -81,6 +82,78 @@ static void lumo_protocol_remove_hitbox(struct lumo_hitbox *hitbox) {
     wl_list_remove(&hitbox->link);
     free(hitbox->name);
     free(hitbox);
+}
+
+static bool lumo_protocol_hitbox_is_shell_reserved(const struct lumo_hitbox *hitbox) {
+    if (hitbox == NULL || hitbox->name == NULL) {
+        return false;
+    }
+
+    return strncmp(hitbox->name, "shell-", 6) == 0;
+}
+
+static void lumo_protocol_clear_shell_hitboxes(struct lumo_compositor *compositor) {
+    struct lumo_hitbox *hitbox, *tmp;
+
+    if (compositor == NULL) {
+        return;
+    }
+
+    wl_list_for_each_safe(hitbox, tmp, &compositor->hitboxes, link) {
+        if (lumo_protocol_hitbox_is_shell_reserved(hitbox)) {
+            lumo_protocol_remove_hitbox(hitbox);
+        }
+    }
+}
+
+void lumo_protocol_refresh_shell_hitboxes(struct lumo_compositor *compositor) {
+    struct wlr_box workarea = {0};
+    struct lumo_shell_surface_config shell_config = {0};
+    struct lumo_rect rect = {0};
+
+    if (compositor == NULL) {
+        return;
+    }
+
+    lumo_protocol_clear_shell_hitboxes(compositor);
+    if (!lumo_xwayland_collect_workarea(compositor, &workarea)) {
+        return;
+    }
+
+    if (lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_GESTURE,
+            (uint32_t)workarea.width, (uint32_t)workarea.height,
+            &shell_config)) {
+        rect.x = workarea.x;
+        rect.y = workarea.y + workarea.height - (int)shell_config.height;
+        rect.width = workarea.width;
+        rect.height = (int)shell_config.height;
+        lumo_protocol_register_hitbox(compositor, "shell-gesture", &rect,
+            LUMO_HITBOX_EDGE_GESTURE, true, true);
+    }
+
+    if (compositor->keyboard_visible &&
+            lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_OSK,
+                (uint32_t)workarea.width, (uint32_t)workarea.height,
+                &shell_config)) {
+        rect.x = workarea.x;
+        rect.y = workarea.y + workarea.height - (int)shell_config.height;
+        rect.width = workarea.width;
+        rect.height = (int)shell_config.height;
+        lumo_protocol_register_hitbox(compositor, "shell-osk", &rect,
+            LUMO_HITBOX_OSK_KEY, true, true);
+    }
+
+    if (compositor->launcher_visible &&
+            lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_LAUNCHER,
+                (uint32_t)workarea.width, (uint32_t)workarea.height,
+                &shell_config)) {
+        rect.x = workarea.x;
+        rect.y = workarea.y;
+        rect.width = workarea.width;
+        rect.height = workarea.height;
+        lumo_protocol_register_hitbox(compositor, "shell-launcher", &rect,
+            LUMO_HITBOX_SCRIM, true, true);
+    }
 }
 
 static void lumo_protocol_teardown_toplevel(struct lumo_toplevel *toplevel) {
@@ -668,6 +741,7 @@ void lumo_protocol_set_launcher_visible(
     }
 
     wlr_log(WLR_INFO, "protocol: launcher %s", visible ? "visible" : "hidden");
+    lumo_protocol_refresh_shell_hitboxes(compositor);
 }
 
 void lumo_protocol_set_scrim_state(
@@ -730,6 +804,7 @@ void lumo_protocol_set_keyboard_visible(
 
     wlr_log(WLR_INFO, "protocol: keyboard %s serial=%u",
         visible ? "visible" : "hidden", compositor->keyboard_resize_serial);
+    lumo_protocol_refresh_shell_hitboxes(compositor);
 }
 
 void lumo_protocol_configure_layers(
@@ -794,4 +869,6 @@ void lumo_protocol_configure_layers(
         output->usable_area = full_area;
         output->usable_area_valid = !wlr_box_empty(&full_area);
     }
+
+    lumo_protocol_refresh_shell_hitboxes(compositor);
 }

@@ -25,6 +25,8 @@ The compositor module already has a working scaffold for:
 - layer-shell support
 - text input and input-method hooks
 - xWayland startup and basic window management
+- a companion `lumo-shell` client scaffold for launcher, OSK, and gesture surfaces
+- compositor-owned shell hitboxes for scrims, OSK zones, and edge gestures
 
 ## Build
 
@@ -45,6 +47,9 @@ The compositor binary accepts a few useful flags:
 ./build/lumo-compositor --help
 ./build/lumo-compositor --debug
 ./build/lumo-compositor --rotation 180
+./build/lumo-shell --mode launcher
+./build/lumo-shell --mode osk
+./build/lumo-shell --mode gesture
 ```
 
 ## Design Notes
@@ -55,6 +60,7 @@ Lumo is being built around a few core ideas:
 - the shell/UI is made of separate C clients for launcher, on-screen keyboard, bar, and overlays
 - xWayland stays enabled so desktop apps can run beside native Wayland apps
 - touch hitboxes and OSK behavior need to work well on a compact display, not a desktop monitor
+- the shared shell geometry helper keeps compositor hitboxes and shell surfaces aligned
 
 More detailed notes live in:
 
@@ -69,4 +75,3 @@ The repository is in active compositor bring-up. The next milestones focus on:
 - xWayland focus and workarea policy
 - shell/UI clients in C
 - compositor-side gesture disambiguation for mobile touch interaction
-
