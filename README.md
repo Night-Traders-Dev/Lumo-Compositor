@@ -64,6 +64,7 @@ Lumo is being built around a few core ideas:
 
 - the compositor owns input arbitration, output transforms, and reserved gesture zones
 - the shell/UI is made of separate C clients for launcher, on-screen keyboard, bar, and overlays
+- the on-screen keyboard commits text through text-input-v3 when a field is focused, with compositor-managed focus tracking
 - xWayland support is optional at build time so minimal images can omit it when needed
 - touch hitboxes and OSK behavior need to work well on a compact display, not a desktop monitor
 - the shared shell geometry helper keeps compositor hitboxes and shell surfaces aligned

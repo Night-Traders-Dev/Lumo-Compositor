@@ -19,6 +19,7 @@ When the implementation lands, this compositor should:
 - support layer-shell shell surfaces
 - manage output rotation and touch mapping
 - expose shell state to launcher, OSK, bar, and gesture surfaces
+- forward OSK text into focused text-input-v3 clients before falling back to lower-level keyboard handling
 
 ## Build Toggles
 

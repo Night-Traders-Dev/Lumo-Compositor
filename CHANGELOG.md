@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.14] - 2026-03-27
+- Added text-input focus tracking so OSK commits can reach focused app fields.
+- Added an OSK text helper and unit tests so shell key indices map to deterministic text.
+- Updated the architecture notes and README to reflect text-input-based mobile typing.
+
 ## [0.0.13] - 2026-03-27
 - Added a Meson feature flag so xWayland support can be enabled or disabled at build time.
 - Added xWayland no-op stubs for disabled builds and a test that exercises the toggle path.

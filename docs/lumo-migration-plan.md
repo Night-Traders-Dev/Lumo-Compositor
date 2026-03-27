@@ -45,13 +45,14 @@ Exit criteria:
 - shell clients can discover output state and keyboard visibility
 - launcher can request open/close without talking to compositor internals
 - hitbox registration works for launcher and OSK
+- OSK commits text into focused text-input clients
 
 ## Phase 3: Port The Shell Clients
 
 Goal: move the visible UI to the new shell contract.
 
 - launcher: keep the GTK UI, retarget its control channel
-- OSK: make it a shell client that follows compositor focus and text-input state
+- OSK: make it a shell client that follows compositor focus and text-input state, then commit text into focused clients
 - bar: move status and debug UI to the shell layer
 - gesture surface: either keep it as a client or absorb it into the compositor, depending on latency and gesture quality
 
@@ -83,4 +84,3 @@ Exit criteria:
 - `lumo_test_button.py` -> shell debug/test client
 - `config` -> compositor session startup
 - `i3blocks.conf` -> shell bar config or replacement
-

@@ -68,6 +68,7 @@ struct lumo_shell_target {
 
 const char *lumo_shell_mode_name(enum lumo_shell_mode mode);
 const char *lumo_shell_target_kind_name(enum lumo_shell_target_kind kind);
+const char *lumo_shell_osk_key_text(uint32_t key_index);
 static inline bool lumo_shell_target_kind_parse(
     const char *value,
     enum lumo_shell_target_kind *kind

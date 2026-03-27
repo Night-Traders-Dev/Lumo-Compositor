@@ -65,6 +65,7 @@ The compositor should own all input routing, output transforms, focus, and compo
 - tracks active keyboard, pointer, and touch focus
 - handles text input focus changes
 - coordinates with the OSK and shortcut inhibition
+- forwards OSK commits into focused `text-input-v3` clients
 
 ## Protocol Strategy
 
@@ -137,4 +138,3 @@ Rotation should be applied at the compositor boundary, before hitbox testing and
 - `overlay_controller.py` is the current Sway bridge and will be replaced by compositor internals
 - `config` becomes a session launcher for the new compositor
 - `i3blocks.conf` becomes shell-bar configuration
-

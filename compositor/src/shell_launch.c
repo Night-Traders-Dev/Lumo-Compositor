@@ -460,12 +460,83 @@ static bool lumo_shell_bridge_send_result(
     return lumo_shell_bridge_send_frame(client->fd, &frame);
 }
 
+static struct wlr_text_input_v3 *lumo_shell_bridge_focused_text_input(
+    struct lumo_compositor *compositor
+) {
+    struct wl_resource *resource;
+    struct wlr_surface *focused_surface;
+
+    if (compositor == NULL || compositor->seat == NULL ||
+            compositor->text_input_manager == NULL) {
+        return NULL;
+    }
+
+    focused_surface = compositor->seat->keyboard_state.focused_surface;
+    wl_list_for_each(resource, &compositor->text_input_manager->text_inputs,
+            link) {
+        struct wlr_text_input_v3 *text_input =
+            wl_resource_get_user_data(resource);
+
+        if (text_input == NULL || text_input->seat != compositor->seat) {
+            continue;
+        }
+
+        if (text_input->focused_surface == focused_surface &&
+                focused_surface != NULL) {
+            return text_input;
+        }
+    }
+
+    return NULL;
+}
+
+static const char *lumo_shell_bridge_commit_osk_text(
+    struct lumo_compositor *compositor,
+    uint32_t index,
+    const char **reason_out
+) {
+    struct wlr_text_input_v3 *text_input;
+    const char *text;
+
+    if (reason_out != NULL) {
+        *reason_out = NULL;
+    }
+
+    text = lumo_shell_osk_key_text(index);
+    if (text == NULL) {
+        if (reason_out != NULL) {
+            *reason_out = "osk_key";
+        }
+        wlr_log(WLR_ERROR, "shell: osk key index %u out of range", index);
+        return "invalid_index";
+    }
+
+    text_input = lumo_shell_bridge_focused_text_input(compositor);
+    if (text_input == NULL) {
+        if (reason_out != NULL) {
+            *reason_out = "text_input_v3";
+        }
+        wlr_log(WLR_INFO,
+            "shell: osk key %u ignored, no focused text input",
+            index);
+        return "no_text_input_focus";
+    }
+
+    wlr_text_input_v3_send_commit_string(text_input, text);
+    wlr_text_input_v3_send_done(text_input);
+    wlr_log(WLR_INFO, "shell: committed osk text '%s' from key %u", text,
+        index);
+    return NULL;
+}
+
 static void lumo_shell_bridge_handle_request_frame(
     struct lumo_shell_bridge_client *client,
     const struct lumo_shell_protocol_frame *frame
 ) {
     const char *kind_value;
     enum lumo_shell_target_kind target_kind;
+    const char *failure_code = NULL;
+    const char *failure_reason = NULL;
     uint32_t index = 0;
     bool handled = false;
 
@@ -501,7 +572,9 @@ static void lumo_shell_bridge_handle_request_frame(
             wlr_log(WLR_INFO,
                 "shell: activate_target osk key %u requested",
                 index);
-            handled = true;
+            failure_code = lumo_shell_bridge_commit_osk_text(
+                client->compositor, index, &failure_reason);
+            handled = failure_code == NULL;
             break;
         case LUMO_SHELL_TARGET_NONE:
         default:
@@ -514,7 +587,8 @@ static void lumo_shell_bridge_handle_request_frame(
                 NULL);
         } else {
             (void)lumo_shell_bridge_send_result(client, frame, false,
-                "unsupported_target", "unhandled_kind");
+                failure_code != NULL ? failure_code : "unsupported_target",
+                failure_reason != NULL ? failure_reason : "unhandled_kind");
         }
         return;
     }

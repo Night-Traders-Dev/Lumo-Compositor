@@ -30,6 +30,13 @@ static void test_target_kind_parse(void) {
     assert(kind == LUMO_SHELL_TARGET_NONE);
 }
 
+static void test_osk_key_text(void) {
+    assert(strcmp(lumo_shell_osk_key_text(0), "a") == 0);
+    assert(strcmp(lumo_shell_osk_key_text(12), "m") == 0);
+    assert(strcmp(lumo_shell_osk_key_text(25), "z") == 0);
+    assert(lumo_shell_osk_key_text(26) == NULL);
+}
+
 static void test_layout_counts(void) {
     assert(lumo_shell_launcher_tile_count() == 12);
     assert(lumo_shell_osk_key_count() == 26);
@@ -161,6 +168,7 @@ static void test_gesture_hitbox(void) {
 int main(void) {
     test_mode_names();
     test_target_kind_parse();
+    test_osk_key_text();
     test_layout_counts();
     test_launcher_config();
     test_osk_config();

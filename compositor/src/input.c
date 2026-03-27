@@ -431,10 +431,41 @@ static void lumo_input_focus_surface(
         lumo_xwayland_focus_surface(compositor, surface);
         wlr_seat_keyboard_notify_enter(compositor->seat, surface,
             keycodes, num_keycodes, &modifiers);
-        return;
+    } else {
+        wlr_seat_keyboard_notify_clear_focus(compositor->seat);
     }
 
-    wlr_seat_keyboard_notify_clear_focus(compositor->seat);
+    if (compositor->text_input_manager != NULL) {
+        struct wl_resource *resource;
+
+        wl_list_for_each(resource, &compositor->text_input_manager->text_inputs,
+                link) {
+            struct wlr_text_input_v3 *text_input =
+                wl_resource_get_user_data(resource);
+
+            if (text_input == NULL || text_input->seat != compositor->seat) {
+                continue;
+            }
+
+            if (surface != NULL) {
+                if (text_input->focused_surface == surface) {
+                    continue;
+                }
+
+                if (text_input->focused_surface != NULL) {
+                    wlr_text_input_v3_send_leave(text_input);
+                }
+                wlr_text_input_v3_send_enter(text_input, surface);
+                wlr_text_input_v3_send_done(text_input);
+                continue;
+            }
+
+            if (text_input->focused_surface != NULL) {
+                wlr_text_input_v3_send_leave(text_input);
+                wlr_text_input_v3_send_done(text_input);
+            }
+        }
+    }
 }
 
 static void lumo_input_refresh_capabilities(struct lumo_compositor *compositor) {

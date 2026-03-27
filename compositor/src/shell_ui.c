@@ -12,6 +12,11 @@ static const uint32_t lumo_shell_osk_row_columns[] = {
     10,
     6,
 };
+static const char *const lumo_shell_osk_key_texts[] = {
+    "a", "b", "c", "d", "e", "f", "g", "h", "i", "j",
+    "k", "l", "m", "n", "o", "p", "q", "r", "s", "t",
+    "u", "v", "w", "x", "y", "z",
+};
 
 static bool lumo_shell_launcher_geometry(
     uint32_t output_width,
@@ -162,6 +167,15 @@ const char *lumo_shell_target_kind_name(enum lumo_shell_target_kind kind) {
     default:
         return "none";
     }
+}
+
+const char *lumo_shell_osk_key_text(uint32_t key_index) {
+    if (key_index >= sizeof(lumo_shell_osk_key_texts) /
+            sizeof(lumo_shell_osk_key_texts[0])) {
+        return NULL;
+    }
+
+    return lumo_shell_osk_key_texts[key_index];
 }
 
 size_t lumo_shell_launcher_tile_count(void) {
