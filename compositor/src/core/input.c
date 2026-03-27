@@ -1759,6 +1759,25 @@ static void lumo_input_touch_down(
         return;
     }
 
+    if (!wl_list_empty(&compositor->toplevels) &&
+            !compositor->launcher_visible &&
+            !compositor->keyboard_visible) {
+        struct lumo_toplevel *tl;
+        wl_list_for_each(tl, &compositor->toplevels, link) {
+            if (tl->xdg_surface != NULL && tl->xdg_surface->surface != NULL) {
+                lumo_input_touch_point_bind_surface(point,
+                    tl->xdg_surface->surface);
+                lumo_input_touch_point_deliver_now(compositor, point, &target,
+                    event->time_msec);
+                lumo_input_focus_surface(compositor, tl->xdg_surface->surface);
+                wlr_log(WLR_INFO,
+                    "input: touch %d delivered to focused toplevel",
+                    point->touch_id);
+                return;
+            }
+        }
+    }
+
     wlr_log(WLR_INFO, "input: touch %d ignored outside shell/app regions",
         point->touch_id);
     lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,

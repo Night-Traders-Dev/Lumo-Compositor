@@ -150,11 +150,11 @@ static bool lumo_shell_launcher_geometry(
     row = tile_index / lumo_shell_launcher_columns;
     col = tile_index % lumo_shell_launcher_columns;
 
-    gap = lumo_shell_clamp_u32(output_width / 64, 14, 28);
-    side_inset = lumo_shell_clamp_u32(output_width / 18, 24, 56);
-    top_inset = lumo_shell_clamp_u32(output_height / 10, 52, 112);
-    bottom_inset = lumo_shell_clamp_u32(output_height / 24, 24, 52);
-    header_height = lumo_shell_clamp_u32(output_height / 7, 68, 132);
+    gap = lumo_shell_clamp_u32(output_width / 80, 8, 16);
+    side_inset = lumo_shell_clamp_u32(output_width / 24, 16, 40);
+    top_inset = lumo_shell_clamp_u32(output_height / 14, 32, 72);
+    bottom_inset = lumo_shell_clamp_u32(output_height / 28, 16, 36);
+    header_height = lumo_shell_clamp_u32(output_height / 9, 48, 96);
 
     if (output_width <= side_inset * 2 + gap * (lumo_shell_launcher_columns + 1) ||
             output_height <= top_inset + bottom_inset + header_height +
