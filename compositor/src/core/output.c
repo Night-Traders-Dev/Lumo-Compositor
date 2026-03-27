@@ -301,6 +301,7 @@ void lumo_output_set_rotation(
     }
 
     lumo_protocol_refresh_shell_hitboxes(compositor);
+    lumo_protocol_mark_layers_dirty(compositor);
 
     if (output_name != NULL && !matched) {
         wlr_log(WLR_INFO,

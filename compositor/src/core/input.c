@@ -138,16 +138,16 @@ static bool lumo_input_transform_touch_coords(
 
             switch (output->wlr_output->transform) {
             case WL_OUTPUT_TRANSFORM_90:
-                out_x = norm_y;
-                out_y = 1.0 - norm_x;
+                out_x = 1.0 - norm_y;
+                out_y = norm_x;
                 break;
             case WL_OUTPUT_TRANSFORM_180:
                 out_x = 1.0 - norm_x;
                 out_y = 1.0 - norm_y;
                 break;
             case WL_OUTPUT_TRANSFORM_270:
-                out_x = 1.0 - norm_y;
-                out_y = norm_x;
+                out_x = norm_y;
+                out_y = 1.0 - norm_x;
                 break;
             default:
                 break;
@@ -1795,9 +1795,37 @@ static void lumo_input_touch_up(
             wlr_log(WLR_INFO, "input: touch %d gesture completed", point->touch_id);
         } else if (point->hitbox != NULL &&
                 lumo_input_hitbox_is_shell_reserved(point->hitbox)) {
-            wlr_log(WLR_INFO, "input: touch %d consumed by hitbox %s",
-                point->touch_id,
-                point->hitbox->name != NULL ? point->hitbox->name : "(unnamed)");
+            struct wlr_surface *shell_surface = NULL;
+            struct lumo_layer_surface *ls;
+            wl_list_for_each(ls, &compositor->layer_surfaces, link) {
+                if (ls->layer_surface != NULL &&
+                        ls->layer_surface->current.layer ==
+                            ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY) {
+                    shell_surface = ls->layer_surface->surface;
+                    break;
+                }
+            }
+            if (shell_surface == NULL) {
+                wl_list_for_each(ls, &compositor->layer_surfaces, link) {
+                    if (ls->layer_surface != NULL &&
+                            ls->layer_surface->current.layer ==
+                                ZWLR_LAYER_SHELL_V1_LAYER_TOP) {
+                        shell_surface = ls->layer_surface->surface;
+                        break;
+                    }
+                }
+            }
+            if (shell_surface != NULL) {
+                lumo_input_touch_point_bind_surface(point, shell_surface);
+                lumo_input_replay_touch_point(compositor, point);
+                wlr_log(WLR_INFO, "input: touch %d replayed to shell from hitbox %s",
+                    point->touch_id,
+                    point->hitbox->name != NULL ? point->hitbox->name : "(unnamed)");
+            } else {
+                wlr_log(WLR_INFO, "input: touch %d consumed by hitbox %s",
+                    point->touch_id,
+                    point->hitbox->name != NULL ? point->hitbox->name : "(unnamed)");
+            }
         }
     }
 
