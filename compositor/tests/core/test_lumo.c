@@ -48,13 +48,13 @@ static void test_touch_rotation_mapping(void) {
 
     assert(lumo_transform_layout_coords_in_box(&box,
         WL_OUTPUT_TRANSFORM_90, 20.0, 40.0, &lx, &ly));
-    assert(lx == 20.0);
-    assert(ly == 200.0);
+    assert(lx == 100.0);
+    assert(ly == 40.0);
 
     assert(lumo_transform_layout_coords_in_box(&box,
         WL_OUTPUT_TRANSFORM_270, 20.0, 40.0, &lx, &ly));
-    assert(lx == 100.0);
-    assert(ly == 40.0);
+    assert(lx == 20.0);
+    assert(ly == 200.0);
 
     assert(!lumo_transform_layout_coords_in_box(NULL,
         WL_OUTPUT_TRANSFORM_NORMAL, 0.0, 0.0, &lx, &ly));
