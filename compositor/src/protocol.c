@@ -6,12 +6,6 @@
 
 #include <wlr/util/box.h>
 
-struct lumo_protocol_state {
-    struct wl_listener xdg_new_toplevel;
-    struct wl_listener xdg_new_popup;
-    struct wl_listener layer_new_surface;
-};
-
 struct lumo_scene_object_head {
     struct wl_list link;
     struct lumo_compositor *compositor;
@@ -21,9 +15,34 @@ struct lumo_scene_object_head {
 static struct lumo_protocol_state *lumo_protocol_state_from(
     struct lumo_compositor *compositor
 ) {
-    return compositor != NULL
-        ? (struct lumo_protocol_state *)compositor->protocol_state
-        : NULL;
+    return compositor != NULL ? compositor->protocol_state : NULL;
+}
+
+struct lumo_compositor *lumo_protocol_listener_compositor(
+    struct wl_listener *listener,
+    enum lumo_protocol_listener_kind kind
+) {
+    struct lumo_protocol_state *state = NULL;
+
+    if (listener == NULL) {
+        return NULL;
+    }
+
+    switch (kind) {
+    case LUMO_PROTOCOL_LISTENER_XDG_TOPLEVEL:
+        state = wl_container_of(listener, state, xdg_new_toplevel);
+        break;
+    case LUMO_PROTOCOL_LISTENER_XDG_POPUP:
+        state = wl_container_of(listener, state, xdg_new_popup);
+        break;
+    case LUMO_PROTOCOL_LISTENER_LAYER_SURFACE:
+        state = wl_container_of(listener, state, layer_new_surface);
+        break;
+    default:
+        return NULL;
+    }
+
+    return state != NULL ? state->compositor : NULL;
 }
 
 static struct lumo_output *lumo_protocol_first_output(
@@ -380,10 +399,17 @@ static void lumo_protocol_new_toplevel(
     struct wl_listener *listener,
     void *data
 ) {
-    struct lumo_compositor *compositor =
-        wl_container_of(listener, compositor, xdg_new_toplevel);
+    struct lumo_compositor *compositor = lumo_protocol_listener_compositor(
+        listener,
+        LUMO_PROTOCOL_LISTENER_XDG_TOPLEVEL
+    );
     struct wlr_xdg_toplevel *xdg_toplevel = data;
     struct lumo_toplevel *toplevel = calloc(1, sizeof(*toplevel));
+
+    if (compositor == NULL) {
+        wlr_log(WLR_ERROR, "protocol: missing compositor for new toplevel");
+        return;
+    }
 
     if (toplevel == NULL) {
         wlr_log_errno(WLR_ERROR, "protocol: failed to allocate toplevel");
@@ -441,10 +467,17 @@ static void lumo_protocol_new_popup(
     struct wl_listener *listener,
     void *data
 ) {
-    struct lumo_compositor *compositor =
-        wl_container_of(listener, compositor, xdg_new_popup);
+    struct lumo_compositor *compositor = lumo_protocol_listener_compositor(
+        listener,
+        LUMO_PROTOCOL_LISTENER_XDG_POPUP
+    );
     struct wlr_xdg_popup *popup_surface = data;
     struct lumo_popup *popup = calloc(1, sizeof(*popup));
+
+    if (compositor == NULL) {
+        wlr_log(WLR_ERROR, "protocol: missing compositor for new popup");
+        return;
+    }
 
     if (popup == NULL) {
         wlr_log_errno(WLR_ERROR, "protocol: failed to allocate popup");
@@ -474,10 +507,17 @@ static void lumo_protocol_new_layer_surface(
     struct wl_listener *listener,
     void *data
 ) {
-    struct lumo_compositor *compositor =
-        wl_container_of(listener, compositor, layer_new_surface);
+    struct lumo_compositor *compositor = lumo_protocol_listener_compositor(
+        listener,
+        LUMO_PROTOCOL_LISTENER_LAYER_SURFACE
+    );
     struct wlr_layer_surface_v1 *layer_surface = data;
     struct lumo_layer_surface *surface = calloc(1, sizeof(*surface));
+
+    if (compositor == NULL) {
+        wlr_log(WLR_ERROR, "protocol: missing compositor for new layer surface");
+        return;
+    }
 
     if (surface == NULL) {
         wlr_log_errno(WLR_ERROR, "protocol: failed to allocate layer surface");
@@ -549,6 +589,8 @@ int lumo_protocol_start(struct lumo_compositor *compositor) {
         wlr_log_errno(WLR_ERROR, "protocol: failed to allocate state");
         return -1;
     }
+
+    state->compositor = compositor;
 
     compositor->xdg_shell = wlr_xdg_shell_create(compositor->display, 6);
     if (compositor->xdg_shell == NULL) {

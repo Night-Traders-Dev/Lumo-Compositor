@@ -133,12 +133,12 @@ static void lumo_output_add(
     output->compositor = compositor;
     output->wlr_output = wlr_output;
     output->usable_area_valid = false;
-    wl_signal_add(&wlr_output->events.frame, &output->frame);
     output->frame.notify = lumo_output_frame;
-    wl_signal_add(&wlr_output->events.request_state, &output->request_state);
+    wl_signal_add(&wlr_output->events.frame, &output->frame);
     output->request_state.notify = lumo_output_request_state;
-    wl_signal_add(&wlr_output->events.destroy, &output->destroy);
+    wl_signal_add(&wlr_output->events.request_state, &output->request_state);
     output->destroy.notify = lumo_output_destroy;
+    wl_signal_add(&wlr_output->events.destroy, &output->destroy);
 
     output->layout_output = wlr_output_layout_add_auto(
         compositor->output_layout,

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.23] - 2026-03-27
+- Fixed the protocol listener ownership bug so new xdg-shell and layer-shell callbacks recover the real compositor pointer instead of casting the listener through the wrong struct.
+- Added regression coverage for protocol listener ownership and tightened the output listener wiring order to avoid startup-time races on fast DRM outputs.
+- Documented the login-session troubleshooting path for GDM bring-up and bumped the compositor version.
+
 ## [0.0.22] - 2026-03-27
 - Fixed the XWayland startup ordering so workarea sync waits for the XWayland `ready` event instead of dereferencing the XCB connection too early.
 - Added a compositor readiness flag and unit coverage so the output path can safely call into XWayland during startup without crashing the headless or login-session paths.

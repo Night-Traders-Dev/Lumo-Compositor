@@ -107,6 +107,24 @@ SSH sessions fall back to `headless` first; local GUI shells can still steer
 Avoid launching `lumo-shell` directly with `sudo`; the compositor owns shell
 startup and the shell expects a normal Wayland runtime.
 
+## Troubleshooting
+
+If the `Lumo` session drops back to GDM, start with the session log that GDM
+captures for the compositor:
+
+```sh
+journalctl -b --no-pager | grep -iE 'gdm-wayland-session|lumo-compositor|lumo-shell'
+```
+
+On the OrangePi RV2, the most useful markers are:
+
+- whether `lumo-compositor` gets as far as `output ...: ready`
+- whether the shell bridge starts and `lumo-shell` connects
+- whether the failure happens before or after the first shell surface arrives
+
+That split makes it much easier to tell session-manager problems apart from
+compositor bring-up bugs.
+
 ## Design Notes
 
 Lumo is being built around a few core ideas:

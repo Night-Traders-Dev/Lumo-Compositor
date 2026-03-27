@@ -86,11 +86,25 @@ struct lumo_toplevel;
 struct lumo_popup;
 struct lumo_layer_surface;
 struct lumo_hitbox;
+struct lumo_protocol_state;
 
 enum lumo_scene_object_role {
     LUMO_SCENE_OBJECT_TOPLEVEL = 0,
     LUMO_SCENE_OBJECT_POPUP,
     LUMO_SCENE_OBJECT_LAYER_SURFACE,
+};
+
+enum lumo_protocol_listener_kind {
+    LUMO_PROTOCOL_LISTENER_XDG_TOPLEVEL = 0,
+    LUMO_PROTOCOL_LISTENER_XDG_POPUP,
+    LUMO_PROTOCOL_LISTENER_LAYER_SURFACE,
+};
+
+struct lumo_protocol_state {
+    struct lumo_compositor *compositor;
+    struct wl_listener xdg_new_toplevel;
+    struct wl_listener xdg_new_popup;
+    struct wl_listener layer_new_surface;
 };
 
 static inline enum wl_output_transform lumo_rotation_to_transform(
@@ -494,7 +508,7 @@ struct lumo_compositor {
     struct wl_list input_devices;
     struct wl_list touch_points;
     void *input_state;
-    void *protocol_state;
+    struct lumo_protocol_state *protocol_state;
     size_t pointer_devices;
     size_t touch_devices;
     size_t keyboard_devices;
@@ -569,6 +583,10 @@ void lumo_protocol_configure_layers(
 
 int lumo_protocol_start(struct lumo_compositor *compositor);
 void lumo_protocol_stop(struct lumo_compositor *compositor);
+struct lumo_compositor *lumo_protocol_listener_compositor(
+    struct wl_listener *listener,
+    enum lumo_protocol_listener_kind kind
+);
 int lumo_protocol_register_hitbox(
     struct lumo_compositor *compositor,
     const char *name,

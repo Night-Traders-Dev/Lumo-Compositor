@@ -74,3 +74,16 @@ now prefers the safest available nested or headless backend instead of waiting
 for the DRM path to time out.
 SSH shells fall back to `headless` first; a local GUI session can still steer
 `auto` toward nested `wayland` or `x11` when that makes more sense.
+
+## Session Troubleshooting
+
+If GDM returns straight to the greeter, inspect the compositor logs from the
+display-manager session first:
+
+```sh
+journalctl -b --no-pager | grep -iE 'gdm-wayland-session|lumo-compositor|lumo-shell'
+```
+
+The key breakpoint is whether Lumo reaches `output ...: ready` and starts the
+bundled shell clients. If it does, the problem is usually in compositor
+surface bring-up rather than the GDM session entry itself.

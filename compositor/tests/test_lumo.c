@@ -185,6 +185,22 @@ static void test_shell_protocol_roundtrip(void) {
     assert(strcmp(value, "launcher-tile") == 0);
 }
 
+static void test_protocol_listener_owner(void) {
+    struct lumo_compositor compositor = {0};
+    struct lumo_protocol_state state = {
+        .compositor = &compositor,
+    };
+
+    assert(lumo_protocol_listener_compositor(&state.xdg_new_toplevel,
+        LUMO_PROTOCOL_LISTENER_XDG_TOPLEVEL) == &compositor);
+    assert(lumo_protocol_listener_compositor(&state.xdg_new_popup,
+        LUMO_PROTOCOL_LISTENER_XDG_POPUP) == &compositor);
+    assert(lumo_protocol_listener_compositor(&state.layer_new_surface,
+        LUMO_PROTOCOL_LISTENER_LAYER_SURFACE) == &compositor);
+    assert(lumo_protocol_listener_compositor(NULL,
+        LUMO_PROTOCOL_LISTENER_LAYER_SURFACE) == NULL);
+}
+
 static void test_compositor_defaults(void) {
     const struct lumo_compositor_config config = {
         .session_name = "lumo-test",
@@ -508,6 +524,7 @@ int main(void) {
     test_xwayland_ready_gate();
     test_state_setters();
     test_shell_protocol_roundtrip();
+    test_protocol_listener_owner();
     test_shell_binary_resolution();
     test_shell_argv_builder();
     test_shell_state_helpers();
