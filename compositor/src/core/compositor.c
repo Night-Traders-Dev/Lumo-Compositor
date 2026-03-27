@@ -9,6 +9,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#if LUMO_HAS_SYSTEMD
+#include <systemd/sd-daemon.h>
+#endif
+
 static bool lumo_read_parent_notify_socket(char *buf, size_t bufsz) {
     pid_t ppid = getppid();
     char envpath[64];
@@ -263,6 +267,10 @@ int lumo_compositor_run(struct lumo_compositor *compositor) {
 
     compositor->running = true;
     lumo_notify_ready();
+#if LUMO_HAS_SYSTEMD
+    sd_notify(0, "READY=1");
+    wlr_log(WLR_INFO, "sd_notify: sent READY=1 via libsystemd");
+#endif
     wlr_log(WLR_INFO,
         "lumo compositor session=%s socket=%s rotation=%s",
         session_name,

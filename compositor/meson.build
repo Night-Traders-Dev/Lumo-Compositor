@@ -15,12 +15,19 @@ orangepi_touch_quirks_option = get_option('orangepi_touch_quirks')
 orangepi_touch_quirks_enabled = not orangepi_touch_quirks_option.disabled()
 udev_rules_dir = get_option('udev_rules_dir')
 
+libsystemd = dependency('libsystemd', required: false)
+
 lumo_deps = [
   dependency('wlroots-0.18', required: true),
   dependency('wayland-server', required: true),
   dependency('xkbcommon', required: true),
   dependency('wayland-protocols', required: true),
 ]
+
+if libsystemd.found()
+  lumo_deps += libsystemd
+  add_project_arguments('-DLUMO_HAS_SYSTEMD=1', language: 'c')
+endif
 
 shell_deps = [
   dependency('wayland-client', required: true),
