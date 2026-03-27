@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## [0.0.41] - 2026-03-27
 - Fixed the launcher shell bootstrap so the app drawer is created as a full-screen overlay from the start instead of a hidden `1x1` layer surface.
+- Fixed the layer arrangement path so newly created layer surfaces are configured immediately instead of being skipped until after initialization.
 - Added a regression test for the launcher bootstrap geometry so the drawer no longer depends on a later resize to become visible.
 
 ## [0.0.40] - 2026-03-27

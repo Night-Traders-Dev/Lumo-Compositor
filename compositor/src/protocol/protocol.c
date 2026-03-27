@@ -1087,13 +1087,12 @@ void lumo_protocol_configure_layers(
                 continue;
             }
 
-            if (!layer_surface->layer_surface->initialized) {
-                pending_initialization = true;
-                continue;
-            }
-
             lumo_protocol_configure_layer_surface_for_output(layer_surface,
                 output, &full_area, &usable_area);
+
+            if (!layer_surface->layer_surface->initialized) {
+                pending_initialization = true;
+            }
         }
     }
 
