@@ -10,6 +10,7 @@ enum lumo_shell_mode {
     LUMO_SHELL_MODE_LAUNCHER = 0,
     LUMO_SHELL_MODE_OSK,
     LUMO_SHELL_MODE_GESTURE,
+    LUMO_SHELL_MODE_STATUS,
 };
 
 enum lumo_shell_anchor {
@@ -108,6 +109,7 @@ bool lumo_shell_touch_debug_target_parse(
     enum lumo_shell_touch_debug_target *target
 );
 const char *lumo_shell_launcher_tile_label(uint32_t tile_index);
+const char *lumo_shell_launcher_tile_command(uint32_t tile_index);
 const char *lumo_shell_osk_key_label(uint32_t key_index);
 const char *lumo_shell_osk_key_text(uint32_t key_index);
 size_t lumo_shell_touch_audit_point_count(void);

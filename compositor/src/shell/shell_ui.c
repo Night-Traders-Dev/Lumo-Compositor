@@ -20,6 +20,20 @@ static const char *const lumo_shell_launcher_labels[] = {
     "FILES",
     "SETTINGS",
 };
+static const char *const lumo_shell_launcher_commands[] = {
+    NULL,
+    NULL,
+    "epiphany",
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    "gnome-text-editor",
+    "nautilus",
+    "gnome-control-center",
+};
 static const char *const lumo_shell_touch_audit_names[] = {
     "top-left",
     "top-center",
@@ -144,6 +158,15 @@ static bool lumo_shell_launcher_geometry(
     return true;
 }
 
+const char *lumo_shell_launcher_tile_command(uint32_t tile_index) {
+    if (tile_index >= sizeof(lumo_shell_launcher_commands) /
+            sizeof(lumo_shell_launcher_commands[0])) {
+        return NULL;
+    }
+
+    return lumo_shell_launcher_commands[tile_index];
+}
+
 const char *lumo_shell_mode_name(enum lumo_shell_mode mode) {
     switch (mode) {
     case LUMO_SHELL_MODE_LAUNCHER:
@@ -152,6 +175,8 @@ const char *lumo_shell_mode_name(enum lumo_shell_mode mode) {
         return "osk";
     case LUMO_SHELL_MODE_GESTURE:
         return "gesture";
+    case LUMO_SHELL_MODE_STATUS:
+        return "status";
     default:
         return "unknown";
     }
@@ -479,6 +504,8 @@ bool lumo_shell_target_for_mode(
         target->index = 0;
         target->rect = rect;
         return true;
+    case LUMO_SHELL_MODE_STATUS:
+        return false;
     default:
         return false;
     }
@@ -514,6 +541,10 @@ bool lumo_shell_surface_local_coords(
     case LUMO_SHELL_MODE_GESTURE:
         origin_x = 0.0;
         origin_y = (double)output_height - (double)surface_height;
+        break;
+    case LUMO_SHELL_MODE_STATUS:
+        origin_x = 0.0;
+        origin_y = 0.0;
         break;
     default:
         return false;
@@ -584,6 +615,18 @@ bool lumo_shell_surface_config_for_mode(
         config->keyboard_interactive = false;
         config->background_rgba = 0x00000000;
         break;
+    case LUMO_SHELL_MODE_STATUS: {
+        uint32_t status_height = lumo_shell_clamp_u32(output_height / 18, 32, 48);
+        config->name = "status";
+        config->height = status_height;
+        config->anchor = LUMO_SHELL_ANCHOR_TOP |
+            LUMO_SHELL_ANCHOR_LEFT |
+            LUMO_SHELL_ANCHOR_RIGHT;
+        config->exclusive_zone = (int32_t)status_height;
+        config->keyboard_interactive = false;
+        config->background_rgba = 0x00000000;
+        break;
+    }
     default:
         return false;
     }
@@ -631,6 +674,17 @@ bool lumo_shell_surface_bootstrap_config(
             LUMO_SHELL_ANCHOR_LEFT |
             LUMO_SHELL_ANCHOR_RIGHT;
         config->exclusive_zone = 40;
+        config->keyboard_interactive = false;
+        config->background_rgba = 0x00000000;
+        return true;
+    case LUMO_SHELL_MODE_STATUS:
+        config->name = "status";
+        config->width = 0;
+        config->height = 36;
+        config->anchor = LUMO_SHELL_ANCHOR_TOP |
+            LUMO_SHELL_ANCHOR_LEFT |
+            LUMO_SHELL_ANCHOR_RIGHT;
+        config->exclusive_zone = 36;
         config->keyboard_interactive = false;
         config->background_rgba = 0x00000000;
         return true;

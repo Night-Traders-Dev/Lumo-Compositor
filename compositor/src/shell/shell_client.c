@@ -943,6 +943,67 @@ static void lumo_draw_gesture(
     }
 }
 
+static void lumo_draw_status(
+    uint32_t *pixels,
+    uint32_t width,
+    uint32_t height,
+    const struct lumo_shell_client *client
+) {
+    const uint32_t bar_top = lumo_argb(0xE0, 0x0C, 0x10, 0x18);
+    const uint32_t bar_bottom = lumo_argb(0xE0, 0x08, 0x0C, 0x14);
+    const uint32_t separator = lumo_argb(0x40, 0x46, 0x6D, 0x89);
+    const uint32_t text_color = lumo_argb(0xFF, 0xC8, 0xD4, 0xE0);
+    const uint32_t accent_color = lumo_argb(0xFF, 0x69, 0xD1, 0xFF);
+    struct lumo_rect bar_rect;
+    struct lumo_rect sep_rect;
+    char time_buf[32];
+    time_t now;
+    struct tm tm_now;
+
+    (void)client;
+
+    bar_rect.x = 0;
+    bar_rect.y = 0;
+    bar_rect.width = (int)width;
+    bar_rect.height = (int)height;
+    lumo_fill_vertical_gradient(pixels, width, height, &bar_rect,
+        bar_top, bar_bottom);
+
+    sep_rect.x = 0;
+    sep_rect.y = (int)height - 1;
+    sep_rect.width = (int)width;
+    sep_rect.height = 1;
+    lumo_fill_rect(pixels, width, height, sep_rect.x, sep_rect.y,
+        sep_rect.width, sep_rect.height, separator);
+
+    now = time(NULL);
+    localtime_r(&now, &tm_now);
+    snprintf(time_buf, sizeof(time_buf), "%02d:%02d",
+        tm_now.tm_hour, tm_now.tm_min);
+
+    {
+        int time_width = lumo_text_width(time_buf, 3);
+        int time_x = (int)(width / 2) - time_width / 2;
+        int time_y = (int)(height / 2) - 10;
+        lumo_draw_text(pixels, width, height, time_x, time_y, 3,
+            text_color, time_buf);
+    }
+
+    lumo_draw_text(pixels, width, height, 14, (int)(height / 2) - 7,
+        2, accent_color, "LUMO");
+
+    {
+        uint32_t rot = client != NULL ? client->compositor_rotation_degrees : 0;
+        const char *rot_label = rot == 0 ? "" :
+            rot == 90 ? "90" : rot == 180 ? "180" : "270";
+        if (rot_label[0] != '\0') {
+            int rx = (int)width - 60;
+            lumo_draw_text(pixels, width, height, rx, (int)(height / 2) - 5,
+                2, text_color, rot_label);
+        }
+    }
+}
+
 static void lumo_render_surface(
     struct lumo_shell_client *client,
     uint32_t *pixels,
@@ -958,6 +1019,7 @@ static void lumo_render_surface(
 
     lumo_clear_pixels(pixels, width, height);
     visibility = client->mode == LUMO_SHELL_MODE_GESTURE
+        || client->mode == LUMO_SHELL_MODE_STATUS
         ? 1.0
         : lumo_shell_client_animation_value(client);
 
@@ -970,6 +1032,9 @@ static void lumo_render_surface(
         return;
     case LUMO_SHELL_MODE_GESTURE:
         lumo_draw_gesture(pixels, width, height, client, active_target);
+        return;
+    case LUMO_SHELL_MODE_STATUS:
+        lumo_draw_status(pixels, width, height, client);
         return;
     default:
         break;
@@ -1294,6 +1359,9 @@ static int lumo_shell_client_animation_timeout(
     uint64_t end_time;
 
     if (client == NULL || !client->animation_active) {
+        if (client != NULL && client->mode == LUMO_SHELL_MODE_STATUS) {
+            return 30000;
+        }
         return -1;
     }
 
@@ -1966,6 +2034,9 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
         }
 
         if (poll_result == 0) {
+            if (client->mode == LUMO_SHELL_MODE_STATUS) {
+                (void)lumo_shell_client_redraw(client);
+            }
             lumo_shell_client_tick_animation(client);
             continue;
         }
@@ -2459,6 +2530,10 @@ static bool lumo_shell_parse_mode(
         *mode = LUMO_SHELL_MODE_GESTURE;
         return true;
     }
+    if (strcmp(value, "status") == 0) {
+        *mode = LUMO_SHELL_MODE_STATUS;
+        return true;
+    }
 
     return false;
 }
@@ -2468,8 +2543,10 @@ static bool lumo_shell_create_surface(struct lumo_shell_client *client) {
         return false;
     }
 
-    client->target_visible = client->mode == LUMO_SHELL_MODE_GESTURE;
-    client->surface_hidden = client->mode != LUMO_SHELL_MODE_GESTURE;
+    client->target_visible = client->mode == LUMO_SHELL_MODE_GESTURE ||
+        client->mode == LUMO_SHELL_MODE_STATUS;
+    client->surface_hidden = client->mode != LUMO_SHELL_MODE_GESTURE &&
+        client->mode != LUMO_SHELL_MODE_STATUS;
     client->animation_active = false;
     client->animation_from = client->target_visible ? 1.0 : 0.0;
     client->animation_to = client->animation_from;

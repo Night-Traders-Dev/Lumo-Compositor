@@ -38,7 +38,7 @@ struct lumo_shell_bridge {
 
 struct lumo_shell_state {
     size_t count;
-    struct lumo_shell_process processes[3];
+    struct lumo_shell_process processes[4];
     struct lumo_shell_bridge bridge;
 };
 
@@ -59,6 +59,8 @@ static const char *lumo_shell_mode_argument(enum lumo_shell_mode mode) {
         return "osk";
     case LUMO_SHELL_MODE_GESTURE:
         return "gesture";
+    case LUMO_SHELL_MODE_STATUS:
+        return "status";
     default:
         return NULL;
     }
@@ -605,6 +607,29 @@ static const char *lumo_shell_bridge_commit_osk_text(
     return NULL;
 }
 
+static void lumo_shell_launch_app(const char *command) {
+    pid_t pid;
+
+    if (command == NULL || command[0] == '\0') {
+        wlr_log(WLR_INFO, "shell: no command mapped for this tile");
+        return;
+    }
+
+    pid = fork();
+    if (pid < 0) {
+        wlr_log_errno(WLR_ERROR, "shell: failed to fork for app launch");
+        return;
+    }
+
+    if (pid == 0) {
+        setsid();
+        execlp(command, command, (char *)NULL);
+        _exit(127);
+    }
+
+    wlr_log(WLR_INFO, "shell: launched '%s' pid=%d", command, (int)pid);
+}
+
 static void lumo_shell_bridge_handle_request_frame(
     struct lumo_shell_bridge_client *client,
     const struct lumo_shell_protocol_frame *frame
@@ -631,13 +656,19 @@ static void lumo_shell_bridge_handle_request_frame(
         (void)lumo_shell_protocol_frame_get_u32(frame, "index", &index);
 
         switch (target_kind) {
-        case LUMO_SHELL_TARGET_LAUNCHER_TILE:
+        case LUMO_SHELL_TARGET_LAUNCHER_TILE: {
+            const char *app_command = lumo_shell_launcher_tile_command(index);
             wlr_log(WLR_INFO,
-                "shell: activate_target launcher tile %u requested",
-                index);
+                "shell: activate_target launcher tile %u requested (cmd=%s)",
+                index,
+                app_command != NULL ? app_command : "none");
+            if (app_command != NULL) {
+                lumo_shell_launch_app(app_command);
+            }
             lumo_protocol_set_launcher_visible(client->compositor, false);
             handled = true;
             break;
+        }
         case LUMO_SHELL_TARGET_GESTURE_HANDLE:
             wlr_log(WLR_INFO,
                 "shell: activate_target gesture handle requested");
@@ -1219,6 +1250,7 @@ int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
         LUMO_SHELL_MODE_LAUNCHER,
         LUMO_SHELL_MODE_OSK,
         LUMO_SHELL_MODE_GESTURE,
+        LUMO_SHELL_MODE_STATUS,
     };
 
     if (compositor == NULL || compositor->display == NULL ||

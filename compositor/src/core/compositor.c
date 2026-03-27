@@ -3,6 +3,38 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+static void lumo_notify_ready(void) {
+    const char *socket_path = getenv("NOTIFY_SOCKET");
+    struct sockaddr_un addr;
+    int fd;
+
+    if (socket_path == NULL || socket_path[0] == '\0') {
+        return;
+    }
+
+    fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        return;
+    }
+
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    if (socket_path[0] == '@') {
+        addr.sun_path[0] = '\0';
+        strncpy(addr.sun_path + 1, socket_path + 1, sizeof(addr.sun_path) - 2);
+    } else {
+        strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
+    }
+
+    (void)sendto(fd, "READY=1", 7, MSG_NOSIGNAL,
+        (const struct sockaddr *)&addr,
+        offsetof(struct sockaddr_un, sun_path) + strlen(socket_path));
+    close(fd);
+}
 
 static const char *lumo_default_session_name(void) {
     return "lumo";
@@ -173,6 +205,7 @@ int lumo_compositor_run(struct lumo_compositor *compositor) {
     }
 
     compositor->running = true;
+    lumo_notify_ready();
     wlr_log(WLR_INFO,
         "lumo compositor session=%s socket=%s rotation=%s",
         session_name,

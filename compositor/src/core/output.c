@@ -209,6 +209,16 @@ int lumo_output_start(struct lumo_compositor *compositor) {
         return -1;
     }
 
+    {
+        float bg_color[4] = {0.035f, 0.047f, 0.071f, 1.0f};
+        struct wlr_scene_rect *bg = wlr_scene_rect_create(
+            &compositor->scene->tree, 8192, 8192, bg_color);
+        if (bg != NULL) {
+            wlr_scene_node_set_position(&bg->node, -4096, -4096);
+            wlr_scene_node_lower_to_bottom(&bg->node);
+        }
+    }
+
     compositor->scene_layout = wlr_scene_attach_output_layout(
         compositor->scene,
         compositor->output_layout

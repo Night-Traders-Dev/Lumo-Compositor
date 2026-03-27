@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Lumo
 Comment=Touch-first Wayland session with bundled shell, keyboard, and gestures
-Exec=@lumo_bindir@/lumo-compositor --backend drm --shell @lumo_bindir@/lumo-shell
+Exec=dbus-run-session @lumo_bindir@/lumo-compositor --backend drm --shell @lumo_bindir@/lumo-shell
 TryExec=@lumo_bindir@/lumo-compositor
 Type=Application
-X-GDM-SessionRegisters=true
+DesktopNames=Lumo
