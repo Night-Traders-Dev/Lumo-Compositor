@@ -129,7 +129,7 @@ struct lumo_compositor *lumo_compositor_create(
         : LUMO_ROTATION_NORMAL;
     compositor->scrim_state = LUMO_SCRIM_HIDDEN;
     compositor->gesture_threshold = 32.0;
-    compositor->gesture_timeout_ms = 180;
+    compositor->gesture_timeout_ms = 90;
     compositor->keyboard_resize_serial = 0;
     compositor->keyboard_resize_pending = false;
     compositor->keyboard_resize_acked = true;

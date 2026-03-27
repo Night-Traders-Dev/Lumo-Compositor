@@ -1533,6 +1533,20 @@ static void lumo_input_touch_down(
         event->time_msec, point->lx, point->ly, point->sx, point->sy);
     lumo_input_touch_point_bind_surface(point, target.surface);
 
+    if (lumo_touch_hitbox_triggers_launcher_immediately(point->hitbox,
+            compositor->launcher_visible)) {
+        point->capture_edge = lumo_hitbox_edge_zone(point->hitbox);
+        lumo_input_touch_point_begin_capture(compositor, point, &target,
+            event->time_msec);
+        lumo_input_touch_point_trigger_edge_action(compositor, point,
+            event->time_msec);
+        wlr_log(WLR_INFO, "input: touch %d opened launcher from gesture handle",
+            point->touch_id);
+        lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
+            true, point->lx, point->ly);
+        return;
+    }
+
     if (lumo_input_target_is_shell(&target)) {
         lumo_input_touch_point_deliver_now(compositor, point, &target,
             event->time_msec);

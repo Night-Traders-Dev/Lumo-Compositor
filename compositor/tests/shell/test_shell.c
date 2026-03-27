@@ -222,6 +222,15 @@ static void test_gesture_hitbox(void) {
     assert(target.index == 0);
 }
 
+static void test_transition_durations(void) {
+    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_LAUNCHER, true) == 140);
+    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_LAUNCHER, false) == 110);
+    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_OSK, true) == 130);
+    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_OSK, false) == 100);
+    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_GESTURE, true) == 0);
+    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_STATUS, false) == 0);
+}
+
 static void test_touch_audit_layout(void) {
     struct lumo_rect rect = {0};
     uint32_t point_index = UINT32_MAX;
@@ -306,6 +315,7 @@ int main(void) {
     test_launcher_hitboxes();
     test_osk_hitboxes();
     test_gesture_hitbox();
+    test_transition_durations();
     test_touch_audit_layout();
     test_surface_local_coords();
     puts("lumo shell tests passed");

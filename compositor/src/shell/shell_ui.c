@@ -410,6 +410,22 @@ bool lumo_shell_gesture_handle_rect(
     return true;
 }
 
+uint32_t lumo_shell_transition_duration_ms(
+    enum lumo_shell_mode mode,
+    bool visible
+) {
+    switch (mode) {
+    case LUMO_SHELL_MODE_LAUNCHER:
+        return visible ? 140u : 110u;
+    case LUMO_SHELL_MODE_OSK:
+        return visible ? 130u : 100u;
+    case LUMO_SHELL_MODE_GESTURE:
+    case LUMO_SHELL_MODE_STATUS:
+    default:
+        return 0u;
+    }
+}
+
 bool lumo_shell_touch_audit_point_rect(
     uint32_t output_width,
     uint32_t output_height,

@@ -1321,9 +1321,8 @@ static void lumo_shell_client_begin_transition(
     client->animation_from = current_value;
     client->animation_to = visible ? 1.0 : 0.0;
     client->animation_started_msec = lumo_now_msec();
-    client->animation_duration_msec = client->mode == LUMO_SHELL_MODE_LAUNCHER
-        ? 240
-        : 190;
+    client->animation_duration_msec = lumo_shell_transition_duration_ms(
+        client->mode, visible);
     client->animation_active = client->animation_from != client->animation_to;
 
     if (!client->animation_active && !visible) {
@@ -2603,7 +2602,7 @@ int main(int argc, char **argv) {
         .compositor_scrim_state = LUMO_SHELL_REMOTE_SCRIM_HIDDEN,
         .compositor_rotation_degrees = 0,
         .compositor_gesture_threshold = 32.0,
-        .compositor_gesture_timeout_ms = 180,
+        .compositor_gesture_timeout_ms = 90,
         .compositor_keyboard_resize_pending = false,
         .compositor_keyboard_resize_acked = true,
         .compositor_keyboard_resize_serial = 0,

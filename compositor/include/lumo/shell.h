@@ -185,6 +185,10 @@ bool lumo_shell_gesture_handle_rect(
     uint32_t output_height,
     struct lumo_rect *rect
 );
+uint32_t lumo_shell_transition_duration_ms(
+    enum lumo_shell_mode mode,
+    bool visible
+);
 bool lumo_shell_touch_audit_point_rect(
     uint32_t output_width,
     uint32_t output_height,
