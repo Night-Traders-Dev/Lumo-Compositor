@@ -273,7 +273,7 @@ static bool lumo_input_hitbox_is_shell_reserved(
     }
 }
 
-static bool lumo_input_in_edge_zone(
+static bool lumo_input_in_launcher_edge_zone(
     struct lumo_compositor *compositor,
     const struct lumo_output *output,
     double lx,
@@ -285,6 +285,7 @@ static bool lumo_input_in_edge_zone(
     if (compositor == NULL || output == NULL || output->wlr_output == NULL) {
         return false;
     }
+    (void)lx;
 
     wlr_output_layout_get_box(compositor->output_layout, output->wlr_output,
         &box);
@@ -296,10 +297,7 @@ static bool lumo_input_in_edge_zone(
         ? compositor->gesture_threshold
         : 24.0;
 
-    return lx <= box.x + threshold ||
-        lx >= box.x + box.width - threshold ||
-        ly <= box.y + threshold ||
-        ly >= box.y + box.height - threshold;
+    return ly >= box.y + box.height - threshold;
 }
 
 static struct lumo_touch_point *lumo_input_touch_point_for_id(
@@ -1321,7 +1319,6 @@ static void lumo_input_touch_motion(
     double lx = 0.0;
     double ly = 0.0;
     double threshold;
-    bool in_edge_zone;
 
     if (compositor == NULL || event == NULL || compositor->seat == NULL) {
         return;
@@ -1340,15 +1337,11 @@ static void lumo_input_touch_motion(
         ? compositor->gesture_threshold
         : 24.0;
 
-    if (point->captured && !point->gesture_triggered &&
-            point->hitbox != NULL &&
-            point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE &&
+    if (lumo_touch_point_is_launcher_capture(point) &&
+            !point->gesture_triggered &&
             lumo_input_touch_point_dist_exceeded(point, lx, ly, threshold)) {
         lumo_input_touch_point_trigger_gesture(compositor, point, event->time_msec);
     }
-
-    in_edge_zone = lumo_input_in_edge_zone(compositor,
-        lumo_input_output_for_layout_coords(compositor, lx, ly), lx, ly);
 
     if (!point->captured && point->delivered && point->surface != NULL) {
         wlr_seat_touch_notify_motion(compositor->seat, event->time_msec,
@@ -1366,9 +1359,7 @@ static void lumo_input_touch_motion(
         lumo_input_touch_sample_append(point, LUMO_TOUCH_SAMPLE_MOTION,
             event->time_msec, lx, ly, target.sx, target.sy);
         if (!point->gesture_triggered &&
-                point->hitbox != NULL &&
-                point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE &&
-                in_edge_zone &&
+                lumo_touch_point_is_launcher_capture(point) &&
                 lumo_input_touch_point_dist_exceeded(point, lx, ly, threshold)) {
             lumo_input_touch_point_trigger_gesture(compositor, point,
                 event->time_msec);
@@ -1472,7 +1463,8 @@ static void lumo_input_touch_down(
         return;
     }
 
-    edge_zone = lumo_input_in_edge_zone(compositor, output, point->lx, point->ly);
+    edge_zone = lumo_input_in_launcher_edge_zone(compositor, output,
+        point->lx, point->ly);
     if (edge_zone) {
         lumo_input_touch_point_begin_capture(compositor, point, &target,
             event->time_msec);
@@ -1517,15 +1509,20 @@ static void lumo_input_touch_up(
 
     if (point->captured && !point->delivered) {
         if (!point->gesture_triggered &&
-                lumo_hitbox_is_shell_gesture(point->hitbox) &&
+                lumo_touch_point_is_launcher_capture(point) &&
                 !lumo_input_touch_point_dist_exceeded(point, point->lx,
                     point->ly, compositor->gesture_threshold > 0.0
                         ? compositor->gesture_threshold
                         : 24.0)) {
             lumo_input_touch_point_trigger_gesture(compositor, point,
                 event->time_msec);
-            wlr_log(WLR_INFO, "input: touch %d tapped gesture handle",
-                point->touch_id);
+            if (lumo_hitbox_is_shell_gesture(point->hitbox)) {
+                wlr_log(WLR_INFO, "input: touch %d tapped gesture handle",
+                    point->touch_id);
+            } else {
+                wlr_log(WLR_INFO, "input: touch %d tapped launcher edge",
+                    point->touch_id);
+            }
         }
 
         if (!point->gesture_triggered && point->surface != NULL &&

@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.31] - 2026-03-27
+- Tightened launcher gesture policy around the mobile shell model: the generic launcher edge now only tracks the bottom edge, and bottom-edge taps or swipes can open the launcher even when they miss the small visual pill hitbox.
+- Added a compositor helper and regression coverage for launcher-edge touch captures so the bottom-edge gesture path stays testable as we keep refining touchscreen behavior on the OrangePi.
+
 ## [0.0.30] - 2026-03-27
 - Fixed a compositor startup crash in the direct DRM plus libinput session path by initializing the `input_devices` wl_list before input devices are attached.
 - Added regression coverage for the compositor default state so uninitialized input-device list heads are caught during tests.

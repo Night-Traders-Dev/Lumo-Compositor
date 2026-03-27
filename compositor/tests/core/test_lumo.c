@@ -293,6 +293,21 @@ static void test_touch_debug_helpers(void) {
         .name = "launcher-scrim",
         .kind = LUMO_HITBOX_SCRIM,
     };
+    struct lumo_touch_point launcher_capture = {
+        .captured = true,
+        .delivered = false,
+        .hitbox = &gesture_hitbox,
+    };
+    struct lumo_touch_point generic_edge_capture = {
+        .captured = true,
+        .delivered = false,
+        .hitbox = NULL,
+    };
+    struct lumo_touch_point scrim_capture = {
+        .captured = true,
+        .delivered = false,
+        .hitbox = &other_hitbox,
+    };
 
     assert(strcmp(lumo_touch_target_kind_name(LUMO_TOUCH_TARGET_NONE),
         "none") == 0);
@@ -314,6 +329,12 @@ static void test_touch_debug_helpers(void) {
     assert(!lumo_hitbox_is_shell_gesture(&other_hitbox));
     gesture_hitbox.name = NULL;
     assert(!lumo_hitbox_is_shell_gesture(&gesture_hitbox));
+
+    assert(lumo_touch_point_is_launcher_capture(&launcher_capture));
+    assert(lumo_touch_point_is_launcher_capture(&generic_edge_capture));
+    assert(!lumo_touch_point_is_launcher_capture(&scrim_capture));
+    generic_edge_capture.delivered = true;
+    assert(!lumo_touch_point_is_launcher_capture(&generic_edge_capture));
 }
 
 static void test_shell_hitbox_refresh(void) {

@@ -532,6 +532,16 @@ struct lumo_touch_point {
     struct wl_list samples;
 };
 
+static inline bool lumo_touch_point_is_launcher_capture(
+    const struct lumo_touch_point *point
+) {
+    return point != NULL &&
+        point->captured &&
+        !point->delivered &&
+        (point->hitbox == NULL ||
+            point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE);
+}
+
 struct lumo_compositor {
     const struct lumo_compositor_config *config;
     struct wl_display *display;
