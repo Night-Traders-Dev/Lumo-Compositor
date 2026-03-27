@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.25] - 2026-03-27
+- Reworked the shell toward a mobile UI direction that blends Ubuntu Touch app-drawer and keyboard ergonomics with webOS-inspired surface styling and motion.
+- Removed the shell client's hardcoded `1280x720` bootstrap sizing in favor of live layer-shell sizing and compositor-provided output dimensions.
+- Hid launcher and OSK surfaces by default, added animated show and hide behavior, and kept the gesture surface as the always-available bottom handle.
+- Replaced placeholder launcher blocks and keyboard outlines with labeled launcher tiles, real key legends, and a modularized OSK source file at `compositor/src/shell_osk.c`.
+- Wired keyboard visibility to focused and enabled `text-input-v3` state on the compositor side and documented the shell design direction in `Design.md`.
+
 ## [0.0.24] - 2026-03-27
 - Fixed layer-surface teardown so the compositor no longer dereferences wlroots scene helper internals after a shell client disconnects.
 - Switched layer-shell configuration from a per-frame path to an event-driven path so Lumo stops flooding shell clients with repeated configure traffic during DRM rendering.

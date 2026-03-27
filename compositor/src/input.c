@@ -466,6 +466,8 @@ static void lumo_input_focus_surface(
             }
         }
     }
+
+    lumo_protocol_refresh_keyboard_visibility(compositor);
 }
 
 static void lumo_input_refresh_capabilities(struct lumo_compositor *compositor) {

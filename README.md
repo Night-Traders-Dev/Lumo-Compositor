@@ -15,6 +15,7 @@ leans toward:
 
 - `compositor/` contains the wlroots-based compositor core in C.
 - `docs/` contains the architecture and migration notes.
+- `Design.md` captures the touch-first shell direction and visual language.
 - `CHANGELOG.md` tracks semver-style progress starting at `0.0.1`.
 
 The compositor module already has a working scaffold for:

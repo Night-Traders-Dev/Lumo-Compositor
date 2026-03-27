@@ -68,6 +68,8 @@ struct lumo_shell_target {
 
 const char *lumo_shell_mode_name(enum lumo_shell_mode mode);
 const char *lumo_shell_target_kind_name(enum lumo_shell_target_kind kind);
+const char *lumo_shell_launcher_tile_label(uint32_t tile_index);
+const char *lumo_shell_osk_key_label(uint32_t key_index);
 const char *lumo_shell_osk_key_text(uint32_t key_index);
 static inline bool lumo_shell_target_kind_parse(
     const char *value,
@@ -100,6 +102,10 @@ bool lumo_shell_surface_config_for_mode(
     enum lumo_shell_mode mode,
     uint32_t output_width,
     uint32_t output_height,
+    struct lumo_shell_surface_config *config
+);
+bool lumo_shell_surface_bootstrap_config(
+    enum lumo_shell_mode mode,
     struct lumo_shell_surface_config *config
 );
 size_t lumo_shell_launcher_tile_count(void);

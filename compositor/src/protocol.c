@@ -58,6 +58,135 @@ static struct lumo_output *lumo_protocol_first_output(
     return output;
 }
 
+void lumo_protocol_refresh_keyboard_visibility(
+    struct lumo_compositor *compositor
+) {
+    bool visible = false;
+
+    if (compositor == NULL || compositor->text_input_manager == NULL ||
+            compositor->seat == NULL) {
+        lumo_protocol_set_keyboard_visible(compositor, false);
+        return;
+    }
+
+    struct wl_resource *resource;
+    wl_list_for_each(resource, &compositor->text_input_manager->text_inputs, link) {
+        struct wlr_text_input_v3 *text_input = wl_resource_get_user_data(resource);
+
+        if (text_input == NULL || text_input->seat != compositor->seat) {
+            continue;
+        }
+
+        if (text_input->focused_surface != NULL && text_input->current_enabled) {
+            visible = true;
+            break;
+        }
+    }
+
+    lumo_protocol_set_keyboard_visible(compositor, visible);
+}
+
+static void lumo_protocol_text_input_binding_destroy(
+    struct lumo_text_input_binding *binding
+) {
+    if (binding == NULL) {
+        return;
+    }
+
+    wl_list_remove(&binding->enable.link);
+    wl_list_remove(&binding->commit.link);
+    wl_list_remove(&binding->disable.link);
+    wl_list_remove(&binding->destroy.link);
+    wl_list_remove(&binding->link);
+    free(binding);
+}
+
+static void lumo_protocol_text_input_enable(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_text_input_binding *binding =
+        wl_container_of(listener, binding, enable);
+
+    (void)data;
+    if (binding != NULL) {
+        lumo_protocol_refresh_keyboard_visibility(binding->compositor);
+    }
+}
+
+static void lumo_protocol_text_input_commit(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_text_input_binding *binding =
+        wl_container_of(listener, binding, commit);
+
+    (void)data;
+    if (binding != NULL) {
+        lumo_protocol_refresh_keyboard_visibility(binding->compositor);
+    }
+}
+
+static void lumo_protocol_text_input_disable(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_text_input_binding *binding =
+        wl_container_of(listener, binding, disable);
+
+    (void)data;
+    if (binding != NULL) {
+        lumo_protocol_refresh_keyboard_visibility(binding->compositor);
+    }
+}
+
+static void lumo_protocol_text_input_destroy(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_text_input_binding *binding =
+        wl_container_of(listener, binding, destroy);
+    struct lumo_compositor *compositor = binding != NULL ? binding->compositor : NULL;
+
+    (void)data;
+    lumo_protocol_text_input_binding_destroy(binding);
+    lumo_protocol_refresh_keyboard_visibility(compositor);
+}
+
+static void lumo_protocol_new_text_input(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_protocol_state *state =
+        wl_container_of(listener, state, text_input_new);
+    struct lumo_text_input_binding *binding;
+    struct wlr_text_input_v3 *text_input = data;
+
+    if (state == NULL || state->compositor == NULL || text_input == NULL) {
+        return;
+    }
+
+    binding = calloc(1, sizeof(*binding));
+    if (binding == NULL) {
+        wlr_log_errno(WLR_ERROR, "protocol: failed to track text-input");
+        return;
+    }
+
+    binding->compositor = state->compositor;
+    binding->text_input = text_input;
+    binding->enable.notify = lumo_protocol_text_input_enable;
+    binding->commit.notify = lumo_protocol_text_input_commit;
+    binding->disable.notify = lumo_protocol_text_input_disable;
+    binding->destroy.notify = lumo_protocol_text_input_destroy;
+
+    wl_signal_add(&text_input->events.enable, &binding->enable);
+    wl_signal_add(&text_input->events.commit, &binding->commit);
+    wl_signal_add(&text_input->events.disable, &binding->disable);
+    wl_signal_add(&text_input->events.destroy, &binding->destroy);
+    wl_list_insert(&state->text_input_bindings, &binding->link);
+    lumo_protocol_refresh_keyboard_visibility(state->compositor);
+}
+
 static struct lumo_output *lumo_protocol_output_for_wlr(
     struct lumo_compositor *compositor,
     struct wlr_output *wlr_output
@@ -582,6 +711,7 @@ int lumo_protocol_start(struct lumo_compositor *compositor) {
     }
 
     state->compositor = compositor;
+    wl_list_init(&state->text_input_bindings);
 
     compositor->xdg_shell = wlr_xdg_shell_create(compositor->display, 6);
     if (compositor->xdg_shell == NULL) {
@@ -644,6 +774,9 @@ int lumo_protocol_start(struct lumo_compositor *compositor) {
     state->layer_new_surface.notify = lumo_protocol_new_layer_surface;
     wl_signal_add(&compositor->layer_shell->events.new_surface,
         &state->layer_new_surface);
+    state->text_input_new.notify = lumo_protocol_new_text_input;
+    wl_signal_add(&compositor->text_input_manager->events.text_input,
+        &state->text_input_new);
 
     compositor->protocol_state = state;
     compositor->protocol_started = true;
@@ -656,6 +789,7 @@ void lumo_protocol_stop(struct lumo_compositor *compositor) {
     struct lumo_toplevel *toplevel, *toplevel_tmp;
     struct lumo_popup *popup, *popup_tmp;
     struct lumo_layer_surface *layer_surface, *layer_surface_tmp;
+    struct lumo_text_input_binding *binding, *binding_tmp;
 
     if (compositor == NULL || !compositor->protocol_started) {
         return;
@@ -681,9 +815,13 @@ void lumo_protocol_stop(struct lumo_compositor *compositor) {
     }
 
     if (state != NULL) {
+        wl_list_for_each_safe(binding, binding_tmp, &state->text_input_bindings, link) {
+            lumo_protocol_text_input_binding_destroy(binding);
+        }
         wl_list_remove(&state->xdg_new_toplevel.link);
         wl_list_remove(&state->xdg_new_popup.link);
         wl_list_remove(&state->layer_new_surface.link);
+        wl_list_remove(&state->text_input_new.link);
         free(state);
         compositor->protocol_state = NULL;
     }

@@ -87,6 +87,7 @@ struct lumo_popup;
 struct lumo_layer_surface;
 struct lumo_hitbox;
 struct lumo_protocol_state;
+struct lumo_text_input_binding;
 
 enum lumo_scene_object_role {
     LUMO_SCENE_OBJECT_TOPLEVEL = 0,
@@ -105,6 +106,18 @@ struct lumo_protocol_state {
     struct wl_listener xdg_new_toplevel;
     struct wl_listener xdg_new_popup;
     struct wl_listener layer_new_surface;
+    struct wl_listener text_input_new;
+    struct wl_list text_input_bindings;
+};
+
+struct lumo_text_input_binding {
+    struct wl_list link;
+    struct lumo_compositor *compositor;
+    struct wlr_text_input_v3 *text_input;
+    struct wl_listener enable;
+    struct wl_listener commit;
+    struct wl_listener disable;
+    struct wl_listener destroy;
 };
 
 static inline enum wl_output_transform lumo_rotation_to_transform(
@@ -624,6 +637,9 @@ void lumo_protocol_ack_keyboard_resize(
 void lumo_protocol_set_keyboard_visible(
     struct lumo_compositor *compositor,
     bool visible
+);
+void lumo_protocol_refresh_keyboard_visibility(
+    struct lumo_compositor *compositor
 );
 
 bool lumo_shell_resolve_binary_path(

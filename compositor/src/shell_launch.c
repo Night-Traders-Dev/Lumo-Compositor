@@ -328,10 +328,43 @@ static bool lumo_shell_bridge_send_frame(
     return lumo_shell_bridge_write_all(fd, buffer, length);
 }
 
+static bool lumo_shell_bridge_output_size(
+    struct lumo_compositor *compositor,
+    uint32_t *width,
+    uint32_t *height
+) {
+    struct lumo_output *output;
+    int effective_width = 0;
+    int effective_height = 0;
+
+    if (compositor == NULL || width == NULL || height == NULL ||
+            wl_list_empty(&compositor->outputs)) {
+        return false;
+    }
+
+    output = wl_container_of(compositor->outputs.next, output, link);
+    if (output == NULL || output->wlr_output == NULL) {
+        return false;
+    }
+
+    wlr_output_effective_resolution(output->wlr_output, &effective_width,
+        &effective_height);
+    if (effective_width <= 0 || effective_height <= 0) {
+        return false;
+    }
+
+    *width = (uint32_t)effective_width;
+    *height = (uint32_t)effective_height;
+    return true;
+}
+
 static bool lumo_shell_bridge_build_state_frame(
     struct lumo_compositor *compositor,
     struct lumo_shell_protocol_frame *frame
 ) {
+    uint32_t output_width = 0;
+    uint32_t output_height = 0;
+
     if (compositor == NULL || frame == NULL) {
         return false;
     }
@@ -376,6 +409,14 @@ static bool lumo_shell_bridge_build_state_frame(
     if (!lumo_shell_protocol_frame_add_bool(frame, "keyboard_resize_acked",
             compositor->keyboard_resize_acked)) {
         return false;
+    }
+    if (lumo_shell_bridge_output_size(compositor, &output_width, &output_height)) {
+        if (!lumo_shell_protocol_frame_add_u32(frame, "output_width",
+                output_width) ||
+                !lumo_shell_protocol_frame_add_u32(frame, "output_height",
+                    output_height)) {
+            return false;
+        }
     }
 
     return true;

@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.24',
+  version: '0.0.25',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -80,12 +80,14 @@ lumo_sources = files(
   'src/output.c',
   'src/protocol.c',
   'src/shell_launch.c',
+  'src/shell_osk.c',
   'src/shell_protocol.c',
   'src/shell_ui.c',
   'src/xwayland.c',
 ) + protocol_headers
 
 shell_sources = files(
+  'src/shell_osk.c',
   'src/shell_ui.c',
   'src/shell_client.c',
   'src/shell_protocol.c',
@@ -139,6 +141,7 @@ test_exe = executable(
 test('lumo-compositor', test_exe)
 
 shell_test_sources = files(
+  'src/shell_osk.c',
   'src/shell_ui.c',
   'tests/test_shell.c',
 )
