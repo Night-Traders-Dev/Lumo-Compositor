@@ -7,8 +7,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <poll.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <unistd.h>
 
 #include <wayland-client.h>
@@ -29,21 +32,48 @@ struct lumo_shell_buffer {
     struct wl_buffer_listener release;
 };
 
+enum lumo_shell_remote_scrim_state {
+    LUMO_SHELL_REMOTE_SCRIM_HIDDEN = 0,
+    LUMO_SHELL_REMOTE_SCRIM_DIMMED,
+    LUMO_SHELL_REMOTE_SCRIM_MODAL,
+};
+
 struct lumo_shell_client {
     enum lumo_shell_mode mode;
     struct wl_display *display;
     struct wl_registry *registry;
     struct wl_compositor *compositor;
     struct wl_shm *shm;
+    struct wl_seat *seat;
+    struct wl_pointer *pointer;
+    struct wl_touch *touch;
     struct zwlr_layer_shell_v1 *layer_shell;
     struct wl_surface *surface;
     struct zwlr_layer_surface_v1 *layer_surface;
     struct lumo_shell_buffer *buffer;
     struct lumo_shell_surface_config config;
+    int state_fd;
+    char state_socket_path[PATH_MAX];
+    char state_read_buffer[512];
+    size_t state_read_used;
     uint32_t configured_width;
     uint32_t configured_height;
     bool configured;
     bool running;
+    bool pointer_pressed;
+    bool touch_pressed;
+    bool active_target_valid;
+    bool pointer_position_valid;
+    int32_t active_touch_id;
+    double pointer_x;
+    double pointer_y;
+    bool compositor_launcher_visible;
+    bool compositor_keyboard_visible;
+    enum lumo_shell_remote_scrim_state compositor_scrim_state;
+    uint32_t compositor_rotation_degrees;
+    double compositor_gesture_threshold;
+    uint32_t compositor_gesture_timeout_ms;
+    struct lumo_shell_target active_target;
 };
 
 static uint32_t lumo_rgba(uint8_t r, uint8_t g, uint8_t b) {
@@ -102,49 +132,75 @@ static void lumo_fill_background(
     }
 }
 
+static void lumo_draw_outline(
+    uint32_t *pixels,
+    uint32_t width,
+    uint32_t height,
+    const struct lumo_rect *rect,
+    uint32_t thickness,
+    uint32_t color
+) {
+    if (pixels == NULL || rect == NULL || rect->width <= 0 || rect->height <= 0) {
+        return;
+    }
+
+    lumo_fill_rect(pixels, width, height, rect->x, rect->y, rect->width,
+        (int)thickness, color);
+    lumo_fill_rect(pixels, width, height, rect->x,
+        rect->y + rect->height - (int)thickness, rect->width, (int)thickness,
+        color);
+    lumo_fill_rect(pixels, width, height, rect->x, rect->y,
+        (int)thickness, rect->height, color);
+    lumo_fill_rect(pixels, width, height,
+        rect->x + rect->width - (int)thickness, rect->y, (int)thickness,
+        rect->height, color);
+}
+
 static void lumo_draw_launcher(
     uint32_t *pixels,
     uint32_t width,
-    uint32_t height
+    uint32_t height,
+    const struct lumo_shell_client *client,
+    const struct lumo_shell_target *active_target
 ) {
-    const uint32_t bg = lumo_rgba(0x17, 0x20, 0x33);
-    const uint32_t header = lumo_rgba(0x10, 0x18, 0x27);
+    const uint32_t bg = client != NULL && client->compositor_launcher_visible
+        ? lumo_rgba(0x17, 0x20, 0x33)
+        : lumo_rgba(0x0D, 0x12, 0x1D);
+    const uint32_t header = client != NULL && client->compositor_launcher_visible
+        ? lumo_rgba(0x10, 0x18, 0x27)
+        : lumo_rgba(0x08, 0x0C, 0x14);
+    const uint32_t highlight = lumo_rgba(0xEE, 0xF2, 0xFF);
     const uint32_t tile_colors[] = {
         lumo_rgba(0x4F, 0x46, 0xE5),
         lumo_rgba(0x14, 0xB8, 0xA6),
         lumo_rgba(0xF4, 0xA7, 0x39),
         lumo_rgba(0xEF, 0x44, 0x44),
     };
-    uint32_t header_height = height / 5;
-    uint32_t gap = 18;
-    uint32_t cols = 3;
-    uint32_t rows = 4;
-    uint32_t grid_top = header_height + 24;
-    uint32_t tile_width = (width > gap * (cols + 1))
-        ? (width - gap * (cols + 1)) / cols
-        : width / cols;
-    uint32_t tile_height = (height > grid_top + gap * (rows + 1))
-        ? (height - grid_top - gap * (rows + 1)) / rows
-        : height / rows;
-
-    if (tile_width < 64) {
-        tile_width = 64;
-    }
-    if (tile_height < 64) {
-        tile_height = 64;
-    }
+    const size_t tile_count = lumo_shell_launcher_tile_count();
 
     lumo_fill_background(pixels, width, height, bg);
-    lumo_fill_rect(pixels, width, height, 0, 0, (int)width, (int)header_height,
+    lumo_fill_rect(pixels, width, height, 0, 0, (int)width, (int)(height / 5),
         header);
 
-    for (uint32_t row = 0; row < rows; row++) {
-        for (uint32_t col = 0; col < cols; col++) {
-            uint32_t tile_x = gap + col * (tile_width + gap);
-            uint32_t tile_y = grid_top + row * (tile_height + gap);
-            uint32_t tile_color = tile_colors[(row + col) % (sizeof(tile_colors) / sizeof(tile_colors[0]))];
-            lumo_fill_rect(pixels, width, height, (int)tile_x, (int)tile_y,
-                (int)tile_width, (int)tile_height, tile_color);
+    for (uint32_t tile_index = 0; tile_index < tile_count; tile_index++) {
+        struct lumo_rect tile_rect;
+        uint32_t row = tile_index / 3;
+        uint32_t col = tile_index % 3;
+        uint32_t tile_color = tile_colors[(row + col) %
+            (sizeof(tile_colors) / sizeof(tile_colors[0]))];
+        bool active = active_target != NULL &&
+            active_target->kind == LUMO_SHELL_TARGET_LAUNCHER_TILE &&
+            active_target->index == tile_index;
+
+        if (!lumo_shell_launcher_tile_rect(width, height, tile_index,
+                &tile_rect)) {
+            continue;
+        }
+
+        lumo_fill_rect(pixels, width, height, tile_rect.x, tile_rect.y,
+            tile_rect.width, tile_rect.height, tile_color);
+        if (active) {
+            lumo_draw_outline(pixels, width, height, &tile_rect, 4, highlight);
         }
     }
 }
@@ -152,49 +208,53 @@ static void lumo_draw_launcher(
 static void lumo_draw_osk(
     uint32_t *pixels,
     uint32_t width,
-    uint32_t height
+    uint32_t height,
+    const struct lumo_shell_client *client,
+    const struct lumo_shell_target *active_target
 ) {
-    const uint32_t bg = lumo_rgba(0x22, 0x22, 0x22);
-    const uint32_t key = lumo_rgba(0x46, 0x46, 0x46);
-    const uint32_t key_light = lumo_rgba(0x62, 0x62, 0x62);
+    const uint32_t bg = client != NULL && client->compositor_keyboard_visible
+        ? lumo_rgba(0x22, 0x22, 0x22)
+        : lumo_rgba(0x14, 0x14, 0x14);
+    const uint32_t key = client != NULL && client->compositor_keyboard_visible
+        ? lumo_rgba(0x46, 0x46, 0x46)
+        : lumo_rgba(0x2E, 0x2E, 0x2E);
+    const uint32_t key_light = client != NULL && client->compositor_keyboard_visible
+        ? lumo_rgba(0x62, 0x62, 0x62)
+        : lumo_rgba(0x44, 0x44, 0x44);
     const uint32_t spacer = lumo_rgba(0x2D, 0x2D, 0x2D);
-    uint32_t top_bar = 42;
-    uint32_t gap = 8;
-    uint32_t row_height = (height > top_bar + gap * 4)
-        ? (height - top_bar - gap * 4) / 3
-        : height / 3;
-
-    if (row_height < 40) {
-        row_height = 40;
-    }
+    const uint32_t row_columns[] = {10, 10, 6};
+    const size_t key_count = lumo_shell_osk_key_count();
+    const uint32_t highlight = lumo_rgba(0xEE, 0xF2, 0xFF);
 
     lumo_fill_background(pixels, width, height, bg);
-    lumo_fill_rect(pixels, width, height, 0, 0, (int)width, (int)top_bar, spacer);
+    lumo_fill_rect(pixels, width, height, 0, 0, (int)width, 42, spacer);
 
-    for (uint32_t row = 0; row < 3; row++) {
-        uint32_t cols = row == 2 ? 6 : 10;
-        uint32_t key_width = (width > gap * (cols + 1))
-            ? (width - gap * (cols + 1)) / cols
-            : width / cols;
-        if (key_width < 28) {
-            key_width = 28;
+    for (uint32_t key_index = 0, row = 0, col = 0; key_index < key_count;
+            key_index++) {
+        struct lumo_rect key_rect;
+        uint32_t color = (row == 0) ? key_light : key;
+        bool active = active_target != NULL &&
+            active_target->kind == LUMO_SHELL_TARGET_OSK_KEY &&
+            active_target->index == key_index;
+
+        if (!lumo_shell_osk_key_rect(width, height, key_index, &key_rect)) {
+            continue;
         }
 
-        for (uint32_t col = 0; col < cols; col++) {
-            uint32_t key_x = gap + col * (key_width + gap);
-            uint32_t key_y = top_bar + gap + row * (row_height + gap);
-            uint32_t draw_width = key_width;
-            uint32_t color = (row == 0) ? key_light : key;
+        if (row == 2 && col == 2) {
+            color = key_light;
+        }
 
-            if (row == 2 && col == 2) {
-                draw_width = key_width * 3 + gap * 2;
-                color = key_light;
-            } else if (row == 2 && col > 2) {
-                key_x += key_width * 2 + gap * 2;
-            }
+        lumo_fill_rect(pixels, width, height, key_rect.x, key_rect.y,
+            key_rect.width, key_rect.height, color);
+        if (active) {
+            lumo_draw_outline(pixels, width, height, &key_rect, 4, highlight);
+        }
 
-            lumo_fill_rect(pixels, width, height, (int)key_x, (int)key_y,
-                (int)draw_width, (int)row_height, color);
+        col++;
+        if (col >= row_columns[row]) {
+            row++;
+            col = 0;
         }
     }
 }
@@ -202,36 +262,58 @@ static void lumo_draw_osk(
 static void lumo_draw_gesture(
     uint32_t *pixels,
     uint32_t width,
-    uint32_t height
+    uint32_t height,
+    const struct lumo_shell_client *client,
+    const struct lumo_shell_target *active_target
 ) {
-    const uint32_t bg = lumo_rgba(0x0F, 0x11, 0x15);
-    const uint32_t accent = lumo_rgba(0x7C, 0xD3, 0xFF);
-    uint32_t handle_width = width / 3;
-    uint32_t handle_height = height / 3;
-    uint32_t handle_x = (width - handle_width) / 2;
-    uint32_t handle_y = (height - handle_height) / 2;
+    const uint32_t bg = client != NULL &&
+            client->compositor_scrim_state == LUMO_SHELL_REMOTE_SCRIM_MODAL
+        ? lumo_rgba(0x0B, 0x0E, 0x12)
+        : client != NULL &&
+                client->compositor_scrim_state ==
+                    LUMO_SHELL_REMOTE_SCRIM_DIMMED
+            ? lumo_rgba(0x0D, 0x10, 0x16)
+            : lumo_rgba(0x0F, 0x11, 0x15);
+    const uint32_t accent = client != NULL && client->compositor_gesture_threshold > 40.0
+        ? lumo_rgba(0x98, 0xE4, 0xFF)
+        : lumo_rgba(0x7C, 0xD3, 0xFF);
+    const uint32_t highlight = lumo_rgba(0xEE, 0xF2, 0xFF);
+    struct lumo_rect handle_rect = {0};
+    uint32_t handle_thickness = client != NULL
+        ? (uint32_t)(client->compositor_gesture_threshold / 12.0)
+        : 4;
 
-    if (handle_width < 96) {
-        handle_width = 96;
-        handle_x = (width > handle_width) ? (width - handle_width) / 2 : 0;
+    if (!lumo_shell_gesture_handle_rect(width, height, &handle_rect)) {
+        return;
     }
-    if (handle_height < 8) {
-        handle_height = 8;
-        handle_y = (height > handle_height) ? (height - handle_height) / 2 : 0;
+
+    if (handle_thickness < 4) {
+        handle_thickness = 4;
+    }
+    if (handle_thickness > 10) {
+        handle_thickness = 10;
     }
 
     lumo_fill_background(pixels, width, height, bg);
-    lumo_fill_rect(pixels, width, height, 0, (int)(height / 2 - 2), (int)width,
-        4, accent);
-    lumo_fill_rect(pixels, width, height, (int)handle_x, (int)handle_y,
-        (int)handle_width, (int)handle_height, accent);
+    lumo_fill_rect(pixels, width, height, 0,
+        (int)(height / 2 - (int)(handle_thickness / 2)),
+        (int)width, (int)handle_thickness, accent);
+    lumo_fill_rect(pixels, width, height, handle_rect.x, handle_rect.y,
+        handle_rect.width, handle_rect.height, accent);
+
+    if (active_target != NULL &&
+            active_target->kind == LUMO_SHELL_TARGET_GESTURE_HANDLE) {
+        lumo_draw_outline(pixels, width, height, &handle_rect,
+            handle_thickness, highlight);
+    }
 }
 
 static void lumo_render_placeholder(
     struct lumo_shell_client *client,
     uint32_t *pixels,
     uint32_t width,
-    uint32_t height
+    uint32_t height,
+    const struct lumo_shell_target *active_target
 ) {
     if (client == NULL || pixels == NULL) {
         return;
@@ -239,13 +321,13 @@ static void lumo_render_placeholder(
 
     switch (client->mode) {
     case LUMO_SHELL_MODE_LAUNCHER:
-        lumo_draw_launcher(pixels, width, height);
+        lumo_draw_launcher(pixels, width, height, client, active_target);
         return;
     case LUMO_SHELL_MODE_OSK:
-        lumo_draw_osk(pixels, width, height);
+        lumo_draw_osk(pixels, width, height, client, active_target);
         return;
     case LUMO_SHELL_MODE_GESTURE:
-        lumo_draw_gesture(pixels, width, height);
+        lumo_draw_gesture(pixels, width, height, client, active_target);
         return;
     default:
         break;
@@ -306,6 +388,7 @@ static bool lumo_shell_draw_buffer(
     size_t stride;
     size_t size;
     int fd;
+    const struct lumo_shell_target *active_target;
 
     if (client == NULL || client->shm == NULL || client->surface == NULL ||
             width == 0 || height == 0) {
@@ -363,7 +446,8 @@ static bool lumo_shell_draw_buffer(
     buffer->release.release = lumo_shell_buffer_release;
     wl_buffer_add_listener(buffer->buffer, &buffer->release, buffer);
 
-    lumo_render_placeholder(client, buffer->data, width, height);
+    active_target = client->active_target_valid ? &client->active_target : NULL;
+    lumo_render_placeholder(client, buffer->data, width, height, active_target);
     wl_surface_attach(client->surface, buffer->buffer, 0, 0);
     wl_surface_damage_buffer(client->surface, 0, 0, (int)width, (int)height);
     wl_surface_commit(client->surface);
@@ -374,6 +458,698 @@ static bool lumo_shell_draw_buffer(
     client->configured = true;
     return true;
 }
+
+static bool lumo_shell_client_redraw(struct lumo_shell_client *client) {
+    if (client == NULL || !client->configured) {
+        return false;
+    }
+
+    return lumo_shell_draw_buffer(client, client->configured_width,
+        client->configured_height);
+}
+
+static void lumo_shell_client_set_active_target(
+    struct lumo_shell_client *client,
+    const struct lumo_shell_target *target
+) {
+    if (client == NULL || target == NULL) {
+        return;
+    }
+
+    client->active_target = *target;
+    client->active_target_valid = true;
+    (void)lumo_shell_client_redraw(client);
+}
+
+static void lumo_shell_client_clear_active_target(
+    struct lumo_shell_client *client
+) {
+    if (client == NULL) {
+        return;
+    }
+
+    client->active_target_valid = false;
+    memset(&client->active_target, 0, sizeof(client->active_target));
+    (void)lumo_shell_client_redraw(client);
+}
+
+static void lumo_shell_client_note_target(
+    struct lumo_shell_client *client,
+    double x,
+    double y
+) {
+    struct lumo_shell_target target = {0};
+
+    if (client == NULL || client->configured_width == 0 ||
+            client->configured_height == 0) {
+        return;
+    }
+
+    if (lumo_shell_target_for_mode(client->mode, client->configured_width,
+            client->configured_height, x, y, &target)) {
+        lumo_shell_client_set_active_target(client, &target);
+        return;
+    }
+
+    lumo_shell_client_clear_active_target(client);
+}
+
+static void lumo_shell_client_activate_target(struct lumo_shell_client *client) {
+    if (client == NULL || !client->active_target_valid) {
+        return;
+    }
+
+    fprintf(stderr,
+        "lumo-shell: %s activated %s %u\n",
+        lumo_shell_mode_name(client->mode),
+        lumo_shell_target_kind_name(client->active_target.kind),
+        client->active_target.index);
+}
+
+static bool lumo_shell_remote_scrim_parse(
+    const char *value,
+    enum lumo_shell_remote_scrim_state *state
+) {
+    if (value == NULL || state == NULL) {
+        return false;
+    }
+
+    if (strcmp(value, "hidden") == 0) {
+        *state = LUMO_SHELL_REMOTE_SCRIM_HIDDEN;
+        return true;
+    }
+    if (strcmp(value, "dimmed") == 0) {
+        *state = LUMO_SHELL_REMOTE_SCRIM_DIMMED;
+        return true;
+    }
+    if (strcmp(value, "modal") == 0) {
+        *state = LUMO_SHELL_REMOTE_SCRIM_MODAL;
+        return true;
+    }
+
+    return false;
+}
+
+static bool lumo_shell_bool_parse(const char *value, bool *out) {
+    if (value == NULL || out == NULL) {
+        return false;
+    }
+
+    if (strcmp(value, "1") == 0 || strcmp(value, "true") == 0) {
+        *out = true;
+        return true;
+    }
+    if (strcmp(value, "0") == 0 || strcmp(value, "false") == 0) {
+        *out = false;
+        return true;
+    }
+
+    return false;
+}
+
+static bool lumo_shell_rotation_parse(const char *value, uint32_t *rotation) {
+    if (value == NULL || rotation == NULL) {
+        return false;
+    }
+
+    if (strcmp(value, "normal") == 0 || strcmp(value, "0") == 0) {
+        *rotation = 0;
+        return true;
+    }
+    if (strcmp(value, "90") == 0) {
+        *rotation = 90;
+        return true;
+    }
+    if (strcmp(value, "180") == 0) {
+        *rotation = 180;
+        return true;
+    }
+    if (strcmp(value, "270") == 0) {
+        *rotation = 270;
+        return true;
+    }
+
+    return false;
+}
+
+static void lumo_shell_client_apply_state_line(
+    struct lumo_shell_client *client,
+    const char *line
+) {
+    const char *value;
+    bool bool_value;
+    uint32_t rotation_value;
+    double double_value;
+    uint32_t timeout_value;
+
+    if (client == NULL || line == NULL) {
+        return;
+    }
+
+    if (strncmp(line, "launcher visible=", 17) == 0) {
+        value = line + 17;
+        if (lumo_shell_bool_parse(value, &bool_value)) {
+            client->compositor_launcher_visible = bool_value;
+            fprintf(stderr, "lumo-shell: launcher visible=%s\n",
+                bool_value ? "true" : "false");
+            (void)lumo_shell_client_redraw(client);
+        }
+        return;
+    }
+
+    if (strncmp(line, "keyboard visible=", 17) == 0) {
+        value = line + 17;
+        if (lumo_shell_bool_parse(value, &bool_value)) {
+            client->compositor_keyboard_visible = bool_value;
+            fprintf(stderr, "lumo-shell: keyboard visible=%s\n",
+                bool_value ? "true" : "false");
+            (void)lumo_shell_client_redraw(client);
+        }
+        return;
+    }
+
+    if (strncmp(line, "scrim state=", 12) == 0) {
+        value = line + 12;
+        if (lumo_shell_remote_scrim_parse(value, &client->compositor_scrim_state)) {
+            fprintf(stderr, "lumo-shell: scrim state=%s\n", value);
+            (void)lumo_shell_client_redraw(client);
+        }
+        return;
+    }
+
+    if (strncmp(line, "rotation=", 9) == 0) {
+        value = line + 9;
+        if (lumo_shell_rotation_parse(value, &rotation_value)) {
+            client->compositor_rotation_degrees = rotation_value;
+            fprintf(stderr, "lumo-shell: compositor rotation=%u\n",
+                client->compositor_rotation_degrees);
+            (void)lumo_shell_client_redraw(client);
+        }
+        return;
+    }
+
+    if (strncmp(line, "gesture threshold=", 18) == 0) {
+        value = line + 18;
+        double_value = strtod(value, NULL);
+        client->compositor_gesture_threshold = double_value;
+        fprintf(stderr, "lumo-shell: gesture threshold=%.2f\n", double_value);
+        (void)lumo_shell_client_redraw(client);
+        return;
+    }
+
+    if (strncmp(line, "gesture timeout_ms=", 19) == 0) {
+        value = line + 19;
+        timeout_value = (uint32_t)strtoul(value, NULL, 10);
+        client->compositor_gesture_timeout_ms = timeout_value;
+        fprintf(stderr, "lumo-shell: gesture timeout_ms=%u\n", timeout_value);
+        return;
+    }
+}
+
+static int lumo_shell_client_connect_state_socket(
+    struct lumo_shell_client *client
+) {
+    const char *socket_path;
+    struct sockaddr_un address;
+    int fd;
+    int flags;
+
+    if (client == NULL) {
+        return -1;
+    }
+
+    socket_path = getenv("LUMO_STATE_SOCKET");
+    if (socket_path == NULL || socket_path[0] == '\0') {
+        return -1;
+    }
+
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return -1;
+    }
+
+    memset(&address, 0, sizeof(address));
+    address.sun_family = AF_UNIX;
+    if (snprintf(address.sun_path, sizeof(address.sun_path), "%s",
+            socket_path) >= (int)sizeof(address.sun_path)) {
+        close(fd);
+        return -1;
+    }
+
+    if (connect(fd, (struct sockaddr *)&address, sizeof(address)) != 0) {
+        close(fd);
+        return -1;
+    }
+
+    flags = fcntl(fd, F_GETFD);
+    if (flags >= 0) {
+        (void)fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+    }
+    flags = fcntl(fd, F_GETFL);
+    if (flags >= 0) {
+        (void)fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    }
+
+    snprintf(client->state_socket_path, sizeof(client->state_socket_path),
+        "%s", socket_path);
+    return fd;
+}
+
+static bool lumo_shell_client_pump_state(struct lumo_shell_client *client) {
+    char chunk[128];
+    ssize_t bytes_read;
+
+    if (client == NULL || client->state_fd < 0) {
+        return false;
+    }
+
+    for (;;) {
+        bytes_read = recv(client->state_fd, chunk, sizeof(chunk), 0);
+        if (bytes_read < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return true;
+            }
+            return false;
+        }
+
+        if (bytes_read == 0) {
+            return false;
+        }
+
+        for (ssize_t i = 0; i < bytes_read; i++) {
+            char ch = chunk[i];
+
+            if (ch == '\n') {
+                client->state_read_buffer[client->state_read_used] = '\0';
+                if (client->state_read_used > 0) {
+                    lumo_shell_client_apply_state_line(client,
+                        client->state_read_buffer);
+                }
+                client->state_read_used = 0;
+                continue;
+            }
+
+            if (client->state_read_used + 1 >= sizeof(client->state_read_buffer)) {
+                client->state_read_used = 0;
+            }
+
+            client->state_read_buffer[client->state_read_used++] = ch;
+        }
+    }
+}
+
+static int lumo_shell_client_run(struct lumo_shell_client *client) {
+    int display_fd;
+
+    if (client == NULL || client->display == NULL) {
+        return -1;
+    }
+
+    display_fd = wl_display_get_fd(client->display);
+    while (client->display != NULL) {
+        struct pollfd fds[2];
+        nfds_t nfds = 0;
+        int poll_result;
+
+        if (wl_display_dispatch_pending(client->display) == -1) {
+            return -1;
+        }
+        if (wl_display_flush(client->display) < 0 && errno != EAGAIN) {
+            return -1;
+        }
+
+        fds[nfds].fd = display_fd;
+        fds[nfds].events = POLLIN;
+        nfds++;
+
+        if (client->state_fd >= 0) {
+            fds[nfds].fd = client->state_fd;
+            fds[nfds].events = POLLIN | POLLHUP | POLLERR;
+            nfds++;
+        }
+
+        poll_result = poll(fds, nfds, -1);
+        if (poll_result < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+
+        if (client->state_fd >= 0 && nfds > 1 &&
+                (fds[1].revents & (POLLIN | POLLHUP | POLLERR))) {
+            if (!lumo_shell_client_pump_state(client)) {
+                close(client->state_fd);
+                client->state_fd = -1;
+            }
+        }
+
+        if (fds[0].revents & POLLIN) {
+            if (wl_display_dispatch(client->display) == -1) {
+                break;
+            }
+        }
+
+        if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            break;
+        }
+
+        if (client->state_fd < 0) {
+            continue;
+        }
+    }
+
+    return 0;
+}
+
+static void lumo_shell_pointer_handle_enter(
+    void *data,
+    struct wl_pointer *wl_pointer,
+    uint32_t serial,
+    struct wl_surface *surface,
+    wl_fixed_t surface_x,
+    wl_fixed_t surface_y
+) {
+    struct lumo_shell_client *client = data;
+
+    (void)wl_pointer;
+    (void)serial;
+    (void)surface;
+    if (client == NULL) {
+        return;
+    }
+
+    client->pointer_x = wl_fixed_to_double(surface_x);
+    client->pointer_y = wl_fixed_to_double(surface_y);
+    client->pointer_position_valid = true;
+}
+
+static void lumo_shell_pointer_handle_leave(
+    void *data,
+    struct wl_pointer *wl_pointer,
+    uint32_t serial,
+    struct wl_surface *surface
+) {
+    struct lumo_shell_client *client = data;
+
+    (void)wl_pointer;
+    (void)serial;
+    (void)surface;
+    if (client == NULL) {
+        return;
+    }
+
+    client->pointer_position_valid = false;
+    if (!client->pointer_pressed && !client->touch_pressed) {
+        lumo_shell_client_clear_active_target(client);
+    }
+}
+
+static void lumo_shell_pointer_handle_motion(
+    void *data,
+    struct wl_pointer *wl_pointer,
+    uint32_t time,
+    wl_fixed_t surface_x,
+    wl_fixed_t surface_y
+) {
+    struct lumo_shell_client *client = data;
+
+    (void)wl_pointer;
+    (void)time;
+    if (client == NULL) {
+        return;
+    }
+
+    client->pointer_x = wl_fixed_to_double(surface_x);
+    client->pointer_y = wl_fixed_to_double(surface_y);
+    client->pointer_position_valid = true;
+
+    if (client->pointer_pressed) {
+        lumo_shell_client_note_target(client, client->pointer_x,
+            client->pointer_y);
+    }
+}
+
+static void lumo_shell_pointer_handle_button(
+    void *data,
+    struct wl_pointer *wl_pointer,
+    uint32_t serial,
+    uint32_t time,
+    uint32_t button,
+    uint32_t state
+) {
+    struct lumo_shell_client *client = data;
+
+    (void)wl_pointer;
+    (void)serial;
+    (void)time;
+    (void)button;
+    if (client == NULL || !client->pointer_position_valid) {
+        return;
+    }
+
+    if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+        client->pointer_pressed = true;
+        lumo_shell_client_note_target(client, client->pointer_x,
+            client->pointer_y);
+        return;
+    }
+
+    if (client->pointer_pressed) {
+        client->pointer_pressed = false;
+        lumo_shell_client_activate_target(client);
+        if (!client->touch_pressed) {
+            lumo_shell_client_clear_active_target(client);
+        }
+    }
+}
+
+static void lumo_shell_pointer_handle_frame(
+    void *data,
+    struct wl_pointer *wl_pointer
+) {
+    (void)data;
+    (void)wl_pointer;
+}
+
+static void lumo_shell_pointer_handle_axis(
+    void *data,
+    struct wl_pointer *wl_pointer,
+    uint32_t time,
+    uint32_t axis,
+    wl_fixed_t value
+) {
+    (void)data;
+    (void)wl_pointer;
+    (void)time;
+    (void)axis;
+    (void)value;
+}
+
+static const struct wl_pointer_listener lumo_shell_pointer_listener = {
+    .enter = lumo_shell_pointer_handle_enter,
+    .leave = lumo_shell_pointer_handle_leave,
+    .motion = lumo_shell_pointer_handle_motion,
+    .button = lumo_shell_pointer_handle_button,
+    .axis = lumo_shell_pointer_handle_axis,
+    .frame = lumo_shell_pointer_handle_frame,
+};
+
+static void lumo_shell_touch_handle_down(
+    void *data,
+    struct wl_touch *wl_touch,
+    uint32_t serial,
+    uint32_t time,
+    struct wl_surface *surface,
+    int32_t id,
+    wl_fixed_t x,
+    wl_fixed_t y
+) {
+    struct lumo_shell_client *client = data;
+
+    (void)wl_touch;
+    (void)serial;
+    (void)time;
+    (void)surface;
+    if (client == NULL) {
+        return;
+    }
+
+    client->touch_pressed = true;
+    client->active_touch_id = id;
+    lumo_shell_client_note_target(client, wl_fixed_to_double(x),
+        wl_fixed_to_double(y));
+}
+
+static void lumo_shell_touch_handle_up(
+    void *data,
+    struct wl_touch *wl_touch,
+    uint32_t serial,
+    uint32_t time,
+    int32_t id
+) {
+    struct lumo_shell_client *client = data;
+
+    (void)wl_touch;
+    (void)serial;
+    (void)time;
+    if (client == NULL || !client->touch_pressed ||
+            client->active_touch_id != id) {
+        return;
+    }
+
+    client->touch_pressed = false;
+    client->active_touch_id = -1;
+    lumo_shell_client_activate_target(client);
+    if (!client->pointer_pressed) {
+        lumo_shell_client_clear_active_target(client);
+    }
+}
+
+static void lumo_shell_touch_handle_motion(
+    void *data,
+    struct wl_touch *wl_touch,
+    uint32_t time,
+    int32_t id,
+    wl_fixed_t x,
+    wl_fixed_t y
+) {
+    struct lumo_shell_client *client = data;
+
+    (void)wl_touch;
+    (void)time;
+    if (client == NULL || !client->touch_pressed ||
+            client->active_touch_id != id) {
+        return;
+    }
+
+    lumo_shell_client_note_target(client, wl_fixed_to_double(x),
+        wl_fixed_to_double(y));
+}
+
+static void lumo_shell_touch_handle_frame(
+    void *data,
+    struct wl_touch *wl_touch
+) {
+    (void)data;
+    (void)wl_touch;
+}
+
+static void lumo_shell_touch_handle_cancel(
+    void *data,
+    struct wl_touch *wl_touch
+) {
+    struct lumo_shell_client *client = data;
+
+    (void)wl_touch;
+    if (client == NULL) {
+        return;
+    }
+
+    client->touch_pressed = false;
+    client->active_touch_id = -1;
+    if (!client->pointer_pressed) {
+        lumo_shell_client_clear_active_target(client);
+    }
+}
+
+static void lumo_shell_touch_handle_shape(
+    void *data,
+    struct wl_touch *wl_touch,
+    int32_t id,
+    wl_fixed_t major,
+    wl_fixed_t minor
+) {
+    (void)data;
+    (void)wl_touch;
+    (void)id;
+    (void)major;
+    (void)minor;
+}
+
+static void lumo_shell_touch_handle_orientation(
+    void *data,
+    struct wl_touch *wl_touch,
+    int32_t id,
+    wl_fixed_t orientation
+) {
+    (void)data;
+    (void)wl_touch;
+    (void)id;
+    (void)orientation;
+}
+
+static const struct wl_touch_listener lumo_shell_touch_listener = {
+    .down = lumo_shell_touch_handle_down,
+    .up = lumo_shell_touch_handle_up,
+    .motion = lumo_shell_touch_handle_motion,
+    .frame = lumo_shell_touch_handle_frame,
+    .cancel = lumo_shell_touch_handle_cancel,
+    .shape = lumo_shell_touch_handle_shape,
+    .orientation = lumo_shell_touch_handle_orientation,
+};
+
+static void lumo_shell_seat_handle_capabilities(
+    void *data,
+    struct wl_seat *seat,
+    uint32_t capabilities
+) {
+    struct lumo_shell_client *client = data;
+
+    if (client == NULL) {
+        return;
+    }
+
+    if ((capabilities & WL_SEAT_CAPABILITY_POINTER) != 0) {
+        if (client->pointer == NULL) {
+            client->pointer = wl_seat_get_pointer(seat);
+            wl_pointer_add_listener(client->pointer,
+                &lumo_shell_pointer_listener, client);
+        }
+    } else if (client->pointer != NULL) {
+        wl_pointer_release(client->pointer);
+        client->pointer = NULL;
+        client->pointer_pressed = false;
+        client->pointer_position_valid = false;
+        if (!client->touch_pressed) {
+            lumo_shell_client_clear_active_target(client);
+        }
+    }
+
+    if ((capabilities & WL_SEAT_CAPABILITY_TOUCH) != 0) {
+        if (client->touch == NULL) {
+            client->touch = wl_seat_get_touch(seat);
+            wl_touch_add_listener(client->touch, &lumo_shell_touch_listener,
+                client);
+        }
+    } else if (client->touch != NULL) {
+        wl_touch_release(client->touch);
+        client->touch = NULL;
+        client->touch_pressed = false;
+        client->active_touch_id = -1;
+        if (!client->pointer_pressed) {
+            lumo_shell_client_clear_active_target(client);
+        }
+    }
+}
+
+static void lumo_shell_seat_handle_name(
+    void *data,
+    struct wl_seat *seat,
+    const char *name
+) {
+    (void)data;
+    (void)seat;
+    (void)name;
+}
+
+static const struct wl_seat_listener lumo_shell_seat_listener = {
+    .capabilities = lumo_shell_seat_handle_capabilities,
+    .name = lumo_shell_seat_handle_name,
+};
 
 static void lumo_shell_handle_configure(
     void *data,
@@ -445,6 +1221,16 @@ static void lumo_shell_registry_add(
     if (strcmp(interface, wl_shm_interface.name) == 0) {
         client->shm = wl_registry_bind(registry, name,
             &wl_shm_interface, 1);
+        return;
+    }
+
+    if (strcmp(interface, wl_seat_interface.name) == 0) {
+        client->seat = wl_registry_bind(registry, name,
+            &wl_seat_interface, version < 5 ? version : 5);
+        if (client->seat != NULL) {
+            wl_seat_add_listener(client->seat, &lumo_shell_seat_listener,
+                client);
+        }
         return;
     }
 
@@ -556,6 +1342,14 @@ static bool lumo_shell_create_surface(struct lumo_shell_client *client) {
 int main(int argc, char **argv) {
     struct lumo_shell_client client = {
         .mode = LUMO_SHELL_MODE_LAUNCHER,
+        .state_fd = -1,
+        .active_touch_id = -1,
+        .compositor_launcher_visible = false,
+        .compositor_keyboard_visible = false,
+        .compositor_scrim_state = LUMO_SHELL_REMOTE_SCRIM_HIDDEN,
+        .compositor_rotation_degrees = 0,
+        .compositor_gesture_threshold = 32.0,
+        .compositor_gesture_timeout_ms = 180,
     };
 
     for (int i = 1; i < argc; i++) {
@@ -601,8 +1395,14 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    while (wl_display_dispatch(client.display) != -1) {
+    client.state_fd = lumo_shell_client_connect_state_socket(&client);
+    if (client.state_fd >= 0) {
+        fprintf(stderr, "lumo-shell: connected state socket %s\n",
+            client.state_socket_path);
+        (void)lumo_shell_client_pump_state(&client);
     }
+
+    (void)lumo_shell_client_run(&client);
 
     if (client.display != NULL) {
         wl_display_disconnect(client.display);

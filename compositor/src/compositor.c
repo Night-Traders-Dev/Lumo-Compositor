@@ -44,6 +44,7 @@ struct lumo_compositor *lumo_compositor_create(
     compositor->protocol_state = NULL;
     compositor->xwayland = NULL;
     compositor->xwayland_workarea_valid = false;
+    compositor->shell_state = NULL;
 
     wl_list_init(&compositor->outputs);
     wl_list_init(&compositor->keyboards);
@@ -74,6 +75,7 @@ static void lumo_compositor_cleanup(struct lumo_compositor *compositor) {
     lumo_input_stop(compositor);
     lumo_output_stop(compositor);
     lumo_backend_stop(compositor);
+    lumo_shell_autostart_stop(compositor);
 
     if (compositor->display != NULL) {
         wl_display_destroy_clients(compositor->display);
@@ -144,6 +146,11 @@ int lumo_compositor_run(struct lumo_compositor *compositor) {
 
     if (setenv("WAYLAND_DISPLAY", socket, true) != 0) {
         wlr_log_errno(WLR_ERROR, "failed to export WAYLAND_DISPLAY");
+        return -1;
+    }
+
+    if (lumo_shell_autostart_start(compositor) != 0) {
+        wlr_log(WLR_ERROR, "shell: failed to autostart shell clients");
         return -1;
     }
 

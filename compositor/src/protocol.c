@@ -723,6 +723,9 @@ void lumo_protocol_set_gesture_threshold(
     compositor->gesture_threshold = threshold > 0.0 ? threshold : 24.0;
     wlr_log(WLR_INFO, "protocol: gesture threshold set to %.2f",
         compositor->gesture_threshold);
+    lumo_shell_state_broadcast_gesture_threshold(compositor,
+        compositor->gesture_threshold,
+        compositor->gesture_timeout_ms);
 }
 
 void lumo_protocol_set_launcher_visible(
@@ -741,6 +744,7 @@ void lumo_protocol_set_launcher_visible(
     }
 
     wlr_log(WLR_INFO, "protocol: launcher %s", visible ? "visible" : "hidden");
+    lumo_shell_state_broadcast_launcher_visible(compositor, visible);
     lumo_protocol_refresh_shell_hitboxes(compositor);
 }
 
@@ -754,6 +758,7 @@ void lumo_protocol_set_scrim_state(
 
     compositor->scrim_state = state;
     wlr_log(WLR_INFO, "protocol: scrim state=%d", state);
+    lumo_shell_state_broadcast_scrim_state(compositor, state);
 }
 
 void lumo_protocol_ack_keyboard_resize(
@@ -804,6 +809,7 @@ void lumo_protocol_set_keyboard_visible(
 
     wlr_log(WLR_INFO, "protocol: keyboard %s serial=%u",
         visible ? "visible" : "hidden", compositor->keyboard_resize_serial);
+    lumo_shell_state_broadcast_keyboard_visible(compositor, visible);
     lumo_protocol_refresh_shell_hitboxes(compositor);
 }
 

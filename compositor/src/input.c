@@ -1754,4 +1754,5 @@ void lumo_input_set_rotation(
     }
 
     compositor->active_rotation = rotation;
+    lumo_shell_state_broadcast_rotation(compositor, rotation);
 }

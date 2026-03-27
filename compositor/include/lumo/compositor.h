@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <wayland-server-core.h>
+#include "lumo/shell.h"
 #include <xkbcommon/xkbcommon.h>
 #include <wlr/backend.h>
 #include <wlr/render/allocator.h>
@@ -49,16 +50,11 @@ enum lumo_scrim_state {
     LUMO_SCRIM_MODAL,
 };
 
-struct lumo_rect {
-    int x;
-    int y;
-    int width;
-    int height;
-};
-
 struct lumo_compositor_config {
     const char *session_name;
     const char *socket_name;
+    const char *executable_path;
+    const char *shell_path;
     enum lumo_rotation initial_rotation;
     bool debug;
 };
@@ -141,18 +137,6 @@ static inline const char *lumo_hitbox_kind_name(enum lumo_hitbox_kind kind) {
     default:
         return "custom";
     }
-}
-
-static inline bool lumo_rect_contains(
-    const struct lumo_rect *rect,
-    double x,
-    double y
-) {
-    return rect != NULL &&
-        x >= rect->x &&
-        y >= rect->y &&
-        x < rect->x + rect->width &&
-        y < rect->y + rect->height;
 }
 
 struct lumo_output {
@@ -306,6 +290,7 @@ struct lumo_compositor {
     struct wlr_xwayland *xwayland;
     struct wlr_box xwayland_workarea;
     bool xwayland_workarea_valid;
+    void *shell_state;
     bool running;
     bool keyboard_visible;
     bool launcher_visible;
@@ -433,6 +418,64 @@ void lumo_protocol_ack_keyboard_resize(
 void lumo_protocol_set_keyboard_visible(
     struct lumo_compositor *compositor,
     bool visible
+);
+
+bool lumo_shell_resolve_binary_path(
+    const struct lumo_compositor_config *config,
+    char *buffer,
+    size_t buffer_size
+);
+bool lumo_shell_state_socket_path(
+    const char *runtime_dir,
+    char *buffer,
+    size_t buffer_size
+);
+size_t lumo_shell_state_format_line(
+    char *buffer,
+    size_t buffer_size,
+    const char *key,
+    const char *value
+);
+size_t lumo_shell_state_format_bool(
+    char *buffer,
+    size_t buffer_size,
+    const char *key,
+    bool value
+);
+size_t lumo_shell_state_format_double(
+    char *buffer,
+    size_t buffer_size,
+    const char *key,
+    double value
+);
+size_t lumo_shell_build_argv(
+    enum lumo_shell_mode mode,
+    const char *binary,
+    const char **argv,
+    size_t capacity
+);
+int lumo_shell_autostart_start(struct lumo_compositor *compositor);
+void lumo_shell_autostart_stop(struct lumo_compositor *compositor);
+void lumo_shell_state_broadcast_launcher_visible(
+    struct lumo_compositor *compositor,
+    bool visible
+);
+void lumo_shell_state_broadcast_keyboard_visible(
+    struct lumo_compositor *compositor,
+    bool visible
+);
+void lumo_shell_state_broadcast_scrim_state(
+    struct lumo_compositor *compositor,
+    enum lumo_scrim_state state
+);
+void lumo_shell_state_broadcast_gesture_threshold(
+    struct lumo_compositor *compositor,
+    double threshold,
+    uint32_t timeout_ms
+);
+void lumo_shell_state_broadcast_rotation(
+    struct lumo_compositor *compositor,
+    enum lumo_rotation rotation
 );
 
 int lumo_xwayland_start(struct lumo_compositor *compositor);

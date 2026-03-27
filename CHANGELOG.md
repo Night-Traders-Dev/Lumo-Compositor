@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.11] - 2026-03-27
+- Added a compositor-to-shell state socket so shell clients can receive launcher, keyboard, scrim, rotation, and gesture updates.
+- Added line-format helpers and socket path helpers for the bridge so the protocol is easy to inspect and unit test.
+- Tied the shell client's render state to compositor broadcasts so the UI reflects live compositor state changes.
+
+## [0.0.10] - 2026-03-27
+- Added compositor-resolved shell hitboxes and redraw-aware launch/keyboard gesture highlighting.
+- Added pointer and touch handling to the C shell client so launcher and OSK surfaces react to real input.
+- Added pure shell layout helpers for launcher tiles, OSK keys, and gesture hit targets.
+
+## [0.0.9] - 2026-03-27
+- Added compositor-managed autostart for the shell clients.
+- Added shell binary path resolution and argv construction helpers for easier debugging and testing.
+- Added supervised shell process shutdown so the compositor can cleanly reap its child clients.
+
 ## [0.0.1] - 2026-03-26
 - Established the compositor repository structure.
 - Added the initial compositor scaffold and architecture docs.

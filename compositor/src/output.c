@@ -284,4 +284,6 @@ void lumo_output_set_rotation(
             "output: rotation request for unknown output '%s'",
             output_name);
     }
+
+    lumo_shell_state_broadcast_rotation(compositor, rotation);
 }

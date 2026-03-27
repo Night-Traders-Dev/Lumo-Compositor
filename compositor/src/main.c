@@ -9,7 +9,7 @@
 
 static void lumo_print_usage(const char *argv0) {
     fprintf(stderr,
-        "usage: %s [--debug] [--session NAME] [--socket NAME] [--rotation normal|90|180|270]\n",
+        "usage: %s [--debug] [--session NAME] [--socket NAME] [--shell PATH] [--rotation normal|90|180|270]\n",
         argv0);
 }
 
@@ -42,6 +42,8 @@ int main(int argc, char **argv) {
     struct lumo_compositor_config config = {
         .session_name = "lumo",
         .socket_name = "lumo-shell",
+        .executable_path = argv[0],
+        .shell_path = NULL,
         .initial_rotation = LUMO_ROTATION_NORMAL,
         .debug = false,
     };
@@ -61,6 +63,10 @@ int main(int argc, char **argv) {
         }
         if (strcmp(argv[i], "--socket") == 0 && i + 1 < argc) {
             config.socket_name = argv[++i];
+            continue;
+        }
+        if (strcmp(argv[i], "--shell") == 0 && i + 1 < argc) {
+            config.shell_path = argv[++i];
             continue;
         }
         if (strcmp(argv[i], "--rotation") == 0 && i + 1 < argc) {

@@ -1,8 +1,10 @@
 #include "lumo/compositor.h"
 
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 static void test_rotation_helpers(void) {
     assert(lumo_rotation_to_transform(LUMO_ROTATION_NORMAL) ==
@@ -207,6 +209,72 @@ static void test_state_setters(void) {
     lumo_compositor_destroy(compositor);
 }
 
+static void test_shell_binary_resolution(void) {
+    struct lumo_compositor_config config = {
+        .session_name = "lumo-test",
+        .socket_name = "lumo-test-socket",
+        .executable_path = "/opt/lumo/bin/lumo-compositor",
+        .shell_path = NULL,
+        .initial_rotation = LUMO_ROTATION_NORMAL,
+        .debug = false,
+    };
+    char buffer[PATH_MAX];
+
+    assert(lumo_shell_resolve_binary_path(&config, buffer, sizeof(buffer)));
+    assert(strcmp(buffer, "/opt/lumo/bin/lumo-shell") == 0);
+
+    config.shell_path = "/custom/bin/lumo-shell-debug";
+    assert(lumo_shell_resolve_binary_path(&config, buffer, sizeof(buffer)));
+    assert(strcmp(buffer, "/custom/bin/lumo-shell-debug") == 0);
+
+    config.shell_path = "lumo-shell-debug";
+    assert(lumo_shell_resolve_binary_path(&config, buffer, sizeof(buffer)));
+    assert(strcmp(buffer, "/opt/lumo/bin/lumo-shell-debug") == 0);
+
+    config.executable_path = "lumo-compositor";
+    config.shell_path = NULL;
+    assert(lumo_shell_resolve_binary_path(&config, buffer, sizeof(buffer)));
+    assert(strcmp(buffer, "lumo-shell") == 0);
+}
+
+static void test_shell_argv_builder(void) {
+    const char *argv[4] = {0};
+    size_t argc;
+
+    argc = lumo_shell_build_argv(LUMO_SHELL_MODE_LAUNCHER,
+        "/opt/lumo/bin/lumo-shell", argv, 4);
+    assert(argc == 3);
+    assert(strcmp(argv[0], "/opt/lumo/bin/lumo-shell") == 0);
+    assert(strcmp(argv[1], "--mode") == 0);
+    assert(strcmp(argv[2], "launcher") == 0);
+    assert(argv[3] == NULL);
+
+    assert(lumo_shell_build_argv((enum lumo_shell_mode)99,
+        "/opt/lumo/bin/lumo-shell", argv, 4) == 0);
+    assert(lumo_shell_build_argv(LUMO_SHELL_MODE_LAUNCHER,
+        "/opt/lumo/bin/lumo-shell", argv, 3) == 0);
+}
+
+static void test_shell_state_helpers(void) {
+    char buffer[128];
+
+    assert(lumo_shell_state_socket_path("/run/user/1000", buffer,
+        sizeof(buffer)));
+    assert(strcmp(buffer, "/run/user/1000/lumo-shell-state.sock") == 0);
+
+    assert(lumo_shell_state_format_line(buffer, sizeof(buffer),
+        "rotation", "90") == strlen("rotation=90\n"));
+    assert(strcmp(buffer, "rotation=90\n") == 0);
+
+    assert(lumo_shell_state_format_bool(buffer, sizeof(buffer),
+        "launcher visible", true) == strlen("launcher visible=1\n"));
+    assert(strcmp(buffer, "launcher visible=1\n") == 0);
+
+    assert(lumo_shell_state_format_double(buffer, sizeof(buffer),
+        "gesture threshold", 32.0) == strlen("gesture threshold=32.00\n"));
+    assert(strcmp(buffer, "gesture threshold=32.00\n") == 0);
+}
+
 int main(void) {
     test_rotation_helpers();
     test_compositor_defaults();
@@ -214,6 +282,9 @@ int main(void) {
     test_shell_hitbox_refresh();
     test_xwayland_workarea_collection();
     test_state_setters();
+    test_shell_binary_resolution();
+    test_shell_argv_builder();
+    test_shell_state_helpers();
     puts("lumo compositor tests passed");
     return 0;
 }
