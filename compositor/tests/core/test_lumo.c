@@ -34,6 +34,11 @@ static void test_backend_helpers(void) {
     assert(strcmp(lumo_backend_mode_name(LUMO_BACKEND_WAYLAND), "wayland") == 0);
     assert(strcmp(lumo_backend_mode_name(LUMO_BACKEND_HEADLESS), "headless") == 0);
     assert(strcmp(lumo_backend_mode_name(LUMO_BACKEND_X11), "x11") == 0);
+    assert(lumo_backend_env_value(LUMO_BACKEND_AUTO) == NULL);
+    assert(strcmp(lumo_backend_env_value(LUMO_BACKEND_DRM), "libinput,drm") == 0);
+    assert(strcmp(lumo_backend_env_value(LUMO_BACKEND_WAYLAND), "wayland") == 0);
+    assert(strcmp(lumo_backend_env_value(LUMO_BACKEND_HEADLESS), "headless") == 0);
+    assert(strcmp(lumo_backend_env_value(LUMO_BACKEND_X11), "x11") == 0);
     assert(lumo_backend_mode_parse("auto", &mode));
     assert(mode == LUMO_BACKEND_AUTO);
     assert(lumo_backend_mode_parse("drm", &mode));

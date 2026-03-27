@@ -101,6 +101,9 @@ normal direct-to-display path and the normal GDM login-session path. Use
 `--backend headless`, `--backend wayland`, or `--backend x11` when you want to
 debug nested sessions or isolate backend bring-up issues from SSH or another
 remote shell.
+In Lumo, explicit DRM mode maps to wlroots `libinput,drm` so direct-display
+sessions still bring up touchscreen and keyboard devices alongside the scanout
+backend.
 `--backend drm` is still a bad fit for SSH and other non-seat shells, but it no
 longer requires a visible tty when a display manager is launching the session.
 When you leave the compositor in `--backend auto` and launch it from SSH or

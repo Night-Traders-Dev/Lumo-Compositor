@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.29] - 2026-03-27
+- Fixed direct-display DRM sessions so explicit `--backend drm` now requests `libinput,drm` from wlroots instead of `drm` alone, which restores touchscreen and keyboard devices in the OrangePi login-session path.
+- Added backend helper coverage so the wlroots backend environment mapping is tested alongside the existing backend mode parsing logic.
+- Updated the runtime docs to explain that direct DRM mode in Lumo includes libinput as part of the explicit backend set.
+
 ## [0.0.28] - 2026-03-27
 - Taught the compositor input pipeline to treat a short tap on the bottom `shell-gesture` handle as a launcher-open action, so the gesture pill works even before a full edge-swipe gesture is completed.
 - Added a temporary compositor-driven touch debug overlay on the gesture surface and expanded shell protocol state so we can see touch position and routing while debugging the OrangePi touchscreen path.

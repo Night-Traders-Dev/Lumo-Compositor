@@ -249,6 +249,24 @@ static inline bool lumo_backend_mode_parse(
     return false;
 }
 
+static inline const char *lumo_backend_env_value(
+    enum lumo_backend_mode mode
+) {
+    switch (mode) {
+    case LUMO_BACKEND_DRM:
+        return "libinput,drm";
+    case LUMO_BACKEND_WAYLAND:
+        return "wayland";
+    case LUMO_BACKEND_HEADLESS:
+        return "headless";
+    case LUMO_BACKEND_X11:
+        return "x11";
+    case LUMO_BACKEND_AUTO:
+    default:
+        return NULL;
+    }
+}
+
 static inline bool lumo_tty_name_looks_like_vt(const char *tty_name) {
     const char *suffix = NULL;
 

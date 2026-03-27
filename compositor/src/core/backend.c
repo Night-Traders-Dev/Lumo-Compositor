@@ -55,7 +55,7 @@ int lumo_backend_start(struct lumo_compositor *compositor) {
     if (compositor->config != NULL) {
         if (compositor->config->backend_mode != LUMO_BACKEND_AUTO) {
             const char *backend_name =
-                lumo_backend_mode_name(compositor->config->backend_mode);
+                lumo_backend_env_value(compositor->config->backend_mode);
             const char *tty_name = lumo_backend_controlling_tty();
 
             if (compositor->config->backend_mode == LUMO_BACKEND_DRM &&
@@ -73,6 +73,10 @@ int lumo_backend_start(struct lumo_compositor *compositor) {
                     tty_name != NULL ? tty_name : "none");
             }
 
+            if (backend_name == NULL) {
+                backend_name = lumo_backend_mode_name(
+                    compositor->config->backend_mode);
+            }
             if (setenv("WLR_BACKENDS", backend_name, 1) != 0) {
                 wlr_log_errno(WLR_ERROR,
                     "backend: failed to set WLR_BACKENDS=%s", backend_name);
@@ -88,7 +92,11 @@ int lumo_backend_start(struct lumo_compositor *compositor) {
                 selected_mode = lumo_backend_auto_selection();
                 if (selected_mode != LUMO_BACKEND_AUTO) {
                     const char *backend_name =
-                        lumo_backend_mode_name(selected_mode);
+                        lumo_backend_env_value(selected_mode);
+
+                    if (backend_name == NULL) {
+                        backend_name = lumo_backend_mode_name(selected_mode);
+                    }
 
                     if (setenv("WLR_BACKENDS", backend_name, 1) != 0) {
                         wlr_log_errno(WLR_ERROR,

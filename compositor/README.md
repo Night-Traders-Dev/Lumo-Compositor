@@ -68,6 +68,9 @@ The OrangePi RV2 on Ubuntu 24.04 riscv64 should normally use `drm` for the
 physical touchscreen and for the login-screen session. `headless`, `wayland`,
 and `x11` are there to make debugging and nested bring-up easier when we want
 to isolate backend problems.
+Lumo maps explicit DRM mode to wlroots `libinput,drm` so touchscreen and
+keyboard devices stay available in the direct-display session instead of
+starting a scanout-only backend.
 `drm` is still the wrong choice for SSH and other non-seat shells, but it does
 not require a visible tty when GDM or another display manager starts the
 session.
