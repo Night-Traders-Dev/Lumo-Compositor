@@ -59,6 +59,7 @@ static int lumo_shell_spawn_process(
     const char *binary_path,
     struct lumo_shell_process *process
 );
+static void lumo_shell_reap_children(struct lumo_compositor *compositor);
 
 static const char *lumo_shell_default_binary_name(void) {
     return "lumo-shell";
@@ -295,19 +296,24 @@ static int lumo_shell_handle_child_signal(
     int signal_number,
     void *data
 ) {
-    struct lumo_compositor *compositor = data;
+    (void)signal_number;
+    lumo_shell_reap_children(data);
+
+    return 0;
+}
+
+static void lumo_shell_reap_children(struct lumo_compositor *compositor) {
     struct lumo_shell_state *state;
     int status = 0;
     pid_t pid;
 
-    (void)signal_number;
     if (compositor == NULL) {
-        return 0;
+        return;
     }
 
     state = compositor->shell_state;
     if (state == NULL) {
-        return 0;
+        return;
     }
 
     for (;;) {
@@ -350,8 +356,6 @@ static int lumo_shell_handle_child_signal(
             lumo_shell_mode_argument(process->mode), (int)process->pid);
         lumo_shell_bridge_broadcast_state(compositor);
     }
-
-    return 0;
 }
 
 static bool lumo_shell_wait_for_exec_result(int fd) {
@@ -1430,6 +1434,10 @@ int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
     }
 
     return 0;
+}
+
+void lumo_shell_autostart_poll(struct lumo_compositor *compositor) {
+    lumo_shell_reap_children(compositor);
 }
 
 void lumo_shell_autostart_stop(struct lumo_compositor *compositor) {

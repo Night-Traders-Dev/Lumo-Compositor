@@ -269,23 +269,22 @@ static void lumo_protocol_clear_shell_hitboxes(struct lumo_compositor *composito
     }
 }
 
+static bool lumo_protocol_layer_surface_layout_state_equal(
+    const struct wlr_layer_surface_v1_state *left,
+    const struct wlr_layer_surface_v1_state *right
+);
+
 bool lumo_protocol_layer_surface_commit_needs_reconfigure(
-    uint32_t committed,
+    const struct wlr_layer_surface_v1_state *previous,
+    bool previous_valid,
+    const struct wlr_layer_surface_v1_state *current,
     bool initialized
 ) {
-    const uint32_t layout_fields =
-        WLR_LAYER_SURFACE_V1_STATE_DESIRED_SIZE |
-        WLR_LAYER_SURFACE_V1_STATE_ANCHOR |
-        WLR_LAYER_SURFACE_V1_STATE_EXCLUSIVE_ZONE |
-        WLR_LAYER_SURFACE_V1_STATE_MARGIN |
-        WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY |
-        WLR_LAYER_SURFACE_V1_STATE_LAYER;
-
-    if (!initialized) {
+    if (!initialized || !previous_valid) {
         return true;
     }
 
-    return (committed & layout_fields) != 0;
+    return !lumo_protocol_layer_surface_layout_state_equal(previous, current);
 }
 
 static bool lumo_protocol_layer_surface_layout_state_equal(
@@ -607,14 +606,20 @@ static void lumo_protocol_layer_surface_commit(
     }
 
     wlr_layer_surface = layer_surface->layer_surface;
-    if (wlr_layer_surface == NULL ||
-            !lumo_protocol_layer_surface_commit_needs_reconfigure(
-                wlr_layer_surface->current.committed,
-                wlr_layer_surface->initialized)) {
+    if (wlr_layer_surface == NULL) {
         return;
     }
 
-    lumo_protocol_mark_layers_dirty(layer_surface->compositor);
+    if (lumo_protocol_layer_surface_commit_needs_reconfigure(
+            &layer_surface->last_committed_state,
+            layer_surface->commit_snapshot_valid,
+            &wlr_layer_surface->current,
+            wlr_layer_surface->initialized)) {
+        lumo_protocol_mark_layers_dirty(layer_surface->compositor);
+    }
+
+    layer_surface->last_committed_state = wlr_layer_surface->current;
+    layer_surface->commit_snapshot_valid = true;
 }
 
 static void lumo_protocol_new_toplevel(

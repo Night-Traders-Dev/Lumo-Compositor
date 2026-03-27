@@ -535,6 +535,8 @@ struct lumo_layer_surface {
     struct wlr_box last_usable_area;
     struct wlr_layer_surface_v1_state last_current_state;
     struct wlr_layer_surface_v1_state last_pending_state;
+    bool commit_snapshot_valid;
+    struct wlr_layer_surface_v1_state last_committed_state;
     struct wl_listener map;
     struct wl_listener unmap;
     struct wl_listener commit;
@@ -978,7 +980,9 @@ void lumo_protocol_refresh_keyboard_visibility(
 );
 void lumo_protocol_mark_layers_dirty(struct lumo_compositor *compositor);
 bool lumo_protocol_layer_surface_commit_needs_reconfigure(
-    uint32_t committed,
+    const struct wlr_layer_surface_v1_state *previous,
+    bool previous_valid,
+    const struct wlr_layer_surface_v1_state *current,
     bool initialized
 );
 
@@ -1017,6 +1021,7 @@ size_t lumo_shell_build_argv(
     size_t capacity
 );
 int lumo_shell_autostart_start(struct lumo_compositor *compositor);
+void lumo_shell_autostart_poll(struct lumo_compositor *compositor);
 void lumo_shell_autostart_stop(struct lumo_compositor *compositor);
 void lumo_shell_state_broadcast_launcher_visible(
     struct lumo_compositor *compositor,

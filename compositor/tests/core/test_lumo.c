@@ -772,12 +772,27 @@ static void test_shell_state_helpers(void) {
 }
 
 static void test_layer_surface_commit_reconfigure_policy(void) {
-    assert(lumo_protocol_layer_surface_commit_needs_reconfigure(0, false));
-    assert(!lumo_protocol_layer_surface_commit_needs_reconfigure(0, true));
+    struct wlr_layer_surface_v1_state previous = {0};
+    struct wlr_layer_surface_v1_state current = {0};
+
     assert(lumo_protocol_layer_surface_commit_needs_reconfigure(
-        WLR_LAYER_SURFACE_V1_STATE_MARGIN, true));
+        &previous, false, &current, false));
     assert(lumo_protocol_layer_surface_commit_needs_reconfigure(
-        WLR_LAYER_SURFACE_V1_STATE_EXCLUSIVE_ZONE, true));
+        &previous, false, &current, true));
+    assert(!lumo_protocol_layer_surface_commit_needs_reconfigure(
+        &previous, true, &current, true));
+
+    current.margin.top = 12;
+    assert(lumo_protocol_layer_surface_commit_needs_reconfigure(
+        &previous, true, &current, true));
+
+    previous = current;
+    assert(!lumo_protocol_layer_surface_commit_needs_reconfigure(
+        &previous, true, &current, true));
+
+    current.exclusive_zone = 48;
+    assert(lumo_protocol_layer_surface_commit_needs_reconfigure(
+        &previous, true, &current, true));
 }
 
 int main(void) {

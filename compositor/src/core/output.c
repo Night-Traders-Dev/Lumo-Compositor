@@ -41,6 +41,7 @@ static void lumo_output_configure_scene(struct lumo_output *output) {
 static void lumo_output_frame(struct wl_listener *listener, void *data) {
     struct lumo_output *output = wl_container_of(listener, output, frame);
 
+    lumo_shell_autostart_poll(output != NULL ? output->compositor : NULL);
     lumo_output_configure_scene(output);
 
     if (output->scene_output == NULL) {

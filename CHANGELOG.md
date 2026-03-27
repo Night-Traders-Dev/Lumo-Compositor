@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.44] - 2026-03-27
+- Fixed launcher reopen churn by basing layer-shell reconfigure decisions on actual committed layout state changes instead of wlroots commit flags, which keeps redraw-only commits from retriggering fresh layout configures.
+- Added a compositor-side shell child polling fallback on output frames so a dead launcher client is reaped and respawned even if the `SIGCHLD` path is missed during a live session.
+- Kept the local open-close-open launcher harness green without the earlier broken-pipe and configure-flood behavior.
+
 ## [0.0.43] - 2026-03-27
 - Suppressed duplicate layer-shell configures by caching the last arranged launcher and shell layout snapshot per layer surface and skipping no-op reconfigurations.
 - Stopped forcing repeated layer configuration frames while new layer surfaces are waiting for their first commit, which reduces startup and reopen configure churn on slower devices like the OrangePi RV2.
