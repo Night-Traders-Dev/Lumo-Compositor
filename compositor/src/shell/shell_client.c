@@ -977,49 +977,41 @@ static void lumo_draw_quick_settings_panel(
     const uint32_t accent = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
     const uint32_t dim = lumo_argb(0x40, 0x77, 0x21, 0x6F);
     struct lumo_rect panel;
-    int panel_w = (int)(width * 3 / 5);
-    int panel_h = (int)(height - bar_height - 12);
+    int panel_w = (int)(width / 2);
     int row_y;
 
-    (void)client;
     if (panel_w < 200) {
         panel_w = 200;
     }
-    if (panel_h < 100) {
-        panel_h = 100;
-    }
-    if (panel_h > 280) {
-        panel_h = 280;
-    }
 
-    panel.x = (int)width - panel_w - 12;
-    panel.y = bar_height + 6;
+    panel.x = (int)width - panel_w - 8;
+    panel.y = bar_height + 4;
     panel.width = panel_w;
-    panel.height = panel_h;
-    lumo_fill_rounded_rect(pixels, width, height, &panel, 16, panel_bg);
+    panel.height = (int)height - bar_height - 8;
+    lumo_fill_rounded_rect(pixels, width, height, &panel, 14, panel_bg);
     lumo_draw_outline(pixels, width, height, &panel, 1, panel_stroke);
 
-    row_y = panel.y + 18;
-    lumo_draw_text(pixels, width, height, panel.x + 20, row_y, 2,
+    row_y = panel.y + 12;
+    lumo_draw_text(pixels, width, height, panel.x + 16, row_y, 2,
         label_color, "QUICK SETTINGS");
 
-    row_y += 32;
-    lumo_fill_rect(pixels, width, height, panel.x + 16, row_y,
-        panel.width - 32, 1, dim);
+    row_y += 24;
+    lumo_fill_rect(pixels, width, height, panel.x + 12, row_y,
+        panel.width - 24, 1, dim);
 
     {
-        int val_x = panel.x + panel.width / 3 + 10;
+        int val_x = panel.x + panel.width / 3;
 
-        row_y += 14;
-        lumo_draw_text(pixels, width, height, panel.x + 20, row_y, 2,
+        row_y += 10;
+        lumo_draw_text(pixels, width, height, panel.x + 16, row_y, 2,
             label_color, "WI-FI");
         lumo_draw_wifi_bars(pixels, width, height,
-            panel.x + panel.width - 60, row_y - 2, 3, accent, dim);
+            panel.x + panel.width - 50, row_y - 2, 3, accent, dim);
         lumo_draw_text(pixels, width, height, val_x, row_y, 2,
             value_color, "CONNECTED");
 
-        row_y += 30;
-        lumo_draw_text(pixels, width, height, panel.x + 20, row_y, 2,
+        row_y += 22;
+        lumo_draw_text(pixels, width, height, panel.x + 16, row_y, 2,
             label_color, "DISPLAY");
         {
             uint32_t rot = client != NULL ?
@@ -1030,17 +1022,31 @@ static void lumo_draw_quick_settings_panel(
                 value_color, rot_val);
         }
 
-        row_y += 30;
-        lumo_draw_text(pixels, width, height, panel.x + 20, row_y, 2,
+        row_y += 22;
+        lumo_draw_text(pixels, width, height, panel.x + 16, row_y, 2,
             label_color, "SESSION");
         lumo_draw_text(pixels, width, height, val_x, row_y, 2,
-            value_color, "LUMO 0.0.48");
+            value_color, "LUMO 0.0.50");
 
-        row_y += 30;
-        lumo_draw_text(pixels, width, height, panel.x + 20, row_y, 2,
+        row_y += 22;
+        lumo_draw_text(pixels, width, height, panel.x + 16, row_y, 2,
             label_color, "DEVICE");
         lumo_draw_text(pixels, width, height, val_x, row_y, 2,
             value_color, "ORANGEPI RV2");
+
+        row_y += 28;
+        lumo_fill_rect(pixels, width, height, panel.x + 12, row_y,
+            panel.width - 24, 1, dim);
+
+        row_y += 10;
+        {
+            struct lumo_rect btn = {
+                panel.x + 12, row_y, panel.width - 24, 28
+            };
+            lumo_fill_rounded_rect(pixels, width, height, &btn, 8, accent);
+            lumo_draw_text_centered(pixels, width, height, &btn, 2,
+                value_color, "RELOAD SESSION");
+        }
     }
 }
 
@@ -1116,14 +1122,14 @@ static void lumo_draw_status(
         struct lumo_rect panel;
         char date_buf[32];
         char day_buf[32];
-        int panel_w = (int)(width * 3 / 5);
-        int panel_h = 180;
+        int panel_w = (int)(width / 2);
+        int panel_h = (int)(height - bar_height - 8);
 
-        if (panel_w < 240) {
-            panel_w = 240;
+        if (panel_w < 200) {
+            panel_w = 200;
         }
-        panel.x = (int)(width / 2) - panel_w / 2;
-        panel.y = bar_height + 6;
+        panel.x = 8;
+        panel.y = bar_height + 4;
         panel.width = panel_w;
         panel.height = panel_h;
 
@@ -1131,18 +1137,18 @@ static void lumo_draw_status(
         lumo_draw_outline(pixels, width, height, &panel, 1, panel_stroke);
 
         {
-            int tw = lumo_text_width(time_buf, 6);
+            int tw = lumo_text_width(time_buf, 5);
             lumo_draw_text(pixels, width, height,
                 panel.x + panel.width / 2 - tw / 2,
-                panel.y + 24, 6, accent_color, time_buf);
+                panel.y + 16, 5, accent_color, time_buf);
         }
 
         strftime(date_buf, sizeof(date_buf), "%A", &tm_now);
         {
-            int dw = lumo_text_width(date_buf, 3);
+            int dw = lumo_text_width(date_buf, 2);
             lumo_draw_text(pixels, width, height,
                 panel.x + panel.width / 2 - dw / 2,
-                panel.y + 80, 3, text_color, date_buf);
+                panel.y + 60, 2, text_color, date_buf);
         }
 
         snprintf(day_buf, sizeof(day_buf), "%d-%02d-%02d",
@@ -1151,7 +1157,7 @@ static void lumo_draw_status(
             int dw2 = lumo_text_width(day_buf, 2);
             lumo_draw_text(pixels, width, height,
                 panel.x + panel.width / 2 - dw2 / 2,
-                panel.y + 116, 2, label_color, day_buf);
+                panel.y + 86, 2, label_color, day_buf);
         }
 
         {
@@ -1171,24 +1177,47 @@ static void lumo_draw_animated_bg(
     uint32_t width,
     uint32_t height
 ) {
-    struct timespec ts;
+    struct timespec mono_ts;
+    time_t wall_now;
+    struct tm tm_now;
     uint32_t frame;
+    uint32_t hour;
+    uint32_t base_r, base_g, base_b;
+    uint32_t warm_r, warm_g, warm_b;
 
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    frame = (uint32_t)(ts.tv_sec * 5 + ts.tv_nsec / 200000000);
+    clock_gettime(CLOCK_MONOTONIC, &mono_ts);
+    frame = (uint32_t)(mono_ts.tv_sec * 5 + mono_ts.tv_nsec / 200000000);
+
+    wall_now = time(NULL);
+    localtime_r(&wall_now, &tm_now);
+    hour = (uint32_t)tm_now.tm_hour;
+
+    if (hour >= 6 && hour < 10) {
+        base_r = 0x3A; base_g = 0x08; base_b = 0x20;
+        warm_r = 0xE9; warm_g = 0x74; warm_b = 0x30;
+    } else if (hour >= 10 && hour < 17) {
+        base_r = 0x2C; base_g = 0x00; base_b = 0x1E;
+        warm_r = 0xE9; warm_g = 0x54; warm_b = 0x20;
+    } else if (hour >= 17 && hour < 20) {
+        base_r = 0x40; base_g = 0x0A; base_b = 0x1A;
+        warm_r = 0xE9; warm_g = 0x40; warm_b = 0x18;
+    } else {
+        base_r = 0x18; base_g = 0x00; base_b = 0x14;
+        warm_r = 0x77; warm_g = 0x21; warm_b = 0x6F;
+    }
 
     for (uint32_t y = 0; y < height; y++) {
         uint32_t phase = (y * 3 + frame * 7) % 512;
         uint32_t wave = phase < 256 ? phase : 511 - phase;
         uint32_t glow = (wave * wave) >> 14;
 
-        uint32_t grad_r = 0x2C + (y * 0x30) / height;
-        uint32_t grad_g = 0x00 + (y * 0x10) / height;
-        uint32_t grad_b = 0x1E + (y * 0x08) / height;
+        uint32_t grad_r = base_r + (y * 0x20) / height;
+        uint32_t grad_g = base_g + (y * 0x08) / height;
+        uint32_t grad_b = base_b + (y * 0x06) / height;
 
-        uint32_t r = grad_r + (glow * 0x40 >> 8);
-        uint32_t g = grad_g + (glow * 0x18 >> 8);
-        uint32_t b = grad_b + (glow * 0x08 >> 8);
+        uint32_t r = grad_r + (glow * (warm_r - base_r) >> 8);
+        uint32_t g = grad_g + (glow * (warm_g > base_g ? warm_g - base_g : 0) >> 8);
+        uint32_t b = grad_b + (glow * (warm_b > base_b ? warm_b - base_b : 0) >> 8);
         if (r > 0xFF) r = 0xFF;
         if (g > 0xFF) g = 0xFF;
         if (b > 0xFF) b = 0xFF;
@@ -1203,8 +1232,8 @@ static void lumo_draw_animated_bg(
             uint32_t streak_x = (frame * 3 + y * 2) % (width + 200);
             if (streak_x < width) {
                 uint32_t streak_len = 60 + (y % 40);
-                uint32_t sr = r + 0x20 > 0xFF ? 0xFF : r + 0x20;
-                uint32_t sg = g + 0x10 > 0xFF ? 0xFF : g + 0x10;
+                uint32_t sr = r + 0x18 > 0xFF ? 0xFF : r + 0x18;
+                uint32_t sg = g + 0x0C > 0xFF ? 0xFF : g + 0x0C;
                 uint32_t sb = b + 0x06 > 0xFF ? 0xFF : b + 0x06;
                 uint32_t streak_color = lumo_argb(0xFF,
                     (uint8_t)sr, (uint8_t)sg, (uint8_t)sb);
@@ -1415,17 +1444,14 @@ static bool lumo_shell_client_build_config(
         }
         config->width = 0;
         config->background_rgba = 0x00000000;
-        if (client->compositor_quick_settings_visible ||
-                client->compositor_time_panel_visible) {
-            uint32_t panel_height = lumo_u32_min(output_height * 2 / 5, 340);
-            if (panel_height < 200) {
-                panel_height = 200;
-            }
-            if (client->compositor_time_panel_visible &&
-                    !client->compositor_quick_settings_visible) {
-                panel_height = lumo_u32_min(panel_height, 260);
-            }
-            config->height = panel_height;
+        if (client->compositor_quick_settings_visible) {
+            config->height = lumo_u32_min(config->height + 220, output_height / 3);
+            config->exclusive_zone = 0;
+            config->anchor = LUMO_SHELL_ANCHOR_TOP |
+                LUMO_SHELL_ANCHOR_LEFT |
+                LUMO_SHELL_ANCHOR_RIGHT;
+        } else if (client->compositor_time_panel_visible) {
+            config->height = lumo_u32_min(config->height + 200, output_height / 3);
             config->exclusive_zone = 0;
             config->anchor = LUMO_SHELL_ANCHOR_TOP |
                 LUMO_SHELL_ANCHOR_LEFT |
@@ -1504,6 +1530,11 @@ static void lumo_shell_client_update_input_region(
         }
         break;
     case LUMO_SHELL_MODE_STATUS:
+        if (client->compositor_quick_settings_visible ||
+                client->compositor_time_panel_visible) {
+            wl_region_add(region, 0, 0, (int)width, (int)height);
+        }
+        break;
     case LUMO_SHELL_MODE_BACKGROUND:
         break;
     default:
@@ -1795,6 +1826,46 @@ static bool lumo_shell_client_send_frame(
     struct lumo_shell_client *client,
     const struct lumo_shell_protocol_frame *frame
 );
+
+static void lumo_shell_client_send_reload(struct lumo_shell_client *client) {
+    struct lumo_shell_protocol_frame frame;
+
+    if (client == NULL) {
+        return;
+    }
+
+    if (!lumo_shell_protocol_frame_init(&frame,
+            LUMO_SHELL_PROTOCOL_FRAME_REQUEST, "reload_session",
+            client->next_request_id++)) {
+        return;
+    }
+
+    (void)lumo_shell_client_send_frame(client, &frame);
+    fprintf(stderr, "lumo-shell: sent reload_session request\n");
+}
+
+static bool lumo_shell_status_reload_hit(
+    const struct lumo_shell_client *client,
+    double x,
+    double y
+) {
+    if (client == NULL || client->mode != LUMO_SHELL_MODE_STATUS ||
+            !client->compositor_quick_settings_visible) {
+        return false;
+    }
+
+    {
+        int panel_w = (int)client->configured_width / 2;
+        int bar_h = 40;
+        int panel_x = (int)client->configured_width - panel_w - 8;
+        int btn_y = bar_h + 4 + 12 + 24 + 10 + 22 + 22 + 22 + 28 + 10;
+        int btn_h = 28;
+
+        if (panel_w < 200) panel_w = 200;
+        return x >= panel_x + 12 && x <= panel_x + panel_w - 12 &&
+            y >= btn_y && y <= btn_y + btn_h;
+    }
+}
 
 static void lumo_shell_client_activate_target(struct lumo_shell_client *client) {
     struct lumo_shell_protocol_frame frame;
@@ -2507,8 +2578,10 @@ static void lumo_shell_touch_handle_down(
 
     client->touch_pressed = true;
     client->active_touch_id = id;
-    lumo_shell_client_note_target(client, wl_fixed_to_double(x),
-        wl_fixed_to_double(y));
+    client->pointer_x = wl_fixed_to_double(x);
+    client->pointer_y = wl_fixed_to_double(y);
+    lumo_shell_client_note_target(client, client->pointer_x,
+        client->pointer_y);
 }
 
 static void lumo_shell_touch_handle_up(
@@ -2530,6 +2603,14 @@ static void lumo_shell_touch_handle_up(
 
     client->touch_pressed = false;
     client->active_touch_id = -1;
+
+    if (client->mode == LUMO_SHELL_MODE_STATUS &&
+            lumo_shell_status_reload_hit(client,
+                client->pointer_x, client->pointer_y)) {
+        lumo_shell_client_send_reload(client);
+        return;
+    }
+
     lumo_shell_client_activate_target(client);
     if (!client->pointer_pressed) {
         lumo_shell_client_clear_active_target(client);

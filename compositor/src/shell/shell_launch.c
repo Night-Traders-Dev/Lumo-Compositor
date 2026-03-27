@@ -971,6 +971,13 @@ static void lumo_shell_bridge_handle_request_frame(
         return;
     }
 
+    if (strcmp(frame->name, "reload_session") == 0) {
+        wlr_log(WLR_INFO, "shell: reload_session requested");
+        (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
+        lumo_compositor_stop(client->compositor);
+        return;
+    }
+
     wlr_log(WLR_INFO, "shell: unhandled request %s", frame->name);
     (void)lumo_shell_bridge_send_result(client, frame, false,
         "unknown_request", "unsupported_name");
