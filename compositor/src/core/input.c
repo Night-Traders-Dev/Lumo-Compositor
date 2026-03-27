@@ -829,6 +829,8 @@ static void lumo_input_touch_point_trigger_edge_action(
     struct lumo_touch_point *point,
     uint32_t time_msec
 ) {
+    bool closed_focused_app = false;
+
     if (compositor == NULL || point == NULL || point->gesture_triggered) {
         return;
     }
@@ -865,6 +867,16 @@ static void lumo_input_touch_point_trigger_edge_action(
     case LUMO_EDGE_BOTTOM:
         if (compositor->touch_audit_active) {
             lumo_touch_audit_set_active(compositor, false);
+        }
+        if (lumo_touch_point_prefers_bottom_app_close(compositor, point)) {
+            closed_focused_app =
+                lumo_protocol_close_focused_app(compositor);
+            if (closed_focused_app) {
+                wlr_log(WLR_INFO,
+                    "input: touch %d closed focused app from bottom-edge swipe at %u",
+                    point->touch_id, time_msec);
+                return;
+            }
         }
         if (lumo_hitbox_is_shell_gesture(point->hitbox) &&
                 compositor->launcher_visible) {

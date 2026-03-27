@@ -115,6 +115,28 @@ void lumo_xwayland_focus_surface(
     wlr_xwayland_surface_activate(xsurface, true);
 }
 
+bool lumo_xwayland_close_surface(
+    struct lumo_compositor *compositor,
+    struct wlr_surface *surface
+) {
+    struct wlr_xwayland_surface *xsurface;
+
+    if (compositor == NULL || surface == NULL || compositor->xwayland == NULL ||
+            !compositor->xwayland_ready) {
+        return false;
+    }
+
+    xsurface = wlr_xwayland_surface_try_from_wlr_surface(surface);
+    if (xsurface == NULL) {
+        return false;
+    }
+
+    wlr_log(WLR_INFO, "xwayland: closing surface %s",
+        xsurface->title != NULL ? xsurface->title : "(unnamed)");
+    wlr_xwayland_surface_close(xsurface);
+    return true;
+}
+
 static void lumo_xwayland_surface_clear_scene(
     struct lumo_xwayland_surface *surface
 ) {
@@ -468,6 +490,15 @@ void lumo_xwayland_focus_surface(
 ) {
     (void)compositor;
     (void)surface;
+}
+
+bool lumo_xwayland_close_surface(
+    struct lumo_compositor *compositor,
+    struct wlr_surface *surface
+) {
+    (void)compositor;
+    (void)surface;
+    return false;
 }
 
 int lumo_xwayland_start(struct lumo_compositor *compositor) {

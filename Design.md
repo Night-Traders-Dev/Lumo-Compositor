@@ -104,7 +104,8 @@ Design goals:
 
 Current system-edge roles:
 
-- bottom edge: open the launcher drawer
+- bottom gesture handle: toggle the launcher drawer
+- bottom edge swipe up: close the currently focused native Lumo app, Wayland app, or XWayland app
 - right edge: open the launcher drawer from the side reserve zone
 - left edge: dismiss launcher, audit, or keyboard state like a mobile back gesture
 - top edge: reserved for future system surfaces in normal sessions; touch audit is only exposed from debug sessions and explicit tooling so the app drawer cannot be displaced accidentally

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.47] - 2026-03-27
+- Added a compositor-owned bottom-edge close gesture for focused applications, so an upward swipe from the bottom reserve zone now closes both native `lumo-app` clients and regular Wayland or XWayland app toplevels.
+- Kept the visible bottom gesture handle on its existing launcher-toggle path, which preserves the quick drawer open or close behavior while reserving full bottom-edge swipes for app dismissal.
+- Added regression coverage for the new bottom-edge close policy, the focused-app close helper defaults, and documented the updated mobile gesture behavior.
+
 ## [0.0.46] - 2026-03-27
 - Made the launcher behave like a proper toggle: the bottom gesture trigger now closes the app drawer when it is already open, and the drawer's new top-corner close control routes through the same shell target path.
 - Added a native `lumo-app` Wayland client and wired all 12 launcher tiles to open built-in Lumo apps instead of external desktop applications, giving the app drawer a fully native touch-first launch path.

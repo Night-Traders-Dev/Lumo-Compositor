@@ -771,6 +771,18 @@ static inline bool lumo_touch_point_is_launcher_capture(
             point->capture_edge == LUMO_EDGE_RIGHT);
 }
 
+static inline bool lumo_touch_point_prefers_bottom_app_close(
+    const struct lumo_touch_point *point,
+    bool launcher_visible,
+    bool touch_audit_active
+) {
+    return point != NULL &&
+        point->capture_edge == LUMO_EDGE_BOTTOM &&
+        !lumo_hitbox_is_shell_gesture(point->hitbox) &&
+        !launcher_visible &&
+        !touch_audit_active;
+}
+
 struct lumo_touch_audit_sample {
     bool captured;
     double raw_x_pct;
@@ -933,6 +945,10 @@ void lumo_xwayland_focus_surface(
     struct lumo_compositor *compositor,
     struct wlr_surface *surface
 );
+bool lumo_xwayland_close_surface(
+    struct lumo_compositor *compositor,
+    struct wlr_surface *surface
+);
 void lumo_protocol_configure_layers(
     struct lumo_compositor *compositor,
     struct lumo_output *output
@@ -984,6 +1000,7 @@ void lumo_protocol_set_keyboard_visible(
 void lumo_protocol_refresh_keyboard_visibility(
     struct lumo_compositor *compositor
 );
+bool lumo_protocol_close_focused_app(struct lumo_compositor *compositor);
 void lumo_protocol_mark_layers_dirty(struct lumo_compositor *compositor);
 bool lumo_protocol_layer_surface_commit_needs_reconfigure(
     const struct wlr_layer_surface_v1_state *previous,

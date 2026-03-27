@@ -448,6 +448,42 @@ static void test_touch_debug_helpers(void) {
     assert(!lumo_touch_point_is_launcher_capture(&generic_edge_capture));
 }
 
+static void test_bottom_edge_close_policy(void) {
+    struct lumo_compositor compositor = {0};
+    struct lumo_hitbox gesture_hitbox = {
+        .name = "shell-gesture",
+        .kind = LUMO_HITBOX_EDGE_GESTURE,
+    };
+    struct lumo_touch_point bottom_system_point = {
+        .capture_edge = LUMO_EDGE_BOTTOM,
+        .hitbox = NULL,
+    };
+    struct lumo_touch_point bottom_handle_point = {
+        .capture_edge = LUMO_EDGE_BOTTOM,
+        .hitbox = &gesture_hitbox,
+    };
+    struct lumo_touch_point right_edge_point = {
+        .capture_edge = LUMO_EDGE_RIGHT,
+        .hitbox = NULL,
+    };
+
+    assert(lumo_touch_point_prefers_bottom_app_close(&compositor,
+        &bottom_system_point));
+    assert(!lumo_touch_point_prefers_bottom_app_close(&compositor,
+        &bottom_handle_point));
+    assert(!lumo_touch_point_prefers_bottom_app_close(&compositor,
+        &right_edge_point));
+
+    compositor.launcher_visible = true;
+    assert(!lumo_touch_point_prefers_bottom_app_close(&compositor,
+        &bottom_system_point));
+    compositor.launcher_visible = false;
+
+    compositor.touch_audit_active = true;
+    assert(!lumo_touch_point_prefers_bottom_app_close(&compositor,
+        &bottom_system_point));
+}
+
 static void test_scene_surface_helper_ignores_rect_buffers(void) {
     struct wlr_scene *scene;
     struct wlr_scene_rect *rect;
@@ -674,6 +710,24 @@ static void test_state_setters(void) {
     lumo_compositor_destroy(compositor);
 }
 
+static void test_close_focused_app_defaults(void) {
+    assert(!lumo_protocol_close_focused_app(NULL));
+
+    {
+        const struct lumo_compositor_config config = {
+            .session_name = "lumo-test",
+            .socket_name = "lumo-test-socket",
+            .initial_rotation = LUMO_ROTATION_NORMAL,
+            .debug = false,
+        };
+        struct lumo_compositor *compositor = lumo_compositor_create(&config);
+
+        assert(compositor != NULL);
+        assert(!lumo_protocol_close_focused_app(compositor));
+        lumo_compositor_destroy(compositor);
+    }
+}
+
 static void test_touch_audit_debug_gesture_policy(void) {
     const struct lumo_compositor_config release_config = {
         .session_name = "lumo-release",
@@ -823,6 +877,7 @@ int main(void) {
     test_xwayland_toggle();
     test_xwayland_ready_gate();
     test_state_setters();
+    test_close_focused_app_defaults();
     test_touch_audit_debug_gesture_policy();
     test_shell_protocol_roundtrip();
     test_protocol_listener_owner();
@@ -832,6 +887,7 @@ int main(void) {
     test_shell_state_helpers();
     test_layer_surface_commit_reconfigure_policy();
     test_immediate_gesture_handle_toggle_policy();
+    test_bottom_edge_close_policy();
     puts("lumo compositor tests passed");
     return 0;
 }

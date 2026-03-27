@@ -120,7 +120,8 @@ The current reserved edge behavior is:
 - top edge is reserved in normal sessions; touch audit entry is limited to debug sessions and explicit tooling
 - left edge dismisses launcher, audit, or keyboard state
 - right edge opens the launcher
-- bottom edge opens the launcher
+- bottom gesture handle toggles the launcher drawer
+- bottom-edge upward swipes close the currently focused native Lumo app, Wayland app, or XWayland app
 
 Touch rotation is corrected dynamically from the active output transform inside
 the compositor, so rotated displays should not need a global 180-degree
@@ -206,6 +207,7 @@ Lumo is being built around a few core ideas:
 - the shared shell geometry helper keeps compositor hitboxes and shell surfaces aligned
 - launcher tiles are native Lumo apps rather than wrappers around external desktop programs
 - touch audit and saved device profiles are part of the compositor workflow, but normal mobile sessions keep audit entry out of the default edge-gesture path so the launcher stays reliable
+- bottom-edge close gestures are compositor-owned so app dismissal stays consistent across native Lumo apps, Wayland toplevels, and XWayland windows
 
 More detailed notes live in:
 

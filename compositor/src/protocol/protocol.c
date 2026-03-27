@@ -73,6 +73,50 @@ void lumo_protocol_mark_layers_dirty(struct lumo_compositor *compositor) {
     }
 }
 
+static struct wlr_xdg_surface *lumo_protocol_root_xdg_surface_from_surface(
+    struct wlr_surface *surface
+) {
+    struct wlr_xdg_surface *xdg_surface;
+
+    xdg_surface = surface != NULL
+        ? wlr_xdg_surface_try_from_wlr_surface(surface)
+        : NULL;
+    while (xdg_surface != NULL &&
+            xdg_surface->role == WLR_XDG_SURFACE_ROLE_POPUP &&
+            xdg_surface->popup != NULL &&
+            xdg_surface->popup->parent != NULL) {
+        xdg_surface = wlr_xdg_surface_try_from_wlr_surface(
+            xdg_surface->popup->parent);
+    }
+
+    return xdg_surface;
+}
+
+static bool lumo_protocol_close_surface_app(
+    struct lumo_compositor *compositor,
+    struct wlr_surface *surface
+) {
+    struct wlr_xdg_surface *xdg_surface;
+
+    if (compositor == NULL || surface == NULL) {
+        return false;
+    }
+
+    xdg_surface = lumo_protocol_root_xdg_surface_from_surface(surface);
+    if (xdg_surface != NULL &&
+            xdg_surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL &&
+            xdg_surface->toplevel != NULL) {
+        wlr_log(WLR_INFO, "protocol: closing xdg toplevel %s",
+            xdg_surface->toplevel->title != NULL
+                ? xdg_surface->toplevel->title
+                : "(unnamed)");
+        wlr_xdg_toplevel_send_close(xdg_surface->toplevel);
+        return true;
+    }
+
+    return lumo_xwayland_close_surface(compositor, surface);
+}
+
 void lumo_protocol_refresh_keyboard_visibility(
     struct lumo_compositor *compositor
 ) {
@@ -99,6 +143,21 @@ void lumo_protocol_refresh_keyboard_visibility(
     }
 
     lumo_protocol_set_keyboard_visible(compositor, visible);
+}
+
+bool lumo_protocol_close_focused_app(struct lumo_compositor *compositor) {
+    struct wlr_surface *focused_surface = NULL;
+
+    if (compositor == NULL || compositor->seat == NULL) {
+        return false;
+    }
+
+    focused_surface = compositor->seat->keyboard_state.focused_surface;
+    if (focused_surface == NULL) {
+        focused_surface = compositor->seat->pointer_state.focused_surface;
+    }
+
+    return lumo_protocol_close_surface_app(compositor, focused_surface);
 }
 
 static void lumo_protocol_text_input_binding_destroy(

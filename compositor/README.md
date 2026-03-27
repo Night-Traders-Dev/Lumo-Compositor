@@ -94,7 +94,8 @@ The current mobile edge behavior reserves:
 - top edge for future system surfaces in normal sessions; touch audit entry is kept to debug flows
 - left edge for dismiss or back-style shell actions
 - right edge for launcher open
-- bottom edge for launcher open
+- bottom gesture handle for launcher toggle
+- bottom-edge upward swipes for focused-app close across native Lumo apps, Wayland toplevels, and XWayland windows
 
 Touch coordinates are corrected from the active output transform inside the
 compositor, which keeps rotated outputs and gesture hitboxes aligned without
