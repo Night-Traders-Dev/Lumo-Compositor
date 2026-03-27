@@ -38,6 +38,13 @@ struct lumo_app_render_context {
     enum lumo_app_id app_id;
     bool close_active;
     const char *browse_path;
+    int scroll_offset;
+    bool stopwatch_running;
+    uint64_t stopwatch_elapsed_ms;
+    int selected_row;
+    char notes[8][128];
+    int note_count;
+    int note_editing;
 };
 
 void lumo_app_render(
@@ -47,6 +54,24 @@ void lumo_app_render(
     uint32_t height
 );
 int lumo_app_files_entry_at(
+    uint32_t width,
+    uint32_t height,
+    double x,
+    double y
+);
+int lumo_app_settings_row_at(
+    uint32_t width,
+    uint32_t height,
+    double x,
+    double y
+);
+int lumo_app_clock_card_at(
+    uint32_t width,
+    uint32_t height,
+    double x,
+    double y
+);
+int lumo_app_notes_row_at(
     uint32_t width,
     uint32_t height,
     double x,

@@ -401,12 +401,84 @@ int lumo_app_files_entry_at(
     return index;
 }
 
-static void lumo_app_render_clock(
-    uint32_t *pixels,
+int lumo_app_clock_card_at(
     uint32_t width,
     uint32_t height,
-    bool close_active
+    double x,
+    double y
 ) {
+    int card1_y = (int)height / 2 + 20;
+    int card2_y = (int)height / 2 + 130;
+
+    (void)width;
+    if (x < 28.0 || x > (double)width - 28.0) {
+        return -1;
+    }
+    if (y >= card1_y && y < card1_y + 90) {
+        return 1;
+    }
+    if (y >= card2_y && y < card2_y + 90) {
+        return 2;
+    }
+    return -1;
+}
+
+int lumo_app_settings_row_at(
+    uint32_t width,
+    uint32_t height,
+    double x,
+    double y
+) {
+    int row0_y = 120;
+
+    (void)width;
+    (void)height;
+    if (x < 28.0 || x > (double)width - 28.0) {
+        return -1;
+    }
+    for (int i = 0; i < 3; i++) {
+        int ry = row0_y + i * 86;
+        if (y >= ry && y < ry + 70) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int lumo_app_notes_row_at(
+    uint32_t width,
+    uint32_t height,
+    double x,
+    double y
+) {
+    int header_y = 130;
+    int row_h = 44;
+    int max_rows = ((int)height - header_y - 80) / row_h;
+
+    (void)width;
+    if (x < 28.0 || x > (double)width - 28.0) {
+        return -1;
+    }
+    if (y >= (double)((int)height - 60) && y < (double)height - 20) {
+        return -2;
+    }
+    if (y < header_y) {
+        return -1;
+    }
+    int idx = (int)(y - header_y) / row_h;
+    if (idx < 0 || idx >= max_rows) {
+        return -1;
+    }
+    return idx;
+}
+
+static void lumo_app_render_clock(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels,
+    uint32_t width,
+    uint32_t height
+) {
+    bool close_active = ctx != NULL ? ctx->close_active : false;
     struct lumo_rect full = {0, 0, (int)width, (int)height};
     struct lumo_rect close_rect = {0};
     uint32_t accent = lumo_app_accent_argb(LUMO_APP_CLOCK);
@@ -451,9 +523,12 @@ static void lumo_app_render_clock(
         lumo_app_draw_outline(pixels, width, height, &alarm_card, 2,
             panel_stroke);
         lumo_app_draw_text(pixels, width, height, alarm_card.x + 20,
-            alarm_card.y + 16, 2, text_secondary, "NEXT ALARM");
+            alarm_card.y + 16, 2, text_secondary, "ALARM");
         lumo_app_draw_text(pixels, width, height, alarm_card.x + 20,
             alarm_card.y + 46, 3, text_primary, alarm_buf);
+        lumo_app_draw_text(pixels, width, height,
+            alarm_card.x + alarm_card.width - 80,
+            alarm_card.y + 50, 2, text_secondary, "06:30");
     }
     {
         struct lumo_rect timer_card = {
@@ -464,10 +539,24 @@ static void lumo_app_render_clock(
             panel_fill);
         lumo_app_draw_outline(pixels, width, height, &timer_card, 2,
             panel_stroke);
-        lumo_app_draw_text(pixels, width, height, timer_card.x + 20,
-            timer_card.y + 16, 2, text_secondary, "STOPWATCH");
-        lumo_app_draw_text(pixels, width, height, timer_card.x + 20,
-            timer_card.y + 46, 3, text_primary, "00:00:00");
+        {
+            uint64_t sw_ms = ctx != NULL ? ctx->stopwatch_elapsed_ms : 0;
+            bool sw_run = ctx != NULL && ctx->stopwatch_running;
+            uint32_t sw_secs = (uint32_t)(sw_ms / 1000);
+            uint32_t sw_mins = sw_secs / 60;
+            uint32_t sw_hrs = sw_mins / 60;
+            char sw_buf[16];
+            snprintf(sw_buf, sizeof(sw_buf), "%02u:%02u:%02u",
+                sw_hrs, sw_mins % 60, sw_secs % 60);
+            lumo_app_draw_text(pixels, width, height, timer_card.x + 20,
+                timer_card.y + 16, 2, text_secondary,
+                sw_run ? "STOPWATCH  RUNNING" : "STOPWATCH  TAP TO START");
+            lumo_app_draw_text(pixels, width, height, timer_card.x + 20,
+                timer_card.y + 46, 3, sw_run ? accent : text_primary, sw_buf);
+            lumo_app_draw_text(pixels, width, height,
+                timer_card.x + timer_card.width - 100,
+                timer_card.y + 50, 2, text_secondary, "TAP:RESET");
+        }
     }
 
     if (lumo_app_close_rect(width, height, &close_rect)) {
@@ -481,12 +570,15 @@ static void lumo_app_render_clock(
 }
 
 static void lumo_app_render_files(
+    const struct lumo_app_render_context *ctx,
     uint32_t *pixels,
     uint32_t width,
-    uint32_t height,
-    bool close_active,
-    const char *browse_path_override
+    uint32_t height
 ) {
+    bool close_active = ctx != NULL ? ctx->close_active : false;
+    const char *browse_path_override = ctx != NULL ? ctx->browse_path : NULL;
+    int scroll_off = ctx != NULL ? ctx->scroll_offset : 0;
+    int selected = ctx != NULL ? ctx->selected_row : -1;
     struct lumo_rect full = {0, 0, (int)width, (int)height};
     struct lumo_rect close_rect = {0};
     uint32_t accent = lumo_app_accent_argb(LUMO_APP_FILES);
@@ -533,16 +625,27 @@ static void lumo_app_render_files(
     if (dir != NULL) {
         struct dirent *entry;
         int count = 0;
+        int skipped = 0;
+        int total_visible = 0;
         int max_rows = ((int)height - row_y - 60) / 44;
 
         if (max_rows < 1) {
             max_rows = 1;
         }
-        while ((entry = readdir(dir)) != NULL && count < max_rows) {
+        while ((entry = readdir(dir)) != NULL) {
             bool is_dir;
             struct lumo_rect row_rect;
 
             if (entry->d_name[0] == '.') {
+                continue;
+            }
+            if (skipped < scroll_off) {
+                skipped++;
+                total_visible++;
+                continue;
+            }
+            if (count >= max_rows) {
+                total_visible++;
                 continue;
             }
             is_dir = entry->d_type == DT_DIR;
@@ -551,8 +654,16 @@ static void lumo_app_render_files(
             row_rect.y = row_y;
             row_rect.width = (int)width - 56;
             row_rect.height = 40;
-            lumo_app_fill_rounded_rect(pixels, width, height, &row_rect,
-                10, panel_fill);
+
+            if (selected == total_visible) {
+                lumo_app_fill_rounded_rect(pixels, width, height, &row_rect,
+                    10, lumo_app_argb(0xFF, 0x3B, 0x1F, 0x34));
+                lumo_app_draw_outline(pixels, width, height, &row_rect, 1,
+                    lumo_app_argb(0xFF, 0xE9, 0x54, 0x20));
+            } else {
+                lumo_app_fill_rounded_rect(pixels, width, height, &row_rect,
+                    10, panel_fill);
+            }
 
             {
                 struct lumo_rect icon = {
@@ -570,8 +681,18 @@ static void lumo_app_render_files(
 
             row_y += 44;
             count++;
+            total_visible++;
         }
         closedir(dir);
+
+        if (total_visible > max_rows) {
+            char scroll_buf[32];
+            snprintf(scroll_buf, sizeof(scroll_buf), "%d-%d / %d",
+                scroll_off + 1, scroll_off + count, total_visible);
+            lumo_app_draw_text(pixels, width, height,
+                (int)width - 160, (int)height - 40, 2,
+                text_secondary, scroll_buf);
+        }
 
         if (count == 0) {
             lumo_app_draw_text(pixels, width, height, 28, row_y, 2,
@@ -608,11 +729,13 @@ static void lumo_app_render_files(
 }
 
 static void lumo_app_render_settings(
+    const struct lumo_app_render_context *ctx,
     uint32_t *pixels,
     uint32_t width,
-    uint32_t height,
-    bool close_active
+    uint32_t height
 ) {
+    bool close_active = ctx != NULL ? ctx->close_active : false;
+    int selected = ctx != NULL ? ctx->selected_row : -1;
     struct lumo_rect full = {0, 0, (int)width, (int)height};
     struct lumo_rect close_rect = {0};
     uint32_t accent = lumo_app_accent_argb(LUMO_APP_SETTINGS);
@@ -791,6 +914,76 @@ static void lumo_app_render_settings(
     }
 }
 
+static void lumo_app_render_notes(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels,
+    uint32_t width,
+    uint32_t height
+) {
+    struct lumo_rect full = {0, 0, (int)width, (int)height};
+    struct lumo_rect close_rect = {0};
+    bool close_active = ctx != NULL ? ctx->close_active : false;
+    int selected = ctx != NULL ? ctx->selected_row : -1;
+    int note_count = ctx != NULL ? ctx->note_count : 0;
+    uint32_t bg_top = lumo_app_argb(0xFF, 0x06, 0x0B, 0x12);
+    uint32_t bg_bottom = lumo_app_argb(0xFF, 0x0E, 0x16, 0x22);
+    uint32_t text_primary = lumo_app_argb(0xFF, 0xFF, 0xFF, 0xFF);
+    uint32_t text_secondary = lumo_app_argb(0xFF, 0xAE, 0xA7, 0x9F);
+    uint32_t panel_fill = lumo_app_argb(0xFF, 0x2C, 0x16, 0x28);
+    uint32_t panel_stroke = lumo_app_argb(0xFF, 0x5E, 0x2C, 0x56);
+    uint32_t accent = lumo_app_argb(0xFF, 0xE9, 0x54, 0x20);
+    int row_y;
+
+    memset(pixels, 0, (size_t)width * height * 4);
+    lumo_app_fill_gradient(pixels, width, height, &full, bg_top, bg_bottom);
+
+    lumo_app_draw_text(pixels, width, height, 28, 28, 2,
+        text_secondary, "NOTES");
+    lumo_app_draw_text(pixels, width, height, 28, 60, 4, text_primary,
+        "Notes");
+    lumo_app_draw_text(pixels, width, height, 28, 108, 2, text_secondary,
+        "TAP A NOTE TO SELECT  /  TAP + TO ADD");
+
+    row_y = 130;
+    for (int i = 0; i < note_count && i < 8; i++) {
+        struct lumo_rect row = {28, row_y, (int)width - 56, 40};
+        bool is_sel = (selected == i);
+        const char *text = (ctx != NULL && ctx->notes[i][0] != '\0')
+            ? ctx->notes[i] : "EMPTY NOTE";
+
+        lumo_app_fill_rounded_rect(pixels, width, height, &row, 10,
+            is_sel ? lumo_app_argb(0xFF, 0x3B, 0x1F, 0x34) : panel_fill);
+        if (is_sel) {
+            lumo_app_draw_outline(pixels, width, height, &row, 1, accent);
+        }
+        lumo_app_draw_text(pixels, width, height, row.x + 16, row.y + 12,
+            2, is_sel ? text_primary : text_secondary, text);
+        row_y += 44;
+    }
+
+    if (note_count == 0) {
+        lumo_app_draw_text(pixels, width, height, 28, row_y + 20, 2,
+            text_secondary, "NO NOTES YET");
+    }
+
+    {
+        struct lumo_rect add_btn = {28, (int)height - 60, (int)width - 56, 36};
+        lumo_app_fill_rounded_rect(pixels, width, height, &add_btn, 12,
+            accent);
+        lumo_app_draw_text_centered(pixels, width, height, &add_btn, 2,
+            text_primary, "+ ADD NOTE");
+    }
+
+    if (lumo_app_close_rect(width, height, &close_rect)) {
+        lumo_app_fill_rounded_rect(pixels, width, height, &close_rect, 18,
+            lumo_app_argb(0xFF, 0x2C, 0x16, 0x28));
+        lumo_app_draw_outline(pixels, width, height, &close_rect, 2,
+            close_active ? text_primary : panel_stroke);
+        lumo_app_draw_text_centered(pixels, width, height, &close_rect, 2,
+            text_primary, "CLOSE");
+    }
+}
+
 void lumo_app_render(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels,
@@ -808,16 +1001,19 @@ void lumo_app_render(
     close_active = ctx->close_active;
 
     if (app_id == LUMO_APP_CLOCK) {
-        lumo_app_render_clock(pixels, width, height, close_active);
+        lumo_app_render_clock(ctx, pixels, width, height);
         return;
     }
     if (app_id == LUMO_APP_FILES) {
-        lumo_app_render_files(pixels, width, height, close_active,
-            ctx->browse_path);
+        lumo_app_render_files(ctx, pixels, width, height);
         return;
     }
     if (app_id == LUMO_APP_SETTINGS) {
-        lumo_app_render_settings(pixels, width, height, close_active);
+        lumo_app_render_settings(ctx, pixels, width, height);
+        return;
+    }
+    if (app_id == LUMO_APP_NOTES) {
+        lumo_app_render_notes(ctx, pixels, width, height);
         return;
     }
     {

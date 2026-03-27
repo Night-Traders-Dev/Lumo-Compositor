@@ -61,6 +61,14 @@ struct lumo_app_client {
     char browse_path[1024];
     double touch_down_x;
     double touch_down_y;
+    int scroll_offset;
+    bool stopwatch_running;
+    uint64_t stopwatch_start_ms;
+    uint64_t stopwatch_accumulated_ms;
+    int selected_row;
+    char notes[8][128];
+    int note_count;
+    int note_editing;
 };
 
 static bool lumo_app_client_redraw(struct lumo_app_client *client);
@@ -201,11 +209,26 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
     wl_buffer_add_listener(buffer->buffer, &buffer->release, buffer);
 
     {
+        uint64_t sw_elapsed = client->stopwatch_accumulated_ms;
+        if (client->stopwatch_running && client->stopwatch_start_ms > 0) {
+            struct timespec ts;
+            clock_gettime(CLOCK_MONOTONIC, &ts);
+            uint64_t now_ms = (uint64_t)ts.tv_sec * 1000 +
+                (uint64_t)ts.tv_nsec / 1000000;
+            sw_elapsed += now_ms - client->stopwatch_start_ms;
+        }
         struct lumo_app_render_context ctx = {
             .app_id = client->app_id,
             .close_active = client->close_active,
             .browse_path = client->browse_path,
+            .scroll_offset = client->scroll_offset,
+            .stopwatch_running = client->stopwatch_running,
+            .stopwatch_elapsed_ms = sw_elapsed,
+            .selected_row = client->selected_row,
+            .note_count = client->note_count,
+            .note_editing = client->note_editing,
         };
+        memcpy(ctx.notes, client->notes, sizeof(ctx.notes));
         lumo_app_render(&ctx, buffer->data, client->width, client->height);
     }
     wl_surface_attach(client->surface, buffer->buffer, 0, 0);
@@ -504,11 +527,38 @@ static void lumo_app_touch_handle_up(
         return;
     }
 
+    if (client->app_id == LUMO_APP_CLOCK && client->width > 0 &&
+            client->height > 0) {
+        int card = lumo_app_clock_card_at(client->width, client->height,
+            client->touch_down_x, client->touch_down_y);
+        if (card == 1) {
+            struct timespec ts;
+            clock_gettime(CLOCK_MONOTONIC, &ts);
+            uint64_t now_ms = (uint64_t)ts.tv_sec * 1000 +
+                (uint64_t)ts.tv_nsec / 1000000;
+            if (client->stopwatch_running) {
+                client->stopwatch_accumulated_ms +=
+                    now_ms - client->stopwatch_start_ms;
+                client->stopwatch_running = false;
+            } else {
+                client->stopwatch_start_ms = now_ms;
+                client->stopwatch_running = true;
+            }
+            (void)lumo_app_client_redraw(client);
+        } else if (card == 2) {
+            client->stopwatch_accumulated_ms = 0;
+            client->stopwatch_running = false;
+            client->stopwatch_start_ms = 0;
+            (void)lumo_app_client_redraw(client);
+        }
+    }
+
     if (client->app_id == LUMO_APP_FILES && client->width > 0 &&
             client->height > 0) {
         int entry_idx = lumo_app_files_entry_at(client->width, client->height,
             client->touch_down_x, client->touch_down_y);
         if (entry_idx >= 0) {
+            int adjusted = entry_idx + client->scroll_offset;
             DIR *dir = opendir(client->browse_path);
             if (dir != NULL) {
                 struct dirent *entry;
@@ -517,7 +567,7 @@ static void lumo_app_touch_handle_up(
                     if (entry->d_name[0] == '.') {
                         continue;
                     }
-                    if (visible == entry_idx) {
+                    if (visible == adjusted) {
                         if (entry->d_type == DT_DIR) {
                             size_t plen = strlen(client->browse_path);
                             if (plen + 1 + strlen(entry->d_name) + 1 <
@@ -526,8 +576,12 @@ static void lumo_app_touch_handle_up(
                                 snprintf(client->browse_path + plen,
                                     sizeof(client->browse_path) - plen,
                                     "%s%s", sep, entry->d_name);
+                                client->scroll_offset = 0;
                                 (void)lumo_app_client_redraw(client);
                             }
+                        } else {
+                            client->selected_row = adjusted;
+                            (void)lumo_app_client_redraw(client);
                         }
                         break;
                     }
@@ -540,11 +594,42 @@ static void lumo_app_touch_handle_up(
             char *last_slash = strrchr(client->browse_path, '/');
             if (last_slash != NULL && last_slash != client->browse_path) {
                 *last_slash = '\0';
+                client->scroll_offset = 0;
+                client->selected_row = -1;
                 (void)lumo_app_client_redraw(client);
             } else if (last_slash == client->browse_path) {
                 client->browse_path[1] = '\0';
+                client->scroll_offset = 0;
+                client->selected_row = -1;
                 (void)lumo_app_client_redraw(client);
             }
+        }
+    }
+
+    if (client->app_id == LUMO_APP_NOTES && client->width > 0 &&
+            client->height > 0) {
+        int row = lumo_app_notes_row_at(client->width, client->height,
+            client->touch_down_x, client->touch_down_y);
+        if (row >= 0 && row < client->note_count) {
+            client->selected_row = (client->selected_row == row) ? -1 : row;
+            (void)lumo_app_client_redraw(client);
+        } else if (row == -2) {
+            if (client->note_count < 8) {
+                snprintf(client->notes[client->note_count],
+                    sizeof(client->notes[0]), "NOTE %d", client->note_count + 1);
+                client->note_count++;
+                (void)lumo_app_client_redraw(client);
+            }
+        }
+    }
+
+    if (client->app_id == LUMO_APP_SETTINGS && client->width > 0 &&
+            client->height > 0) {
+        int row = lumo_app_settings_row_at(client->width, client->height,
+            client->touch_down_x, client->touch_down_y);
+        if (row >= 0) {
+            client->selected_row = (client->selected_row == row) ? -1 : row;
+            (void)lumo_app_client_redraw(client);
         }
     }
 }
@@ -566,9 +651,25 @@ static void lumo_app_touch_handle_motion(
         return;
     }
 
-    lumo_app_client_set_close_active(client,
-        lumo_app_client_close_contains(client, wl_fixed_to_double(x),
-            wl_fixed_to_double(y)));
+    {
+        double cur_y = wl_fixed_to_double(y);
+        double cur_x = wl_fixed_to_double(x);
+        lumo_app_client_set_close_active(client,
+            lumo_app_client_close_contains(client, cur_x, cur_y));
+
+        if (client->app_id == LUMO_APP_FILES) {
+            double dy = client->touch_down_y - cur_y;
+            if (dy > 30.0) {
+                client->scroll_offset++;
+                client->touch_down_y = cur_y;
+                (void)lumo_app_client_redraw(client);
+            } else if (dy < -30.0 && client->scroll_offset > 0) {
+                client->scroll_offset--;
+                client->touch_down_y = cur_y;
+                (void)lumo_app_client_redraw(client);
+            }
+        }
+    }
 }
 
 static void lumo_app_touch_handle_frame(
@@ -856,6 +957,8 @@ int main(int argc, char **argv) {
         .app_id = LUMO_APP_PHONE,
         .running = true,
         .active_touch_id = -1,
+        .selected_row = -1,
+        .note_editing = -1,
     };
 
     for (int i = 1; i < argc; i++) {
