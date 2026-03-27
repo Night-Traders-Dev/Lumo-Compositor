@@ -211,7 +211,7 @@ int lumo_output_start(struct lumo_compositor *compositor) {
     }
 
     {
-        float bg_color[4] = {0.172f, 0.0f, 0.118f, 1.0f};
+        float bg_color[4] = {0.10f, 0.0f, 0.07f, 1.0f};
         struct wlr_scene_rect *bg = wlr_scene_rect_create(
             &compositor->scene->tree, 8192, 8192, bg_color);
         if (bg != NULL) {

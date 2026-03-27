@@ -783,7 +783,7 @@ static void test_shell_binary_resolution(void) {
 static void test_shell_mode_helpers(void) {
     size_t index = SIZE_MAX;
 
-    assert(lumo_shell_mode_count() == 4);
+    assert(lumo_shell_mode_count() == 5);
     assert(lumo_shell_mode_index(LUMO_SHELL_MODE_LAUNCHER, &index));
     assert(index == 0);
     assert(lumo_shell_mode_index(LUMO_SHELL_MODE_OSK, &index));

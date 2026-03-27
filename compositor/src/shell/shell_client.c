@@ -1166,6 +1166,54 @@ static void lumo_draw_status(
     }
 }
 
+static void lumo_draw_animated_bg(
+    uint32_t *pixels,
+    uint32_t width,
+    uint32_t height
+) {
+    struct timespec ts;
+    double t;
+    uint32_t bg_base_r = 0x2C, bg_base_g = 0x00, bg_base_b = 0x1E;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    t = (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+
+    for (uint32_t y = 0; y < height; y++) {
+        double ny = (double)y / (double)height;
+        for (uint32_t x = 0; x < width; x++) {
+            double nx = (double)x / (double)width;
+            double wave1 = 0.5 + 0.5 * lumo_clamp_unit(
+                0.5 + 0.5 * ((nx - 0.5) * 2.8 +
+                    0.3 * ((ny * 6.28 + t * 0.4) > 0 ?
+                        (1.0 - 2.0 * (((ny * 6.28 + t * 0.4) / 3.14159 -
+                            (int)((ny * 6.28 + t * 0.4) / 3.14159)) > 0.5 ?
+                            1.0 - ((ny * 6.28 + t * 0.4) / 3.14159 -
+                                (int)((ny * 6.28 + t * 0.4) / 3.14159)) :
+                            ((ny * 6.28 + t * 0.4) / 3.14159 -
+                                (int)((ny * 6.28 + t * 0.4) / 3.14159)))) :
+                        0.0) +
+                    0.15 * ((nx * 4.0 + t * 0.2 + ny * 2.0) > 0 ?
+                        (1.0 - 2.0 * (((nx * 4.0 + t * 0.2 + ny * 2.0) / 3.14159 -
+                            (int)((nx * 4.0 + t * 0.2 + ny * 2.0) / 3.14159)) > 0.5 ?
+                            1.0 - ((nx * 4.0 + t * 0.2 + ny * 2.0) / 3.14159 -
+                                (int)((nx * 4.0 + t * 0.2 + ny * 2.0) / 3.14159)) :
+                            ((nx * 4.0 + t * 0.2 + ny * 2.0) / 3.14159 -
+                                (int)((nx * 4.0 + t * 0.2 + ny * 2.0) / 3.14159)))) :
+                        0.0)));
+
+            double glow = wave1 * 0.25 * (1.0 - ny * 0.6);
+            uint8_t r = (uint8_t)(bg_base_r + (uint8_t)(glow * 0xE9));
+            uint8_t g = (uint8_t)(bg_base_g + (uint8_t)(glow * 0x54));
+            uint8_t b = (uint8_t)(bg_base_b + (uint8_t)(glow * 0x20));
+
+            if (r < bg_base_r) r = bg_base_r;
+            if (b < bg_base_b) b = bg_base_b;
+
+            pixels[y * width + x] = lumo_argb(0xFF, r, g, b);
+        }
+    }
+}
+
 static void lumo_render_surface(
     struct lumo_shell_client *client,
     uint32_t *pixels,
@@ -1181,7 +1229,8 @@ static void lumo_render_surface(
 
     lumo_clear_pixels(pixels, width, height);
     visibility = client->mode == LUMO_SHELL_MODE_GESTURE
-        || client->mode == LUMO_SHELL_MODE_STATUS
+        || client->mode == LUMO_SHELL_MODE_STATUS || client->mode == LUMO_SHELL_MODE_BACKGROUND ||
+            client->mode == LUMO_SHELL_MODE_BACKGROUND
         ? 1.0
         : lumo_shell_client_animation_value(client);
 
@@ -1197,6 +1246,9 @@ static void lumo_render_surface(
         return;
     case LUMO_SHELL_MODE_STATUS:
         lumo_draw_status(pixels, width, height, client);
+        return;
+    case LUMO_SHELL_MODE_BACKGROUND:
+        lumo_draw_animated_bg(pixels, width, height);
         return;
     default:
         break;
@@ -1285,6 +1337,7 @@ static bool lumo_shell_client_should_be_visible(
         return client->compositor_keyboard_visible;
     case LUMO_SHELL_MODE_GESTURE:
     case LUMO_SHELL_MODE_STATUS:
+    case LUMO_SHELL_MODE_BACKGROUND:
         return true;
     default:
         return false;
@@ -1304,7 +1357,7 @@ static bool lumo_shell_client_build_config(
     }
 
     if (!visible && client->mode != LUMO_SHELL_MODE_GESTURE &&
-            client->mode != LUMO_SHELL_MODE_STATUS) {
+            client->mode != LUMO_SHELL_MODE_STATUS && client->mode != LUMO_SHELL_MODE_BACKGROUND) {
         return lumo_shell_surface_bootstrap_config(client->mode, config);
     }
 
@@ -1351,6 +1404,7 @@ static bool lumo_shell_client_build_config(
         config->background_rgba = 0x00000000;
         return true;
     case LUMO_SHELL_MODE_STATUS:
+    case LUMO_SHELL_MODE_BACKGROUND:
         if (!lumo_shell_surface_config_for_mode(client->mode, output_width,
                 output_height, config)) {
             return lumo_shell_surface_bootstrap_config(client->mode, config);
@@ -1446,6 +1500,7 @@ static void lumo_shell_client_update_input_region(
         }
         break;
     case LUMO_SHELL_MODE_STATUS:
+    case LUMO_SHELL_MODE_BACKGROUND:
         break;
     default:
         break;
@@ -1461,7 +1516,7 @@ static void lumo_shell_client_finish_hide_if_needed(
     struct lumo_shell_surface_config hidden_config;
 
     if (client == NULL || client->mode == LUMO_SHELL_MODE_GESTURE ||
-            client->mode == LUMO_SHELL_MODE_STATUS ||
+            client->mode == LUMO_SHELL_MODE_STATUS || client->mode == LUMO_SHELL_MODE_BACKGROUND ||
             client->target_visible || client->surface_hidden) {
         return;
     }
@@ -1485,7 +1540,7 @@ static void lumo_shell_client_begin_transition(
     }
 
     if (client->mode == LUMO_SHELL_MODE_GESTURE ||
-            client->mode == LUMO_SHELL_MODE_STATUS) {
+            client->mode == LUMO_SHELL_MODE_STATUS || client->mode == LUMO_SHELL_MODE_BACKGROUND || client->mode == LUMO_SHELL_MODE_BACKGROUND) {
         client->target_visible = true;
         client->surface_hidden = false;
         client->animation_active = false;
@@ -1530,14 +1585,14 @@ static void lumo_shell_client_sync_surface_state(
     desired_visible = lumo_shell_client_should_be_visible(client);
     if (desired_visible != client->target_visible ||
             ((client->mode == LUMO_SHELL_MODE_GESTURE ||
-                client->mode == LUMO_SHELL_MODE_STATUS) &&
+                client->mode == LUMO_SHELL_MODE_STATUS || client->mode == LUMO_SHELL_MODE_BACKGROUND || client->mode == LUMO_SHELL_MODE_BACKGROUND) &&
                 client->surface_hidden)) {
         lumo_shell_client_begin_transition(client, desired_visible);
         return;
     }
 
     if ((desired_visible || client->mode == LUMO_SHELL_MODE_GESTURE ||
-                client->mode == LUMO_SHELL_MODE_STATUS) &&
+                client->mode == LUMO_SHELL_MODE_STATUS || client->mode == LUMO_SHELL_MODE_BACKGROUND || client->mode == LUMO_SHELL_MODE_BACKGROUND) &&
             force_layout &&
             lumo_shell_client_build_config(client, true, &config) &&
             !lumo_shell_surface_config_equal(&client->config, &config)) {
@@ -1553,6 +1608,9 @@ static int lumo_shell_client_animation_timeout(
     uint64_t end_time;
 
     if (client == NULL || !client->animation_active) {
+        if (client != NULL && client->mode == LUMO_SHELL_MODE_BACKGROUND) {
+            return 33;
+        }
         if (client != NULL && client->mode == LUMO_SHELL_MODE_STATUS) {
             if (client->compositor_time_panel_visible) {
                 return 1000;
@@ -1898,7 +1956,7 @@ static void lumo_shell_client_apply_state_frame(
             fprintf(stderr, "lumo-shell: quick_settings visible=%s\n",
                 bool_value ? "true" : "false");
             changed = true;
-            if (client->mode == LUMO_SHELL_MODE_STATUS) {
+            if (client->mode == LUMO_SHELL_MODE_STATUS || client->mode == LUMO_SHELL_MODE_BACKGROUND || client->mode == LUMO_SHELL_MODE_BACKGROUND) {
                 layout_changed = true;
             }
         }
@@ -1911,7 +1969,7 @@ static void lumo_shell_client_apply_state_frame(
             fprintf(stderr, "lumo-shell: time_panel visible=%s\n",
                 bool_value ? "true" : "false");
             changed = true;
-            if (client->mode == LUMO_SHELL_MODE_STATUS) {
+            if (client->mode == LUMO_SHELL_MODE_STATUS || client->mode == LUMO_SHELL_MODE_BACKGROUND || client->mode == LUMO_SHELL_MODE_BACKGROUND) {
                 layout_changed = true;
             }
         }
@@ -2257,7 +2315,7 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
         }
 
         if (poll_result == 0) {
-            if (client->mode == LUMO_SHELL_MODE_STATUS) {
+            if (client->mode == LUMO_SHELL_MODE_STATUS || client->mode == LUMO_SHELL_MODE_BACKGROUND || client->mode == LUMO_SHELL_MODE_BACKGROUND) {
                 (void)lumo_shell_client_redraw(client);
             }
             lumo_shell_client_tick_animation(client);
@@ -2760,6 +2818,10 @@ static bool lumo_shell_parse_mode(
         *mode = LUMO_SHELL_MODE_STATUS;
         return true;
     }
+    if (strcmp(value, "background") == 0) {
+        *mode = LUMO_SHELL_MODE_BACKGROUND;
+        return true;
+    }
 
     return false;
 }
@@ -2770,9 +2832,11 @@ static bool lumo_shell_create_surface(struct lumo_shell_client *client) {
     }
 
     client->target_visible = client->mode == LUMO_SHELL_MODE_GESTURE ||
-        client->mode == LUMO_SHELL_MODE_STATUS;
+        client->mode == LUMO_SHELL_MODE_STATUS || client->mode == LUMO_SHELL_MODE_BACKGROUND ||
+        client->mode == LUMO_SHELL_MODE_BACKGROUND;
     client->surface_hidden = client->mode != LUMO_SHELL_MODE_GESTURE &&
-        client->mode != LUMO_SHELL_MODE_STATUS;
+        client->mode != LUMO_SHELL_MODE_STATUS &&
+        client->mode != LUMO_SHELL_MODE_BACKGROUND;
     client->animation_active = false;
     client->animation_from = client->target_visible ? 1.0 : 0.0;
     client->animation_to = client->animation_from;
@@ -2794,7 +2858,9 @@ static bool lumo_shell_create_surface(struct lumo_shell_client *client) {
         NULL,
         client->mode == LUMO_SHELL_MODE_LAUNCHER
             ? ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY
-            : ZWLR_LAYER_SHELL_V1_LAYER_TOP,
+            : client->mode == LUMO_SHELL_MODE_BACKGROUND
+                ? ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND
+                : ZWLR_LAYER_SHELL_V1_LAYER_TOP,
         client->config.name != NULL ? client->config.name : "lumo-shell"
     );
     if (client->layer_surface == NULL) {
