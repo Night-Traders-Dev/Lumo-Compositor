@@ -32,6 +32,7 @@ struct lumo_shell_buffer {
     size_t size;
     uint32_t width;
     uint32_t height;
+    bool busy;
     struct wl_buffer_listener release;
 };
 
@@ -54,6 +55,7 @@ struct lumo_shell_client {
     struct wl_surface *surface;
     struct zwlr_layer_surface_v1 *layer_surface;
     struct lumo_shell_buffer *buffer;
+    struct lumo_shell_buffer *buffers[2];
     struct lumo_shell_surface_config config;
     int state_fd;
     char state_socket_path[PATH_MAX];
@@ -1040,12 +1042,21 @@ static void lumo_draw_quick_settings_panel(
 
         row_y += 10;
         {
-            struct lumo_rect btn = {
-                panel.x + 12, row_y, panel.width - 24, 28
+            int btn_w = (panel.width - 36) / 2;
+            struct lumo_rect reload_btn = {
+                panel.x + 12, row_y, btn_w, 28
             };
-            lumo_fill_rounded_rect(pixels, width, height, &btn, 8, accent);
-            lumo_draw_text_centered(pixels, width, height, &btn, 2,
-                value_color, "RELOAD SESSION");
+            struct lumo_rect rotate_btn = {
+                panel.x + 12 + btn_w + 12, row_y, btn_w, 28
+            };
+            lumo_fill_rounded_rect(pixels, width, height, &reload_btn,
+                8, accent);
+            lumo_draw_text_centered(pixels, width, height, &reload_btn, 2,
+                value_color, "RELOAD");
+            lumo_fill_rounded_rect(pixels, width, height, &rotate_btn,
+                8, lumo_argb(0xFF, 0x77, 0x21, 0x6F));
+            lumo_draw_text_centered(pixels, width, height, &rotate_btn, 2,
+                value_color, "ROTATE");
         }
     }
 }
@@ -1305,32 +1316,39 @@ static int lumo_create_shm_file(size_t size) {
     return fd;
 }
 
+static void lumo_shell_buffer_destroy(struct lumo_shell_buffer *buffer) {
+    if (buffer == NULL) {
+        return;
+    }
+    if (buffer->buffer != NULL) {
+        wl_buffer_destroy(buffer->buffer);
+        buffer->buffer = NULL;
+    }
+    if (buffer->pool != NULL) {
+        wl_shm_pool_destroy(buffer->pool);
+        buffer->pool = NULL;
+    }
+    if (buffer->data != NULL) {
+        munmap(buffer->data, buffer->size);
+        buffer->data = NULL;
+    }
+    if (buffer->fd >= 0) {
+        close(buffer->fd);
+        buffer->fd = -1;
+    }
+    free(buffer);
+}
+
 static void lumo_shell_buffer_release(
     void *data,
     struct wl_buffer *wl_buffer
 ) {
     struct lumo_shell_buffer *buffer = data;
-    struct lumo_shell_client *client = buffer != NULL ? buffer->client : NULL;
 
     (void)wl_buffer;
-    if (client != NULL && client->buffer == buffer) {
-        client->buffer = NULL;
+    if (buffer != NULL) {
+        buffer->busy = false;
     }
-
-    if (buffer->buffer != NULL) {
-        wl_buffer_destroy(buffer->buffer);
-    }
-    if (buffer->pool != NULL) {
-        wl_shm_pool_destroy(buffer->pool);
-    }
-    if (buffer->data != NULL) {
-        munmap(buffer->data, buffer->size);
-    }
-    if (buffer->fd >= 0) {
-        close(buffer->fd);
-    }
-
-    free(buffer);
 }
 
 static bool lumo_shell_surface_config_equal(
@@ -1686,35 +1704,25 @@ static void lumo_shell_client_tick_animation(
     (void)lumo_shell_client_redraw(client);
 }
 
-static bool lumo_shell_draw_buffer(
+static struct lumo_shell_buffer *lumo_shell_alloc_buffer(
     struct lumo_shell_client *client,
     uint32_t width,
     uint32_t height
 ) {
     struct lumo_shell_buffer *buffer;
-    size_t stride;
-    size_t size;
+    size_t stride = width * 4u;
+    size_t size = stride * height;
     int fd;
-    const struct lumo_shell_target *active_target;
 
-    if (client == NULL || client->shm == NULL || client->surface == NULL ||
-            width == 0 || height == 0) {
-        return false;
-    }
-
-    stride = width * 4u;
-    size = stride * height;
     fd = lumo_create_shm_file(size);
     if (fd < 0) {
-        fprintf(stderr, "lumo-shell: failed to create shm file: %s\n",
-            strerror(errno));
-        return false;
+        return NULL;
     }
 
     buffer = calloc(1, sizeof(*buffer));
     if (buffer == NULL) {
         close(fd);
-        return false;
+        return NULL;
     }
 
     buffer->client = client;
@@ -1722,36 +1730,80 @@ static bool lumo_shell_draw_buffer(
     buffer->size = size;
     buffer->width = width;
     buffer->height = height;
+    buffer->busy = false;
     buffer->data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (buffer->data == MAP_FAILED) {
-        fprintf(stderr, "lumo-shell: mmap failed: %s\n", strerror(errno));
         close(fd);
         free(buffer);
-        return false;
+        return NULL;
     }
 
     buffer->pool = wl_shm_create_pool(client->shm, fd, (int)size);
     if (buffer->pool == NULL) {
-        fprintf(stderr, "lumo-shell: failed to create shm pool\n");
         munmap(buffer->data, size);
         close(fd);
         free(buffer);
-        return false;
+        return NULL;
     }
 
     buffer->buffer = wl_shm_pool_create_buffer(buffer->pool, 0, (int)width,
-        (int)height, (int)stride, WL_SHM_FORMAT_ARGB8888);
+        (int)height, (int)(width * 4u), WL_SHM_FORMAT_ARGB8888);
     if (buffer->buffer == NULL) {
-        fprintf(stderr, "lumo-shell: failed to create shm buffer\n");
         wl_shm_pool_destroy(buffer->pool);
         munmap(buffer->data, size);
         close(fd);
         free(buffer);
-        return false;
+        return NULL;
     }
 
     buffer->release.release = lumo_shell_buffer_release;
     wl_buffer_add_listener(buffer->buffer, &buffer->release, buffer);
+    return buffer;
+}
+
+static struct lumo_shell_buffer *lumo_shell_get_free_buffer(
+    struct lumo_shell_client *client,
+    uint32_t width,
+    uint32_t height
+) {
+    for (int i = 0; i < 2; i++) {
+        struct lumo_shell_buffer *buf = client->buffers[i];
+        if (buf != NULL && !buf->busy &&
+                buf->width == width && buf->height == height) {
+            return buf;
+        }
+    }
+
+    for (int i = 0; i < 2; i++) {
+        if (client->buffers[i] == NULL || !client->buffers[i]->busy) {
+            if (client->buffers[i] != NULL) {
+                lumo_shell_buffer_destroy(client->buffers[i]);
+            }
+            client->buffers[i] = lumo_shell_alloc_buffer(client, width, height);
+            return client->buffers[i];
+        }
+    }
+
+    return NULL;
+}
+
+static bool lumo_shell_draw_buffer(
+    struct lumo_shell_client *client,
+    uint32_t width,
+    uint32_t height
+) {
+    struct lumo_shell_buffer *buffer;
+    const struct lumo_shell_target *active_target;
+
+    if (client == NULL || client->shm == NULL || client->surface == NULL ||
+            width == 0 || height == 0) {
+        return false;
+    }
+
+    buffer = lumo_shell_get_free_buffer(client, width, height);
+    if (buffer == NULL || buffer->data == NULL) {
+        return false;
+    }
 
     active_target = client->active_target_valid ? &client->active_target : NULL;
     lumo_render_surface(client, buffer->data, width, height, active_target);
@@ -1760,6 +1812,7 @@ static bool lumo_shell_draw_buffer(
     wl_surface_damage_buffer(client->surface, 0, 0, (int)width, (int)height);
     wl_surface_commit(client->surface);
 
+    buffer->busy = true;
     client->buffer = buffer;
     client->configured_width = width;
     client->configured_height = height;
@@ -1827,6 +1880,25 @@ static bool lumo_shell_client_send_frame(
     const struct lumo_shell_protocol_frame *frame
 );
 
+static void lumo_shell_client_send_cycle_rotation(
+    struct lumo_shell_client *client
+) {
+    struct lumo_shell_protocol_frame frame;
+
+    if (client == NULL) {
+        return;
+    }
+
+    if (!lumo_shell_protocol_frame_init(&frame,
+            LUMO_SHELL_PROTOCOL_FRAME_REQUEST, "cycle_rotation",
+            client->next_request_id++)) {
+        return;
+    }
+
+    (void)lumo_shell_client_send_frame(client, &frame);
+    fprintf(stderr, "lumo-shell: sent cycle_rotation request\n");
+}
+
 static void lumo_shell_client_send_reload(struct lumo_shell_client *client) {
     struct lumo_shell_protocol_frame frame;
 
@@ -1844,27 +1916,37 @@ static void lumo_shell_client_send_reload(struct lumo_shell_client *client) {
     fprintf(stderr, "lumo-shell: sent reload_session request\n");
 }
 
-static bool lumo_shell_status_reload_hit(
+static int lumo_shell_status_button_hit(
     const struct lumo_shell_client *client,
     double x,
     double y
 ) {
+    int panel_w, bar_h, panel_x, btn_y, btn_h, btn_w;
+
     if (client == NULL || client->mode != LUMO_SHELL_MODE_STATUS ||
             !client->compositor_quick_settings_visible) {
-        return false;
+        return 0;
     }
 
-    {
-        int panel_w = (int)client->configured_width / 2;
-        int bar_h = 40;
-        int panel_x = (int)client->configured_width - panel_w - 8;
-        int btn_y = bar_h + 4 + 12 + 24 + 10 + 22 + 22 + 22 + 28 + 10;
-        int btn_h = 28;
+    panel_w = (int)client->configured_width / 2;
+    bar_h = 40;
+    panel_x = (int)client->configured_width - panel_w - 8;
+    btn_y = bar_h + 4 + 12 + 24 + 10 + 22 + 22 + 22 + 28 + 10;
+    btn_h = 28;
+    btn_w = (panel_w - 36) / 2;
 
-        if (panel_w < 200) panel_w = 200;
-        return x >= panel_x + 12 && x <= panel_x + panel_w - 12 &&
-            y >= btn_y && y <= btn_y + btn_h;
+    if (panel_w < 200) panel_w = 200;
+
+    if (y >= btn_y && y <= btn_y + btn_h) {
+        if (x >= panel_x + 12 && x <= panel_x + 12 + btn_w) {
+            return 1;
+        }
+        if (x >= panel_x + 12 + btn_w + 12 &&
+                x <= panel_x + 12 + btn_w + 12 + btn_w) {
+            return 2;
+        }
     }
+    return 0;
 }
 
 static void lumo_shell_client_activate_target(struct lumo_shell_client *client) {
@@ -2604,11 +2686,17 @@ static void lumo_shell_touch_handle_up(
     client->touch_pressed = false;
     client->active_touch_id = -1;
 
-    if (client->mode == LUMO_SHELL_MODE_STATUS &&
-            lumo_shell_status_reload_hit(client,
-                client->pointer_x, client->pointer_y)) {
-        lumo_shell_client_send_reload(client);
-        return;
+    if (client->mode == LUMO_SHELL_MODE_STATUS) {
+        int btn = lumo_shell_status_button_hit(client,
+            client->pointer_x, client->pointer_y);
+        if (btn == 1) {
+            lumo_shell_client_send_reload(client);
+            return;
+        }
+        if (btn == 2) {
+            lumo_shell_client_send_cycle_rotation(client);
+            return;
+        }
     }
 
     lumo_shell_client_activate_target(client);

@@ -40,6 +40,7 @@ struct lumo_shell_state {
     struct lumo_compositor *compositor;
     struct wl_event_source *child_signal_source;
     bool stopping;
+    bool state_broadcast_pending;
     char binary_path[PATH_MAX];
     size_t count;
     struct lumo_shell_process processes[5];
@@ -51,6 +52,9 @@ static void lumo_shell_bridge_remove_client(
     struct lumo_shell_bridge_client *client
 );
 static void lumo_shell_bridge_broadcast_state(
+    struct lumo_compositor *compositor
+);
+static void lumo_shell_mark_state_dirty(
     struct lumo_compositor *compositor
 );
 static int lumo_shell_spawn_process(
@@ -354,7 +358,7 @@ static void lumo_shell_reap_children(struct lumo_compositor *compositor) {
 
         wlr_log(WLR_INFO, "shell: respawned %s client pid=%d",
             lumo_shell_mode_argument(process->mode), (int)process->pid);
-        lumo_shell_bridge_broadcast_state(compositor);
+        lumo_shell_mark_state_dirty(compositor);
     }
 }
 
@@ -603,6 +607,8 @@ static void lumo_shell_bridge_broadcast_state(
     struct lumo_shell_bridge_client *client;
     struct lumo_shell_bridge_client *tmp;
     struct lumo_shell_protocol_frame frame;
+    char formatted[2048];
+    size_t formatted_len;
 
     if (compositor == NULL) {
         return;
@@ -617,10 +623,34 @@ static void lumo_shell_bridge_broadcast_state(
         return;
     }
 
+    formatted_len = lumo_shell_protocol_frame_format(&frame, formatted,
+        sizeof(formatted));
+    if (formatted_len == 0) {
+        return;
+    }
+
     wl_list_for_each_safe(client, tmp, &state->bridge.clients, link) {
-        if (!lumo_shell_bridge_send_frame(client->fd, &frame)) {
+        if (!lumo_shell_bridge_write_all(client->fd, formatted,
+                formatted_len)) {
             lumo_shell_bridge_remove_client(&state->bridge, client);
         }
+    }
+
+    state->state_broadcast_pending = false;
+}
+
+static void lumo_shell_mark_state_dirty(
+    struct lumo_compositor *compositor
+) {
+    struct lumo_shell_state *state;
+
+    if (compositor == NULL) {
+        return;
+    }
+
+    state = compositor->shell_state;
+    if (state != NULL) {
+        state->state_broadcast_pending = true;
     }
 }
 
@@ -975,6 +1005,21 @@ static void lumo_shell_bridge_handle_request_frame(
         wlr_log(WLR_INFO, "shell: reload_session requested");
         (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
         lumo_compositor_stop(client->compositor);
+        return;
+    }
+
+    if (strcmp(frame->name, "cycle_rotation") == 0) {
+        enum lumo_rotation next;
+        switch (client->compositor->active_rotation) {
+        case LUMO_ROTATION_NORMAL: next = LUMO_ROTATION_90; break;
+        case LUMO_ROTATION_90: next = LUMO_ROTATION_180; break;
+        case LUMO_ROTATION_180: next = LUMO_ROTATION_270; break;
+        case LUMO_ROTATION_270: default: next = LUMO_ROTATION_NORMAL; break;
+        }
+        lumo_output_set_rotation(client->compositor, NULL, next);
+        wlr_log(WLR_INFO, "shell: rotation cycled to %s",
+            lumo_rotation_name(next));
+        (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
         return;
     }
 
@@ -1488,7 +1533,17 @@ int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
 }
 
 void lumo_shell_autostart_poll(struct lumo_compositor *compositor) {
+    struct lumo_shell_state *state;
+
     lumo_shell_reap_children(compositor);
+
+    if (compositor == NULL) {
+        return;
+    }
+    state = compositor->shell_state;
+    if (state != NULL && state->state_broadcast_pending) {
+        lumo_shell_bridge_broadcast_state(compositor);
+    }
 }
 
 void lumo_shell_autostart_stop(struct lumo_compositor *compositor) {
@@ -1570,7 +1625,7 @@ void lumo_shell_state_broadcast_launcher_visible(
     bool visible
 ) {
     (void)visible;
-    lumo_shell_bridge_broadcast_state(compositor);
+    lumo_shell_mark_state_dirty(compositor);
 }
 
 void lumo_shell_state_broadcast_keyboard_visible(
@@ -1578,7 +1633,7 @@ void lumo_shell_state_broadcast_keyboard_visible(
     bool visible
 ) {
     (void)visible;
-    lumo_shell_bridge_broadcast_state(compositor);
+    lumo_shell_mark_state_dirty(compositor);
 }
 
 void lumo_shell_state_broadcast_scrim_state(
@@ -1586,7 +1641,7 @@ void lumo_shell_state_broadcast_scrim_state(
     enum lumo_scrim_state state
 ) {
     (void)state;
-    lumo_shell_bridge_broadcast_state(compositor);
+    lumo_shell_mark_state_dirty(compositor);
 }
 
 void lumo_shell_state_broadcast_gesture_threshold(
@@ -1596,7 +1651,7 @@ void lumo_shell_state_broadcast_gesture_threshold(
 ) {
     (void)threshold;
     (void)timeout_ms;
-    lumo_shell_bridge_broadcast_state(compositor);
+    lumo_shell_mark_state_dirty(compositor);
 }
 
 void lumo_shell_state_broadcast_rotation(
@@ -1604,13 +1659,13 @@ void lumo_shell_state_broadcast_rotation(
     enum lumo_rotation rotation
 ) {
     (void)rotation;
-    lumo_shell_bridge_broadcast_state(compositor);
+    lumo_shell_mark_state_dirty(compositor);
 }
 
 void lumo_shell_state_broadcast_touch_debug(struct lumo_compositor *compositor) {
-    lumo_shell_bridge_broadcast_state(compositor);
+    lumo_shell_mark_state_dirty(compositor);
 }
 
 void lumo_shell_state_broadcast_touch_audit(struct lumo_compositor *compositor) {
-    lumo_shell_bridge_broadcast_state(compositor);
+    lumo_shell_mark_state_dirty(compositor);
 }
