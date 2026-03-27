@@ -748,6 +748,7 @@ void lumo_protocol_configure_layers(
         return;
     }
 
+    output->usable_area_valid = false;
     wlr_output_effective_resolution(output->wlr_output, &width, &height);
     full_area.x = 0;
     full_area.y = 0;
@@ -784,5 +785,13 @@ void lumo_protocol_configure_layers(
             lumo_protocol_configure_layer_surface_for_output(layer_surface,
                 output, &full_area, &usable_area);
         }
+    }
+
+    if (!wlr_box_empty(&usable_area)) {
+        output->usable_area = usable_area;
+        output->usable_area_valid = true;
+    } else {
+        output->usable_area = full_area;
+        output->usable_area_valid = !wlr_box_empty(&full_area);
     }
 }

@@ -21,3 +21,18 @@ All notable changes to this project will be documented in this file.
 - Added xWayland startup, DISPLAY export, and seat hookup so X11 clients can run beside native Wayland apps.
 - Added scene-backed xWayland surface wrappers so X11 windows participate in rendering and hit testing.
 - Kept the compositor mobile-first while preserving the Wayland and xWayland split for future shell work.
+
+## [0.0.5] - 2026-03-26
+- Added a repo-level README for the renamed Lumo project.
+- Documented the touch-first, Wayland, and xWayland direction for the OrangePi RV2 test device.
+- Kept the build and runtime entry points easy to find while the compositor and shell continue to evolve.
+
+## [0.0.6] - 2026-03-26
+- Added xWayland workarea synchronization from the compositor's usable output geometry.
+- Added a focus helper so xWayland surfaces can be activated through the same input path as native Wayland surfaces.
+- Added tests for xWayland workarea collection so the policy can be debugged without a live display.
+
+## [0.0.7] - 2026-03-26
+- Added a C `lumo-shell` client scaffold for launcher, on-screen keyboard, and gesture surfaces.
+- Added pure shell layout helpers so surface geometry and reserved zones can be tested without a compositor.
+- Added shell UI tests and protocol generation for the layer-shell client path.

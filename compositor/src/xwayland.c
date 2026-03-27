@@ -27,6 +27,90 @@ struct lumo_xwayland_state {
     struct wl_listener remove_startup_info;
 };
 
+bool lumo_xwayland_collect_workarea(
+    struct lumo_compositor *compositor,
+    struct wlr_box *workarea
+) {
+    struct lumo_output *output;
+
+    if (workarea == NULL) {
+        return false;
+    }
+
+    memset(workarea, 0, sizeof(*workarea));
+
+    if (compositor == NULL) {
+        return false;
+    }
+
+    wl_list_for_each(output, &compositor->outputs, link) {
+        if (!output->usable_area_valid) {
+            continue;
+        }
+
+        *workarea = output->usable_area;
+        return !wlr_box_empty(workarea);
+    }
+
+    if (compositor->output_layout != NULL) {
+        wlr_output_layout_get_box(compositor->output_layout, NULL, workarea);
+        return !wlr_box_empty(workarea);
+    }
+
+    return false;
+}
+
+void lumo_xwayland_sync_workareas(struct lumo_compositor *compositor) {
+    struct wlr_box workarea = {0};
+
+    if (compositor == NULL || compositor->xwayland == NULL) {
+        return;
+    }
+
+    if (!lumo_xwayland_collect_workarea(compositor, &workarea)) {
+        wlr_log(WLR_DEBUG, "xwayland: skipped workarea sync, no usable geometry");
+        return;
+    }
+
+    if (compositor->xwayland_workarea_valid &&
+            compositor->xwayland_workarea.x == workarea.x &&
+            compositor->xwayland_workarea.y == workarea.y &&
+            compositor->xwayland_workarea.width == workarea.width &&
+            compositor->xwayland_workarea.height == workarea.height) {
+        return;
+    }
+
+    wlr_xwayland_set_workareas(compositor->xwayland, &workarea, 1);
+    compositor->xwayland_workarea = workarea;
+    compositor->xwayland_workarea_valid = true;
+    wlr_log(WLR_INFO, "xwayland workarea: %d,%d %dx%d",
+        workarea.x, workarea.y, workarea.width, workarea.height);
+}
+
+void lumo_xwayland_focus_surface(
+    struct lumo_compositor *compositor,
+    struct wlr_surface *surface
+) {
+    struct wlr_xwayland_surface *xsurface;
+
+    if (compositor == NULL || surface == NULL || compositor->xwayland == NULL) {
+        return;
+    }
+
+    xsurface = wlr_xwayland_surface_try_from_wlr_surface(surface);
+    if (xsurface == NULL) {
+        return;
+    }
+
+    if (!wlr_xwayland_or_surface_wants_focus(xsurface)) {
+        wlr_log(WLR_DEBUG, "xwayland: skipping focus for %s",
+            xsurface->title != NULL ? xsurface->title : "(unnamed)");
+        return;
+    }
+
+    wlr_xwayland_surface_activate(xsurface, true);
+}
+
 static void lumo_xwayland_surface_clear_scene(
     struct lumo_xwayland_surface *surface
 ) {
@@ -147,7 +231,8 @@ static void lumo_xwayland_surface_request_activate(
         wl_container_of(listener, surface, request_activate);
 
     (void)data;
-    if (surface == NULL || surface->xsurface == NULL) {
+    if (surface == NULL || surface->xsurface == NULL ||
+            !wlr_xwayland_or_surface_wants_focus(surface->xsurface)) {
         return;
     }
 
@@ -228,6 +313,7 @@ static void lumo_xwayland_ready(
 
     wlr_log(WLR_INFO, "xwayland ready on display %s",
         compositor->xwayland->display_name);
+    lumo_xwayland_sync_workareas(compositor);
 }
 
 static void lumo_xwayland_new_surface(
@@ -332,6 +418,7 @@ int lumo_xwayland_start(struct lumo_compositor *compositor) {
         &state->remove_startup_info);
 
     compositor->xwayland->data = state;
+    compositor->xwayland_workarea_valid = false;
     wlr_log(WLR_INFO, "xwayland: created");
     return 0;
 }
@@ -359,4 +446,5 @@ void lumo_xwayland_stop(struct lumo_compositor *compositor) {
 
     wlr_xwayland_destroy(compositor->xwayland);
     compositor->xwayland = NULL;
+    compositor->xwayland_workarea_valid = false;
 }

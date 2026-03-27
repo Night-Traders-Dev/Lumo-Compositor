@@ -81,6 +81,45 @@ static void test_hitbox_state(void) {
     lumo_compositor_destroy(compositor);
 }
 
+static void test_xwayland_workarea_collection(void) {
+    const struct lumo_compositor_config config = {
+        .session_name = "lumo-test",
+        .socket_name = "lumo-test-socket",
+        .initial_rotation = LUMO_ROTATION_NORMAL,
+        .debug = false,
+    };
+    struct lumo_compositor *compositor = lumo_compositor_create(&config);
+    struct lumo_output output = {0};
+    struct wlr_box workarea = {0};
+    struct wlr_box expected = {
+        .x = 12,
+        .y = 24,
+        .width = 800,
+        .height = 600,
+    };
+
+    assert(compositor != NULL);
+    assert(!lumo_xwayland_collect_workarea(compositor, &workarea));
+    assert(workarea.x == 0);
+    assert(workarea.y == 0);
+    assert(workarea.width == 0);
+    assert(workarea.height == 0);
+
+    wl_list_init(&output.link);
+    output.usable_area = expected;
+    output.usable_area_valid = true;
+    wl_list_insert(&compositor->outputs, &output.link);
+
+    assert(lumo_xwayland_collect_workarea(compositor, &workarea));
+    assert(workarea.x == expected.x);
+    assert(workarea.y == expected.y);
+    assert(workarea.width == expected.width);
+    assert(workarea.height == expected.height);
+
+    wl_list_remove(&output.link);
+    lumo_compositor_destroy(compositor);
+}
+
 static void test_state_setters(void) {
     const struct lumo_compositor_config config = {
         .session_name = "lumo-test",
@@ -120,6 +159,7 @@ int main(void) {
     test_rotation_helpers();
     test_compositor_defaults();
     test_hitbox_state();
+    test_xwayland_workarea_collection();
     test_state_setters();
     puts("lumo compositor tests passed");
     return 0;

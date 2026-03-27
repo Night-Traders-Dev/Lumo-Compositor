@@ -409,6 +409,7 @@ static void lumo_input_focus_surface(
     }
 
     if (surface != NULL) {
+        lumo_xwayland_focus_surface(compositor, surface);
         wlr_seat_keyboard_notify_enter(compositor->seat, surface,
             keycodes, num_keycodes, &modifiers);
         return;

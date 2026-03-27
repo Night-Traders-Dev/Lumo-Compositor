@@ -33,6 +33,7 @@ static void lumo_output_configure_scene(struct lumo_output *output) {
     }
 
     lumo_protocol_configure_layers(output->compositor, output);
+    lumo_xwayland_sync_workareas(output->compositor);
 }
 
 static void lumo_output_frame(struct wl_listener *listener, void *data) {
@@ -85,6 +86,7 @@ static void lumo_output_destroy(struct wl_listener *listener, void *data) {
     wl_list_remove(&output->request_state.link);
     wl_list_remove(&output->destroy.link);
     wl_list_remove(&output->link);
+    lumo_xwayland_sync_workareas(output->compositor);
     free(output);
     (void)data;
 }
@@ -130,6 +132,7 @@ static void lumo_output_add(
 
     output->compositor = compositor;
     output->wlr_output = wlr_output;
+    output->usable_area_valid = false;
     wl_signal_add(&wlr_output->events.frame, &output->frame);
     output->frame.notify = lumo_output_frame;
     wl_signal_add(&wlr_output->events.request_state, &output->request_state);

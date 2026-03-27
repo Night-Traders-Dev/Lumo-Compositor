@@ -24,6 +24,7 @@
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/util/box.h>
 #include <wlr/xwayland.h>
 #include <wlr/util/log.h>
 
@@ -160,6 +161,8 @@ struct lumo_output {
     struct wlr_output *wlr_output;
     struct wlr_scene_output *scene_output;
     struct wlr_output_layout_output *layout_output;
+    struct wlr_box usable_area;
+    bool usable_area_valid;
     struct wl_listener frame;
     struct wl_listener request_state;
     struct wl_listener destroy;
@@ -301,6 +304,8 @@ struct lumo_compositor {
     struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_manager;
     struct wlr_pointer_gestures_v1 *pointer_gestures;
     struct wlr_xwayland *xwayland;
+    struct wlr_box xwayland_workarea;
+    bool xwayland_workarea_valid;
     bool running;
     bool keyboard_visible;
     bool launcher_visible;
@@ -378,6 +383,15 @@ void lumo_output_set_rotation(
     struct lumo_compositor *compositor,
     const char *output_name,
     enum lumo_rotation rotation
+);
+bool lumo_xwayland_collect_workarea(
+    struct lumo_compositor *compositor,
+    struct wlr_box *workarea
+);
+void lumo_xwayland_sync_workareas(struct lumo_compositor *compositor);
+void lumo_xwayland_focus_surface(
+    struct lumo_compositor *compositor,
+    struct wlr_surface *surface
 );
 void lumo_protocol_configure_layers(
     struct lumo_compositor *compositor,

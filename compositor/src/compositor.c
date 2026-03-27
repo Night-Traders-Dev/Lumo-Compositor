@@ -43,6 +43,7 @@ struct lumo_compositor *lumo_compositor_create(
     compositor->input_state = NULL;
     compositor->protocol_state = NULL;
     compositor->xwayland = NULL;
+    compositor->xwayland_workarea_valid = false;
 
     wl_list_init(&compositor->outputs);
     wl_list_init(&compositor->keyboards);
