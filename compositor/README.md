@@ -20,3 +20,15 @@ When the implementation lands, this compositor should:
 - manage output rotation and touch mapping
 - expose shell state to launcher, OSK, bar, and gesture surfaces
 
+## Build Toggles
+
+The compositor build accepts a Meson feature flag for xWayland support:
+
+```sh
+meson setup build -Dxwayland=disabled
+meson compile -C build
+meson test -C build --print-errorlogs
+```
+
+Leave the option enabled for normal desktop-app compatibility. Disable it for
+smaller builds or environments where xWayland is not available.

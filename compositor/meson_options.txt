@@ -1,0 +1,2 @@
+option('xwayland', type: 'feature', value: 'enabled',
+  description: 'Build xWayland integration')

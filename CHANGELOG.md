@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.13] - 2026-03-27
+- Added a Meson feature flag so xWayland support can be enabled or disabled at build time.
+- Added xWayland no-op stubs for disabled builds and a test that exercises the toggle path.
+- Updated the root README and compositor notes to document the build switch.
+
 ## [0.0.12] - 2026-03-27
 - Added a framed bidirectional shell protocol with typed events, requests, responses, and parser helpers.
 - Wired launcher activation requests from the shell client back into the compositor so touch selections can drive compositor state.

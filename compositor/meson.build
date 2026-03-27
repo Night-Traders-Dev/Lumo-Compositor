@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.12',
+  version: '0.0.13',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -9,6 +9,8 @@ project(
 )
 
 lumo_inc = include_directories('include')
+xwayland_option = get_option('xwayland')
+xwayland_enabled = not xwayland_option.disabled()
 
 lumo_deps = [
   dependency('wlroots-0.18', required: true),
@@ -24,6 +26,10 @@ shell_deps = [
 
 add_project_arguments('-DWLR_USE_UNSTABLE', language: 'c')
 add_project_arguments('-D_POSIX_C_SOURCE=200809L', language: 'c')
+add_project_arguments(
+  '-DLUMO_ENABLE_XWAYLAND=' + (xwayland_enabled ? '1' : '0'),
+  language: 'c',
+)
 
 wayland_scanner = find_program('wayland-scanner', required: true)
 wayland_protocols = dependency('wayland-protocols', required: true)

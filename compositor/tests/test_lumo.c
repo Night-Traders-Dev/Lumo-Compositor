@@ -279,6 +279,28 @@ static void test_xwayland_workarea_collection(void) {
     lumo_compositor_destroy(compositor);
 }
 
+static void test_xwayland_toggle(void) {
+    const struct lumo_compositor_config config = {
+        .session_name = "lumo-test",
+        .socket_name = "lumo-test-socket",
+        .initial_rotation = LUMO_ROTATION_NORMAL,
+        .debug = false,
+    };
+    struct lumo_compositor *compositor = lumo_compositor_create(&config);
+
+    assert(compositor != NULL);
+#if LUMO_ENABLE_XWAYLAND
+    assert(lumo_xwayland_start(compositor) == -1);
+#else
+    assert(lumo_xwayland_start(compositor) == 0);
+#endif
+    assert(compositor->xwayland == NULL);
+    lumo_xwayland_sync_workareas(compositor);
+    lumo_xwayland_focus_surface(compositor, NULL);
+    lumo_xwayland_stop(compositor);
+    lumo_compositor_destroy(compositor);
+}
+
 static void test_state_setters(void) {
     const struct lumo_compositor_config config = {
         .session_name = "lumo-test",
@@ -391,6 +413,7 @@ int main(void) {
     test_hitbox_state();
     test_shell_hitbox_refresh();
     test_xwayland_workarea_collection();
+    test_xwayland_toggle();
     test_state_setters();
     test_shell_protocol_roundtrip();
     test_shell_binary_resolution();

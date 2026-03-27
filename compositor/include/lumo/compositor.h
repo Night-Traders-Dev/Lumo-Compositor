@@ -27,8 +27,17 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/box.h>
-#include <wlr/xwayland.h>
 #include <wlr/util/log.h>
+
+#ifndef LUMO_ENABLE_XWAYLAND
+#define LUMO_ENABLE_XWAYLAND 1
+#endif
+
+struct wlr_surface;
+struct wlr_xwayland;
+#if LUMO_ENABLE_XWAYLAND
+#include <wlr/xwayland.h>
+#endif
 
 enum lumo_rotation {
     LUMO_ROTATION_NORMAL = 0,

@@ -60,6 +60,8 @@ bool lumo_xwayland_collect_workarea(
     return false;
 }
 
+#if LUMO_ENABLE_XWAYLAND
+
 void lumo_xwayland_sync_workareas(struct lumo_compositor *compositor) {
     struct wlr_box workarea = {0};
 
@@ -448,3 +450,28 @@ void lumo_xwayland_stop(struct lumo_compositor *compositor) {
     compositor->xwayland = NULL;
     compositor->xwayland_workarea_valid = false;
 }
+
+#else
+
+void lumo_xwayland_sync_workareas(struct lumo_compositor *compositor) {
+    (void)compositor;
+}
+
+void lumo_xwayland_focus_surface(
+    struct lumo_compositor *compositor,
+    struct wlr_surface *surface
+) {
+    (void)compositor;
+    (void)surface;
+}
+
+int lumo_xwayland_start(struct lumo_compositor *compositor) {
+    (void)compositor;
+    return 0;
+}
+
+void lumo_xwayland_stop(struct lumo_compositor *compositor) {
+    (void)compositor;
+}
+
+#endif
