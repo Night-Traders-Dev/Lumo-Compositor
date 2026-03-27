@@ -295,11 +295,6 @@ void lumo_output_set_rotation(
         compositor->layer_config_dirty = true;
         lumo_output_configure_scene(output);
 
-        if (compositor->cursor != NULL) {
-            wlr_cursor_map_to_output(compositor->cursor, output->wlr_output);
-            wlr_cursor_map_input_to_output(compositor->cursor, NULL,
-                output->wlr_output);
-        }
     }
 
     lumo_protocol_refresh_shell_hitboxes(compositor);

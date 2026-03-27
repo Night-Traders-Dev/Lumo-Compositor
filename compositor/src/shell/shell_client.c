@@ -108,6 +108,12 @@ struct lumo_shell_client {
 };
 
 static bool lumo_shell_client_redraw(struct lumo_shell_client *client);
+static void lumo_draw_quick_settings_panel(
+    uint32_t *pixels, uint32_t width, uint32_t height,
+    int bar_height, const struct lumo_shell_client *client);
+static void lumo_draw_status(
+    uint32_t *pixels, uint32_t width, uint32_t height,
+    const struct lumo_shell_client *client);
 
 static uint32_t lumo_argb(uint8_t a, uint8_t r, uint8_t g, uint8_t b) {
     return ((uint32_t)a << 24) |
@@ -752,6 +758,21 @@ static void lumo_draw_launcher(
         return;
     }
 
+    if (client != NULL && (client->compositor_quick_settings_visible ||
+            client->compositor_time_panel_visible) &&
+            !client->compositor_launcher_visible) {
+        int bar_h = 40;
+
+        if (client->compositor_quick_settings_visible) {
+            lumo_draw_quick_settings_panel(pixels, width, height, bar_h,
+                client);
+        }
+        if (client->compositor_time_panel_visible) {
+            lumo_draw_status(pixels, width, height, client);
+        }
+        return;
+    }
+
     slide_y = (int)((1.0 - visibility) * (height / 8));
     if (!lumo_shell_launcher_panel_rect(width, height, &panel_rect)) {
         return;
@@ -1079,14 +1100,7 @@ static void lumo_draw_status(
     char time_buf[32];
     time_t now;
     struct tm tm_now;
-    bool qs_visible = client != NULL && client->compositor_quick_settings_visible;
-    bool tp_visible = client != NULL && client->compositor_time_panel_visible;
-    bool panel_open = qs_visible || tp_visible;
-
-    bar_height = (int)lumo_u32_min(height, 48);
-    if (!panel_open) {
-        bar_height = (int)height;
-    }
+    bar_height = (int)height;
 
     bar_rect.x = 0;
     bar_rect.y = 0;
@@ -1107,7 +1121,7 @@ static void lumo_draw_status(
     snprintf(time_buf, sizeof(time_buf), "%02d:%02d",
         tm_now.tm_hour, tm_now.tm_min);
 
-    if (!tp_visible) {
+    {
         int time_width = lumo_text_width(time_buf, 3);
         int time_x = (int)(width / 2) - time_width / 2;
         int time_y = bar_height / 2 - 10;
@@ -1120,67 +1134,6 @@ static void lumo_draw_status(
 
     lumo_draw_wifi_bars(pixels, width, height,
         (int)width - 42, bar_height / 2 - 8, 3, accent_color, wifi_dim);
-
-    if (qs_visible) {
-        lumo_draw_quick_settings_panel(pixels, width, height, bar_height,
-            client);
-    }
-
-    if (tp_visible) {
-        const uint32_t panel_bg = lumo_argb(0xF0, 0x2C, 0x00, 0x1E);
-        const uint32_t panel_stroke = lumo_argb(0x60, 0x77, 0x21, 0x6F);
-        const uint32_t label_color = lumo_argb(0xFF, 0xAE, 0xA7, 0x9F);
-        struct lumo_rect panel;
-        char date_buf[32];
-        char day_buf[32];
-        int panel_w = (int)(width / 2);
-        int panel_h = (int)(height - bar_height - 8);
-
-        if (panel_w < 200) {
-            panel_w = 200;
-        }
-        panel.x = 8;
-        panel.y = bar_height + 4;
-        panel.width = panel_w;
-        panel.height = panel_h;
-
-        lumo_fill_rounded_rect(pixels, width, height, &panel, 16, panel_bg);
-        lumo_draw_outline(pixels, width, height, &panel, 1, panel_stroke);
-
-        {
-            int tw = lumo_text_width(time_buf, 5);
-            lumo_draw_text(pixels, width, height,
-                panel.x + panel.width / 2 - tw / 2,
-                panel.y + 16, 5, accent_color, time_buf);
-        }
-
-        strftime(date_buf, sizeof(date_buf), "%A", &tm_now);
-        {
-            int dw = lumo_text_width(date_buf, 2);
-            lumo_draw_text(pixels, width, height,
-                panel.x + panel.width / 2 - dw / 2,
-                panel.y + 60, 2, text_color, date_buf);
-        }
-
-        snprintf(day_buf, sizeof(day_buf), "%d-%02d-%02d",
-            tm_now.tm_year + 1900, tm_now.tm_mon + 1, tm_now.tm_mday);
-        {
-            int dw2 = lumo_text_width(day_buf, 2);
-            lumo_draw_text(pixels, width, height,
-                panel.x + panel.width / 2 - dw2 / 2,
-                panel.y + 86, 2, label_color, day_buf);
-        }
-
-        {
-            char week_buf[16];
-            snprintf(week_buf, sizeof(week_buf), "WEEK %d",
-                (tm_now.tm_yday / 7) + 1);
-            int ww = lumo_text_width(week_buf, 2);
-            lumo_draw_text(pixels, width, height,
-                panel.x + panel.width / 2 - ww / 2,
-                panel.y + 144, 2, label_color, week_buf);
-        }
-    }
 }
 
 static void lumo_draw_animated_bg(
@@ -1383,7 +1336,9 @@ static bool lumo_shell_client_should_be_visible(
     switch (client->mode) {
     case LUMO_SHELL_MODE_LAUNCHER:
         return client->compositor_launcher_visible ||
-            client->compositor_touch_audit_active;
+            client->compositor_touch_audit_active ||
+            client->compositor_quick_settings_visible ||
+            client->compositor_time_panel_visible;
     case LUMO_SHELL_MODE_OSK:
         return client->compositor_keyboard_visible;
     case LUMO_SHELL_MODE_GESTURE:
@@ -1462,19 +1417,6 @@ static bool lumo_shell_client_build_config(
         }
         config->width = 0;
         config->background_rgba = 0x00000000;
-        if (client->compositor_quick_settings_visible) {
-            config->height = lumo_u32_min(config->height + 220, output_height / 3);
-            config->exclusive_zone = 0;
-            config->anchor = LUMO_SHELL_ANCHOR_TOP |
-                LUMO_SHELL_ANCHOR_LEFT |
-                LUMO_SHELL_ANCHOR_RIGHT;
-        } else if (client->compositor_time_panel_visible) {
-            config->height = lumo_u32_min(config->height + 200, output_height / 3);
-            config->exclusive_zone = 0;
-            config->anchor = LUMO_SHELL_ANCHOR_TOP |
-                LUMO_SHELL_ANCHOR_LEFT |
-                LUMO_SHELL_ANCHOR_RIGHT;
-        }
         return true;
     default:
         return false;
