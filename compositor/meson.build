@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.19',
+  version: '0.0.20',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -98,6 +98,11 @@ session_desktop = configure_file(
   output: 'lumo.desktop',
   configuration: session_conf,
 )
+session_debug_desktop = configure_file(
+  input: 'data/lumo-headless.desktop.in',
+  output: 'lumo-headless.desktop',
+  configuration: session_conf,
+)
 
 executable(
   'lumo-compositor',
@@ -117,6 +122,7 @@ executable(
 
 install_data(
   session_desktop,
+  session_debug_desktop,
   install_dir: join_paths(get_option('datadir'), 'wayland-sessions'),
 )
 

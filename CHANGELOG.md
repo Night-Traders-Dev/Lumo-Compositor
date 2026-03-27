@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.20] - 2026-03-27
+- Added a second installable Wayland session for headless debug bring-up with distinct session and socket names.
+- Updated the install rules so both the normal `Lumo` session and the debug session are bundled automatically.
+- Refreshed the README and compositor notes to explain the two session entries and what each one launches.
+
 ## [0.0.19] - 2026-03-27
 - Added an installable Wayland session entry so the login screen can start Lumo directly as a selectable session.
 - Installed the compositor and shell binaries side by side and pointed the session entry at `lumo-compositor --backend drm --shell lumo-shell`.

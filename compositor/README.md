@@ -39,8 +39,13 @@ The build also installs a Wayland session file when you run `meson install`:
 meson install -C build
 ```
 
-That session entry launches `lumo-compositor --backend drm --shell lumo-shell`
+That install step drops both the normal `Lumo` session and the
+`Lumo Headless Debug` session into the Wayland session directory.
+The normal session launches `lumo-compositor --backend drm --shell lumo-shell`
 so the compositor and bundled shell clients start together after login.
+The debug session launches `lumo-compositor --backend headless --debug --session
+lumo-headless --socket lumo-shell-headless --shell lumo-shell` for remote or
+headless bring-up.
 Use `sudo` for `meson install` if the install prefix points at a system
 directory.
 

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Lumo Headless Debug
+Comment=Headless debug session for SSH and remote bring-up
+Exec=@lumo_bindir@/lumo-compositor --backend headless --debug --session lumo-headless --socket lumo-shell-headless --shell @lumo_bindir@/lumo-shell
+TryExec=@lumo_bindir@/lumo-compositor
+Type=Application
+X-GDM-SessionRegisters=true
