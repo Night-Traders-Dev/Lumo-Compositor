@@ -717,21 +717,21 @@ static void lumo_draw_launcher(
     const struct lumo_shell_target *active_target,
     double visibility
 ) {
-    const uint32_t panel_top = lumo_argb(0xFF, 0x18, 0x20, 0x30);
-    const uint32_t panel_bottom = lumo_argb(0xFF, 0x09, 0x0E, 0x17);
-    const uint32_t panel_stroke = lumo_argb(0xFF, 0x46, 0x6D, 0x89);
-    const uint32_t title_color = lumo_argb(0xFF, 0xF4, 0xF7, 0xFB);
-    const uint32_t subtitle_color = lumo_argb(0xFF, 0x8F, 0xA5, 0xBA);
-    const uint32_t tile_fill = lumo_argb(0xFF, 0x14, 0x1A, 0x26);
-    const uint32_t tile_stroke = lumo_argb(0xFF, 0x2A, 0x38, 0x4B);
-    const uint32_t highlight = lumo_argb(0xFF, 0xF3, 0xF6, 0xFD);
-    const uint32_t close_fill = lumo_argb(0xFF, 0x1A, 0x24, 0x33);
-    const uint32_t close_label = lumo_argb(0xFF, 0xD6, 0xE2, 0xEE);
+    const uint32_t panel_top = lumo_argb(0xFF, 0x3B, 0x1F, 0x34);
+    const uint32_t panel_bottom = lumo_argb(0xFF, 0x1D, 0x11, 0x22);
+    const uint32_t panel_stroke = lumo_argb(0xFF, 0x77, 0x21, 0x6F);
+    const uint32_t title_color = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
+    const uint32_t subtitle_color = lumo_argb(0xFF, 0xAE, 0xA7, 0x9F);
+    const uint32_t tile_fill = lumo_argb(0xFF, 0x2C, 0x16, 0x28);
+    const uint32_t tile_stroke = lumo_argb(0xFF, 0x5E, 0x2C, 0x56);
+    const uint32_t highlight = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
+    const uint32_t close_fill = lumo_argb(0xFF, 0x3B, 0x1F, 0x34);
+    const uint32_t close_label = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
     const uint32_t accent_colors[] = {
-        lumo_argb(0xFF, 0x40, 0x6B, 0xFF),
-        lumo_argb(0xFF, 0x22, 0xD3, 0xEE),
-        lumo_argb(0xFF, 0xFF, 0xB8, 0x4D),
-        lumo_argb(0xFF, 0xF8, 0x5C, 0x7A),
+        lumo_argb(0xFF, 0xE9, 0x54, 0x20),
+        lumo_argb(0xFF, 0x77, 0x21, 0x6F),
+        lumo_argb(0xFF, 0xE9, 0x54, 0x20),
+        lumo_argb(0xFF, 0x77, 0x21, 0x6F),
     };
     struct lumo_rect panel_rect;
     struct lumo_rect accent_rect;
@@ -765,7 +765,7 @@ static void lumo_draw_launcher(
     title_badge.width = lumo_u32_min((uint32_t)(panel_rect.width / 3), 180);
     title_badge.height = 28;
     lumo_fill_rounded_rect(pixels, width, height, &title_badge, 14,
-        lumo_argb(0xFF, 0x0F, 0x15, 0x22));
+        lumo_argb(0xFF, 0x2C, 0x00, 0x1E));
     lumo_draw_text(pixels, width, height, title_badge.x + 14,
         title_badge.y + 8, 2, subtitle_color, "APP DRAWER");
     lumo_draw_text(pixels, width, height, panel_rect.x + 26,
@@ -790,7 +790,7 @@ static void lumo_draw_launcher(
     accent_rect.width = 92;
     accent_rect.height = 10;
     lumo_fill_rounded_rect(pixels, width, height, &accent_rect, 5,
-        lumo_argb(0xFF, 0x57, 0xD2, 0xFF));
+        lumo_argb(0xFF, 0xE9, 0x54, 0x20));
     for (uint32_t tile_index = 0; tile_index < tile_count; tile_index++) {
         struct lumo_rect tile_rect;
         struct lumo_rect icon_rect;
@@ -841,15 +841,15 @@ static void lumo_draw_osk(
     const struct lumo_shell_target *active_target,
     double visibility
 ) {
-    const uint32_t shell_top = lumo_argb(0xFF, 0x1E, 0x24, 0x30);
-    const uint32_t shell_bottom = lumo_argb(0xFF, 0x10, 0x14, 0x1C);
-    const uint32_t shell_stroke = lumo_argb(0xFF, 0x3B, 0x4F, 0x62);
-    const uint32_t key_fill = lumo_argb(0xFF, 0xCF, 0xD5, 0xDD);
-    const uint32_t special_key_fill = lumo_argb(0xFF, 0x7C, 0xD3, 0xFF);
-    const uint32_t label_dark = lumo_argb(0xFF, 0x0C, 0x14, 0x20);
-    const uint32_t label_light = lumo_argb(0xFF, 0xF8, 0xFB, 0xFF);
-    const uint32_t accent = lumo_argb(0xFF, 0x6C, 0xC9, 0xFF);
-    const uint32_t highlight = lumo_argb(0xFF, 0xF4, 0xF7, 0xFC);
+    const uint32_t shell_top = lumo_argb(0xFF, 0x3B, 0x1F, 0x34);
+    const uint32_t shell_bottom = lumo_argb(0xFF, 0x1D, 0x11, 0x22);
+    const uint32_t shell_stroke = lumo_argb(0xFF, 0x5E, 0x2C, 0x56);
+    const uint32_t key_fill = lumo_argb(0xFF, 0xE8, 0xE3, 0xDF);
+    const uint32_t special_key_fill = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
+    const uint32_t label_dark = lumo_argb(0xFF, 0x2C, 0x00, 0x1E);
+    const uint32_t label_light = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
+    const uint32_t accent = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
+    const uint32_t highlight = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
     struct lumo_rect panel_rect;
     struct lumo_rect grabber_rect;
     size_t key_count = lumo_shell_osk_key_count();
@@ -896,7 +896,7 @@ static void lumo_draw_osk(
         lumo_fill_rounded_rect(pixels, width, height, &key_rect, 14,
             special ? special_key_fill : key_fill);
         lumo_draw_outline(pixels, width, height, &key_rect, 2,
-            active ? highlight : lumo_argb(0xFF, 0x8B, 0x95, 0xA2));
+            active ? highlight : lumo_argb(0xFF, 0xAE, 0xA7, 0x9F));
 
         label_rect = key_rect;
         if (label != NULL && strlen(label) > 4) {
@@ -916,24 +916,15 @@ static void lumo_draw_gesture(
     const struct lumo_shell_client *client,
     const struct lumo_shell_target *active_target
 ) {
-    uint32_t accent = lumo_argb(0xFF, 0x69, 0xD1, 0xFF);
-    uint32_t base = lumo_argb(0xFF, 0x0E, 0x16, 0x22);
-    uint32_t highlight = lumo_argb(0xFF, 0xF3, 0xF6, 0xFD);
-    uint32_t debug_color = lumo_argb(0xC0, 0xFF, 0xB8, 0x4D);
+    uint32_t accent = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
+    uint32_t base = lumo_argb(0xFF, 0x2C, 0x00, 0x1E);
+    uint32_t highlight = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
     struct lumo_rect handle_rect = {0};
-    double local_x = 0.0;
-    double local_y = 0.0;
+
+    (void)client;
 
     if (!lumo_shell_gesture_handle_rect(width, height, &handle_rect)) {
         return;
-    }
-
-    if (client != NULL &&
-            client->compositor_scrim_state == LUMO_SHELL_REMOTE_SCRIM_MODAL) {
-        base = lumo_argb(0xFF, 0x09, 0x0F, 0x17);
-    } else if (client != NULL &&
-            client->compositor_scrim_state == LUMO_SHELL_REMOTE_SCRIM_DIMMED) {
-        base = lumo_argb(0xFF, 0x11, 0x18, 0x22);
     }
 
     lumo_fill_rounded_rect(pixels, width, height, &handle_rect, handle_rect.height / 2,
@@ -946,55 +937,6 @@ static void lumo_draw_gesture(
     if (active_target != NULL &&
             active_target->kind == LUMO_SHELL_TARGET_GESTURE_HANDLE) {
         lumo_draw_outline(pixels, width, height, &handle_rect, 2, highlight);
-    }
-
-    if (client == NULL || !client->touch_debug_seen ||
-            client->output_width_hint == 0 || client->output_height_hint == 0 ||
-            !lumo_shell_surface_local_coords(LUMO_SHELL_MODE_GESTURE,
-                client->output_width_hint, client->output_height_hint,
-                width, height, client->touch_debug_x, client->touch_debug_y,
-                &local_x, &local_y)) {
-        return;
-    }
-
-    if (client->touch_debug_target == LUMO_SHELL_TOUCH_DEBUG_TARGET_SURFACE) {
-        debug_color = lumo_argb(client->touch_debug_active ? 0xD8 : 0xB0,
-            0x6C, 0xF0, 0x8D);
-    } else if (client->touch_debug_target ==
-            LUMO_SHELL_TOUCH_DEBUG_TARGET_HITBOX) {
-        debug_color = lumo_argb(client->touch_debug_active ? 0xD8 : 0xB0,
-            0xFF, 0xB8, 0x4D);
-    } else {
-        debug_color = lumo_argb(client->touch_debug_active ? 0xD8 : 0xB0,
-            0xFF, 0x6B, 0x6B);
-    }
-
-    {
-        struct lumo_rect track_rect = {
-            .x = (int)local_x - 1,
-            .y = 0,
-            .width = 3,
-            .height = (int)height,
-        };
-        struct lumo_rect dot_rect = {
-            .x = (int)local_x - 12,
-            .y = (int)local_y - 12,
-            .width = 24,
-            .height = 24,
-        };
-        struct lumo_rect badge_rect = {
-            .x = 12,
-            .y = 6,
-            .width = 96,
-            .height = 14,
-        };
-
-        lumo_fill_rect(pixels, width, height, track_rect.x, track_rect.y,
-            track_rect.width, track_rect.height, debug_color);
-        lumo_fill_rounded_rect(pixels, width, height, &dot_rect, 12,
-            debug_color);
-        lumo_fill_rounded_rect(pixels, width, height, &badge_rect, 7,
-            debug_color);
     }
 }
 
@@ -1028,12 +970,12 @@ static void lumo_draw_quick_settings_panel(
     int bar_height,
     const struct lumo_shell_client *client
 ) {
-    const uint32_t panel_bg = lumo_argb(0xF0, 0x10, 0x14, 0x1E);
-    const uint32_t panel_stroke = lumo_argb(0x60, 0x46, 0x6D, 0x89);
-    const uint32_t label_color = lumo_argb(0xFF, 0x8F, 0xA5, 0xBA);
-    const uint32_t value_color = lumo_argb(0xFF, 0xE0, 0xE8, 0xF0);
-    const uint32_t accent = lumo_argb(0xFF, 0x69, 0xD1, 0xFF);
-    const uint32_t dim = lumo_argb(0x40, 0x46, 0x6D, 0x89);
+    const uint32_t panel_bg = lumo_argb(0xF0, 0x2C, 0x00, 0x1E);
+    const uint32_t panel_stroke = lumo_argb(0x60, 0x77, 0x21, 0x6F);
+    const uint32_t label_color = lumo_argb(0xFF, 0xAE, 0xA7, 0x9F);
+    const uint32_t value_color = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
+    const uint32_t accent = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
+    const uint32_t dim = lumo_argb(0x40, 0x77, 0x21, 0x6F);
     struct lumo_rect panel;
     int panel_w = (int)(width * 3 / 5);
     int panel_h = (int)(height - bar_height - 12);
@@ -1108,12 +1050,12 @@ static void lumo_draw_status(
     uint32_t height,
     const struct lumo_shell_client *client
 ) {
-    const uint32_t bar_top = lumo_argb(0xE0, 0x0C, 0x10, 0x18);
-    const uint32_t bar_bottom = lumo_argb(0xE0, 0x08, 0x0C, 0x14);
-    const uint32_t separator = lumo_argb(0x40, 0x46, 0x6D, 0x89);
-    const uint32_t text_color = lumo_argb(0xFF, 0xC8, 0xD4, 0xE0);
-    const uint32_t accent_color = lumo_argb(0xFF, 0x69, 0xD1, 0xFF);
-    const uint32_t wifi_dim = lumo_argb(0x30, 0x46, 0x6D, 0x89);
+    const uint32_t bar_top = lumo_argb(0xE0, 0x2C, 0x00, 0x1E);
+    const uint32_t bar_bottom = lumo_argb(0xE0, 0x1D, 0x00, 0x14);
+    const uint32_t separator = lumo_argb(0x40, 0x77, 0x21, 0x6F);
+    const uint32_t text_color = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
+    const uint32_t accent_color = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
+    const uint32_t wifi_dim = lumo_argb(0x30, 0xAE, 0xA7, 0x9F);
     int bar_height;
     struct lumo_rect bar_rect;
     struct lumo_rect sep_rect;
@@ -1168,9 +1110,9 @@ static void lumo_draw_status(
     }
 
     if (tp_visible) {
-        const uint32_t panel_bg = lumo_argb(0xF0, 0x10, 0x14, 0x1E);
-        const uint32_t panel_stroke = lumo_argb(0x60, 0x46, 0x6D, 0x89);
-        const uint32_t label_color = lumo_argb(0xFF, 0x8F, 0xA5, 0xBA);
+        const uint32_t panel_bg = lumo_argb(0xF0, 0x2C, 0x00, 0x1E);
+        const uint32_t panel_stroke = lumo_argb(0x60, 0x77, 0x21, 0x6F);
+        const uint32_t label_color = lumo_argb(0xFF, 0xAE, 0xA7, 0x9F);
         struct lumo_rect panel;
         char date_buf[32];
         char day_buf[32];
