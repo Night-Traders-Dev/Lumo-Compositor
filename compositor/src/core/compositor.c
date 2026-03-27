@@ -11,10 +11,14 @@ static void lumo_notify_ready(void) {
     const char *socket_path = getenv("NOTIFY_SOCKET");
     struct sockaddr_un addr;
     int fd;
+    ssize_t sent;
 
     if (socket_path == NULL || socket_path[0] == '\0') {
+        wlr_log(WLR_INFO, "sd_notify: NOTIFY_SOCKET not set, skipping");
         return;
     }
+
+    wlr_log(WLR_INFO, "sd_notify: sending READY=1 to %s", socket_path);
 
     fd = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (fd < 0) {
@@ -30,9 +34,14 @@ static void lumo_notify_ready(void) {
         strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
     }
 
-    (void)sendto(fd, "READY=1", 7, MSG_NOSIGNAL,
+    sent = sendto(fd, "READY=1", 7, MSG_NOSIGNAL,
         (const struct sockaddr *)&addr,
         offsetof(struct sockaddr_un, sun_path) + strlen(socket_path));
+    if (sent < 0) {
+        wlr_log_errno(WLR_ERROR, "sd_notify: sendto failed");
+    } else {
+        wlr_log(WLR_INFO, "sd_notify: sent %zd bytes", sent);
+    }
     close(fd);
 }
 

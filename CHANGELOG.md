@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.35] - 2026-03-27
+- Added app launching so launcher tiles now spawn real applications: Browser opens Epiphany, Notes opens gnome-text-editor, Files opens Nautilus, and Settings opens gnome-control-center.
+- Added a status bar shell surface anchored to the top edge with a live clock, LUMO branding, and rotation indicator.
+- Replaced the pure black compositor background with a dark navy scene rect so the idle desktop has depth and matches the shell's dark theme.
+- Added systemd ready notification so the compositor signals session readiness to GDM and other service managers.
+- Removed the broken `X-GDM-SessionRegisters` flag from session desktop entries so GDM's own wrapper handles session registration.
+
 ## [0.0.34] - 2026-03-27
 - Added explicit top, left, right, and bottom compositor-owned system edge zones so Lumo now has a fuller mobile gesture map instead of only the bottom launcher path.
 - Taught the shell to use tighter input regions that match the visible launcher drawer panel and the gesture pill, which keeps transparent shell surfaces from swallowing unrelated touches.

@@ -1122,6 +1122,7 @@ static bool lumo_shell_client_should_be_visible(
     case LUMO_SHELL_MODE_OSK:
         return client->compositor_keyboard_visible;
     case LUMO_SHELL_MODE_GESTURE:
+    case LUMO_SHELL_MODE_STATUS:
         return true;
     default:
         return false;
@@ -1140,7 +1141,8 @@ static bool lumo_shell_client_build_config(
         return false;
     }
 
-    if (!visible && client->mode != LUMO_SHELL_MODE_GESTURE) {
+    if (!visible && client->mode != LUMO_SHELL_MODE_GESTURE &&
+            client->mode != LUMO_SHELL_MODE_STATUS) {
         return lumo_shell_surface_bootstrap_config(client->mode, config);
     }
 
@@ -1257,6 +1259,8 @@ static void lumo_shell_client_update_input_region(
             wl_region_add(region, rect.x, rect.y, rect.width, rect.height);
         }
         break;
+    case LUMO_SHELL_MODE_STATUS:
+        break;
     default:
         break;
     }
@@ -1271,6 +1275,7 @@ static void lumo_shell_client_finish_hide_if_needed(
     struct lumo_shell_surface_config hidden_config;
 
     if (client == NULL || client->mode == LUMO_SHELL_MODE_GESTURE ||
+            client->mode == LUMO_SHELL_MODE_STATUS ||
             client->target_visible || client->surface_hidden) {
         return;
     }
@@ -1293,7 +1298,8 @@ static void lumo_shell_client_begin_transition(
         return;
     }
 
-    if (client->mode == LUMO_SHELL_MODE_GESTURE) {
+    if (client->mode == LUMO_SHELL_MODE_GESTURE ||
+            client->mode == LUMO_SHELL_MODE_STATUS) {
         client->target_visible = true;
         client->surface_hidden = false;
         client->animation_active = false;
@@ -1338,12 +1344,15 @@ static void lumo_shell_client_sync_surface_state(
 
     desired_visible = lumo_shell_client_should_be_visible(client);
     if (desired_visible != client->target_visible ||
-            (client->mode == LUMO_SHELL_MODE_GESTURE && client->surface_hidden)) {
+            ((client->mode == LUMO_SHELL_MODE_GESTURE ||
+                client->mode == LUMO_SHELL_MODE_STATUS) &&
+                client->surface_hidden)) {
         lumo_shell_client_begin_transition(client, desired_visible);
         return;
     }
 
-    if ((desired_visible || client->mode == LUMO_SHELL_MODE_GESTURE) &&
+    if ((desired_visible || client->mode == LUMO_SHELL_MODE_GESTURE ||
+                client->mode == LUMO_SHELL_MODE_STATUS) &&
             force_layout &&
             lumo_shell_client_build_config(client, true, &config) &&
             !lumo_shell_surface_config_equal(&client->config, &config)) {
