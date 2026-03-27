@@ -1653,6 +1653,15 @@ static void lumo_shell_client_begin_transition(
         client->surface_hidden = false;
     }
 
+    if (!visible && client->mode == LUMO_SHELL_MODE_LAUNCHER &&
+            !client->compositor_launcher_visible) {
+        client->animation_from = 0.0;
+        client->animation_to = 0.0;
+        client->animation_active = false;
+        lumo_shell_client_finish_hide_if_needed(client);
+        return;
+    }
+
     client->animation_from = current_value;
     client->animation_to = visible ? 1.0 : 0.0;
     client->animation_started_msec = lumo_now_msec();
@@ -2330,6 +2339,14 @@ static void lumo_shell_client_apply_state_frame(
         client->output_height_hint = output_size;
         layout_changed = true;
         fprintf(stderr, "lumo-shell: output height=%u\n", output_size);
+
+        if (client->mode == LUMO_SHELL_MODE_BACKGROUND ||
+                client->mode == LUMO_SHELL_MODE_GESTURE ||
+                client->mode == LUMO_SHELL_MODE_STATUS) {
+            if (client->layer_surface != NULL && client->surface != NULL) {
+                wl_surface_commit(client->surface);
+            }
+        }
     }
 
     if (lumo_shell_protocol_frame_get(frame, "status", &value) &&
