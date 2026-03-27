@@ -224,6 +224,8 @@ static void test_compositor_defaults(void) {
     assert(!compositor->launcher_visible);
     assert(compositor->xwayland == NULL);
     assert(!compositor->xwayland_ready);
+    assert(compositor->input_devices.next == &compositor->input_devices);
+    assert(compositor->input_devices.prev == &compositor->input_devices);
     lumo_compositor_destroy(compositor);
 }
 

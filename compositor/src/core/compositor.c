@@ -61,6 +61,7 @@ struct lumo_compositor *lumo_compositor_create(
     wl_list_init(&compositor->popups);
     wl_list_init(&compositor->layer_surfaces);
     wl_list_init(&compositor->hitboxes);
+    wl_list_init(&compositor->input_devices);
     wl_list_init(&compositor->touch_points);
 
     return compositor;

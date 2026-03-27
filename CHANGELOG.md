@@ -2,6 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.30] - 2026-03-27
+- Fixed a compositor startup crash in the direct DRM plus libinput session path by initializing the `input_devices` wl_list before input devices are attached.
+- Added regression coverage for the compositor default state so uninitialized input-device list heads are caught during tests.
+
 ## [0.0.29] - 2026-03-27
 - Fixed direct-display DRM sessions so explicit `--backend drm` now requests `libinput,drm` from wlroots instead of `drm` alone, which restores touchscreen and keyboard devices in the OrangePi login-session path.
 - Added backend helper coverage so the wlroots backend environment mapping is tested alongside the existing backend mode parsing logic.
