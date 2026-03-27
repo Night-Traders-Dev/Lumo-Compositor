@@ -17,6 +17,19 @@ static void test_mode_names(void) {
         "gesture-handle") == 0);
 }
 
+static void test_target_kind_parse(void) {
+    enum lumo_shell_target_kind kind = LUMO_SHELL_TARGET_NONE;
+
+    assert(lumo_shell_target_kind_parse("launcher-tile", &kind));
+    assert(kind == LUMO_SHELL_TARGET_LAUNCHER_TILE);
+    assert(lumo_shell_target_kind_parse("osk_key", &kind));
+    assert(kind == LUMO_SHELL_TARGET_OSK_KEY);
+    assert(lumo_shell_target_kind_parse("gesture-handle", &kind));
+    assert(kind == LUMO_SHELL_TARGET_GESTURE_HANDLE);
+    assert(lumo_shell_target_kind_parse("none", &kind));
+    assert(kind == LUMO_SHELL_TARGET_NONE);
+}
+
 static void test_layout_counts(void) {
     assert(lumo_shell_launcher_tile_count() == 12);
     assert(lumo_shell_osk_key_count() == 26);
@@ -147,6 +160,7 @@ static void test_gesture_hitbox(void) {
 
 int main(void) {
     test_mode_names();
+    test_target_kind_parse();
     test_layout_counts();
     test_launcher_config();
     test_osk_config();

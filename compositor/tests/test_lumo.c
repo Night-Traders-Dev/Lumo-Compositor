@@ -1,4 +1,5 @@
 #include "lumo/compositor.h"
+#include "lumo/shell_protocol.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -23,6 +24,110 @@ static void test_rotation_helpers(void) {
         LUMO_ROTATION_180);
     assert(lumo_transform_to_rotation(WL_OUTPUT_TRANSFORM_270) ==
         LUMO_ROTATION_270);
+}
+
+struct lumo_shell_protocol_capture {
+    bool called;
+    struct lumo_shell_protocol_frame frame;
+};
+
+static void lumo_shell_protocol_capture_frame(
+    const struct lumo_shell_protocol_frame *frame,
+    void *user_data
+) {
+    struct lumo_shell_protocol_capture *capture = user_data;
+
+    if (capture == NULL || frame == NULL) {
+        return;
+    }
+
+    capture->called = true;
+    capture->frame = *frame;
+}
+
+static void test_shell_protocol_roundtrip(void) {
+    struct lumo_shell_protocol_frame frame = {0};
+    struct lumo_shell_protocol_stream stream = {0};
+    struct lumo_shell_protocol_capture capture = {0};
+    char buffer[512];
+    size_t length;
+    size_t split;
+    const char *value = NULL;
+    bool bool_value = false;
+    uint32_t u32_value = 0;
+    double double_value = 0.0;
+    enum lumo_shell_protocol_frame_kind frame_kind;
+
+    assert(strcmp(lumo_shell_protocol_frame_kind_name(
+        LUMO_SHELL_PROTOCOL_FRAME_EVENT), "event") == 0);
+    assert(strcmp(lumo_shell_protocol_frame_kind_name(
+        LUMO_SHELL_PROTOCOL_FRAME_REQUEST), "request") == 0);
+    assert(lumo_shell_protocol_frame_kind_parse("response", &frame_kind));
+    assert(frame_kind == LUMO_SHELL_PROTOCOL_FRAME_RESPONSE);
+    assert(lumo_shell_protocol_frame_init(&frame,
+        LUMO_SHELL_PROTOCOL_FRAME_EVENT, "state", 12));
+    assert(lumo_shell_protocol_frame_add_bool(&frame, "launcher_visible", true));
+    assert(lumo_shell_protocol_frame_add_bool(&frame, "keyboard_visible", false));
+    assert(lumo_shell_protocol_frame_add_string(&frame, "scrim_state", "modal"));
+    assert(lumo_shell_protocol_frame_add_string(&frame, "rotation", "180"));
+    assert(lumo_shell_protocol_frame_add_double(&frame, "gesture_threshold", 32.5));
+    assert(lumo_shell_protocol_frame_add_u32(&frame, "gesture_timeout_ms", 180));
+
+    length = lumo_shell_protocol_frame_format(&frame, buffer, sizeof(buffer));
+    assert(length > 0);
+    assert(strncmp(buffer, "LUMO/1 event state id=12\n",
+        strlen("LUMO/1 event state id=12\n")) == 0);
+
+    split = length / 2;
+    lumo_shell_protocol_stream_init(&stream);
+    assert(lumo_shell_protocol_stream_feed(&stream, buffer, split,
+        lumo_shell_protocol_capture_frame, &capture));
+    assert(!capture.called);
+    assert(lumo_shell_protocol_stream_feed(&stream, buffer + split,
+        length - split, lumo_shell_protocol_capture_frame, &capture));
+    assert(capture.called);
+    assert(capture.frame.kind == LUMO_SHELL_PROTOCOL_FRAME_EVENT);
+    assert(strcmp(capture.frame.name, "state") == 0);
+    assert(capture.frame.id == 12);
+
+    assert(lumo_shell_protocol_frame_get_bool(&capture.frame, "launcher_visible",
+        &bool_value));
+    assert(bool_value);
+    assert(lumo_shell_protocol_frame_get_bool(&capture.frame, "keyboard_visible",
+        &bool_value));
+    assert(!bool_value);
+    assert(lumo_shell_protocol_frame_get(&capture.frame, "scrim_state",
+        &value));
+    assert(strcmp(value, "modal") == 0);
+    assert(lumo_shell_protocol_frame_get_double(&capture.frame,
+        "gesture_threshold", &double_value));
+    assert(double_value == 32.5);
+    assert(lumo_shell_protocol_frame_get_u32(&capture.frame,
+        "gesture_timeout_ms", &u32_value));
+    assert(u32_value == 180);
+
+    capture.called = false;
+    memset(&capture.frame, 0, sizeof(capture.frame));
+    assert(lumo_shell_protocol_frame_init(&frame,
+        LUMO_SHELL_PROTOCOL_FRAME_REQUEST, "activate_target", 99));
+    assert(lumo_shell_protocol_frame_add_string(&frame, "kind",
+        "launcher-tile"));
+    assert(lumo_shell_protocol_frame_add_u32(&frame, "index", 3));
+    length = lumo_shell_protocol_frame_format(&frame, buffer, sizeof(buffer));
+    assert(length > 0);
+
+    lumo_shell_protocol_stream_init(&stream);
+    assert(lumo_shell_protocol_stream_feed(&stream, buffer, length,
+        lumo_shell_protocol_capture_frame, &capture));
+    assert(capture.called);
+    assert(capture.frame.kind == LUMO_SHELL_PROTOCOL_FRAME_REQUEST);
+    assert(strcmp(capture.frame.name, "activate_target") == 0);
+    assert(capture.frame.id == 99);
+    assert(lumo_shell_protocol_frame_get_u32(&capture.frame, "index",
+        &u32_value));
+    assert(u32_value == 3);
+    assert(lumo_shell_protocol_frame_get(&capture.frame, "kind", &value));
+    assert(strcmp(value, "launcher-tile") == 0);
 }
 
 static void test_compositor_defaults(void) {
@@ -203,6 +308,11 @@ static void test_state_setters(void) {
     lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_DIMMED);
     assert(compositor->scrim_state == LUMO_SCRIM_DIMMED);
 
+    assert(lumo_rotation_parse("270", &compositor->active_rotation));
+    assert(compositor->active_rotation == LUMO_ROTATION_270);
+    assert(lumo_scrim_state_parse("hidden", &compositor->scrim_state));
+    assert(compositor->scrim_state == LUMO_SCRIM_HIDDEN);
+
     lumo_input_set_rotation(compositor, LUMO_ROTATION_90);
     assert(compositor->active_rotation == LUMO_ROTATION_90);
 
@@ -282,6 +392,7 @@ int main(void) {
     test_shell_hitbox_refresh();
     test_xwayland_workarea_collection();
     test_state_setters();
+    test_shell_protocol_roundtrip();
     test_shell_binary_resolution();
     test_shell_argv_builder();
     test_shell_state_helpers();

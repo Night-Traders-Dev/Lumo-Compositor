@@ -1,4 +1,5 @@
 #include "lumo/shell.h"
+#include "lumo/shell_protocol.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -54,8 +55,7 @@ struct lumo_shell_client {
     struct lumo_shell_surface_config config;
     int state_fd;
     char state_socket_path[PATH_MAX];
-    char state_read_buffer[512];
-    size_t state_read_used;
+    struct lumo_shell_protocol_stream protocol_stream;
     uint32_t configured_width;
     uint32_t configured_height;
     bool configured;
@@ -65,6 +65,7 @@ struct lumo_shell_client {
     bool active_target_valid;
     bool pointer_position_valid;
     int32_t active_touch_id;
+    uint32_t next_request_id;
     double pointer_x;
     double pointer_y;
     bool compositor_launcher_visible;
@@ -73,6 +74,9 @@ struct lumo_shell_client {
     uint32_t compositor_rotation_degrees;
     double compositor_gesture_threshold;
     uint32_t compositor_gesture_timeout_ms;
+    bool compositor_keyboard_resize_pending;
+    bool compositor_keyboard_resize_acked;
+    uint32_t compositor_keyboard_resize_serial;
     struct lumo_shell_target active_target;
 };
 
@@ -514,15 +518,41 @@ static void lumo_shell_client_note_target(
     lumo_shell_client_clear_active_target(client);
 }
 
+static bool lumo_shell_client_send_frame(
+    struct lumo_shell_client *client,
+    const struct lumo_shell_protocol_frame *frame
+);
+
 static void lumo_shell_client_activate_target(struct lumo_shell_client *client) {
+    struct lumo_shell_protocol_frame frame;
+    const char *kind_name;
+
     if (client == NULL || !client->active_target_valid) {
         return;
     }
 
+    kind_name = lumo_shell_target_kind_name(client->active_target.kind);
+    if (!lumo_shell_protocol_frame_init(&frame,
+            LUMO_SHELL_PROTOCOL_FRAME_REQUEST, "activate_target",
+            client->next_request_id++)) {
+        fprintf(stderr, "lumo-shell: failed to build activate request\n");
+        return;
+    }
+
+    if (!lumo_shell_protocol_frame_add_string(&frame, "kind", kind_name) ||
+            !lumo_shell_protocol_frame_add_u32(&frame, "index",
+                client->active_target.index) ||
+            !lumo_shell_protocol_frame_add_string(&frame, "mode",
+                lumo_shell_mode_name(client->mode)) ||
+            !lumo_shell_client_send_frame(client, &frame)) {
+        fprintf(stderr, "lumo-shell: failed to send activate request\n");
+        return;
+    }
+
     fprintf(stderr,
-        "lumo-shell: %s activated %s %u\n",
+        "lumo-shell: %s request activate %s %u\n",
         lumo_shell_mode_name(client->mode),
-        lumo_shell_target_kind_name(client->active_target.kind),
+        kind_name,
         client->active_target.index);
 }
 
@@ -544,23 +574,6 @@ static bool lumo_shell_remote_scrim_parse(
     }
     if (strcmp(value, "modal") == 0) {
         *state = LUMO_SHELL_REMOTE_SCRIM_MODAL;
-        return true;
-    }
-
-    return false;
-}
-
-static bool lumo_shell_bool_parse(const char *value, bool *out) {
-    if (value == NULL || out == NULL) {
-        return false;
-    }
-
-    if (strcmp(value, "1") == 0 || strcmp(value, "true") == 0) {
-        *out = true;
-        return true;
-    }
-    if (strcmp(value, "0") == 0 || strcmp(value, "false") == 0) {
-        *out = false;
         return true;
     }
 
@@ -592,77 +605,143 @@ static bool lumo_shell_rotation_parse(const char *value, uint32_t *rotation) {
     return false;
 }
 
-static void lumo_shell_client_apply_state_line(
+static bool lumo_shell_client_send_frame(
     struct lumo_shell_client *client,
-    const char *line
+    const struct lumo_shell_protocol_frame *frame
 ) {
-    const char *value;
+    char buffer[1024];
+    size_t length;
+    size_t offset = 0;
+
+    if (client == NULL || frame == NULL || client->state_fd < 0) {
+        return false;
+    }
+
+    length = lumo_shell_protocol_frame_format(frame, buffer, sizeof(buffer));
+    if (length == 0) {
+        return false;
+    }
+
+    while (offset < length) {
+        ssize_t bytes = send(client->state_fd, buffer + offset, length - offset,
+            MSG_NOSIGNAL);
+        if (bytes < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return false;
+            }
+            return false;
+        }
+        if (bytes == 0) {
+            return false;
+        }
+        offset += (size_t)bytes;
+    }
+
+    return true;
+}
+
+static void lumo_shell_client_apply_state_frame(
+    struct lumo_shell_client *client,
+    const struct lumo_shell_protocol_frame *frame
+) {
     bool bool_value;
     uint32_t rotation_value;
     double double_value;
     uint32_t timeout_value;
+    bool changed = false;
+    const char *value;
 
-    if (client == NULL || line == NULL) {
+    if (client == NULL || frame == NULL) {
         return;
     }
 
-    if (strncmp(line, "launcher visible=", 17) == 0) {
-        value = line + 17;
-        if (lumo_shell_bool_parse(value, &bool_value)) {
-            client->compositor_launcher_visible = bool_value;
-            fprintf(stderr, "lumo-shell: launcher visible=%s\n",
-                bool_value ? "true" : "false");
-            (void)lumo_shell_client_redraw(client);
-        }
-        return;
+    if (lumo_shell_protocol_frame_get_bool(frame, "launcher_visible",
+            &bool_value)) {
+        client->compositor_launcher_visible = bool_value;
+        fprintf(stderr, "lumo-shell: launcher visible=%s\n",
+            bool_value ? "true" : "false");
+        changed = true;
     }
 
-    if (strncmp(line, "keyboard visible=", 17) == 0) {
-        value = line + 17;
-        if (lumo_shell_bool_parse(value, &bool_value)) {
-            client->compositor_keyboard_visible = bool_value;
-            fprintf(stderr, "lumo-shell: keyboard visible=%s\n",
-                bool_value ? "true" : "false");
-            (void)lumo_shell_client_redraw(client);
-        }
-        return;
+    if (lumo_shell_protocol_frame_get_bool(frame, "keyboard_visible",
+            &bool_value)) {
+        client->compositor_keyboard_visible = bool_value;
+        fprintf(stderr, "lumo-shell: keyboard visible=%s\n",
+            bool_value ? "true" : "false");
+        changed = true;
     }
 
-    if (strncmp(line, "scrim state=", 12) == 0) {
-        value = line + 12;
-        if (lumo_shell_remote_scrim_parse(value, &client->compositor_scrim_state)) {
+    if (lumo_shell_protocol_frame_get(frame, "scrim_state", &value)) {
+        if (lumo_shell_remote_scrim_parse(value,
+                &client->compositor_scrim_state)) {
             fprintf(stderr, "lumo-shell: scrim state=%s\n", value);
-            (void)lumo_shell_client_redraw(client);
+            changed = true;
         }
-        return;
     }
 
-    if (strncmp(line, "rotation=", 9) == 0) {
-        value = line + 9;
+    if (lumo_shell_protocol_frame_get(frame, "rotation", &value)) {
         if (lumo_shell_rotation_parse(value, &rotation_value)) {
             client->compositor_rotation_degrees = rotation_value;
             fprintf(stderr, "lumo-shell: compositor rotation=%u\n",
                 client->compositor_rotation_degrees);
-            (void)lumo_shell_client_redraw(client);
+            changed = true;
         }
-        return;
     }
 
-    if (strncmp(line, "gesture threshold=", 18) == 0) {
-        value = line + 18;
-        double_value = strtod(value, NULL);
+    if (lumo_shell_protocol_frame_get_double(frame, "gesture_threshold",
+            &double_value)) {
         client->compositor_gesture_threshold = double_value;
         fprintf(stderr, "lumo-shell: gesture threshold=%.2f\n", double_value);
-        (void)lumo_shell_client_redraw(client);
-        return;
+        changed = true;
     }
 
-    if (strncmp(line, "gesture timeout_ms=", 19) == 0) {
-        value = line + 19;
-        timeout_value = (uint32_t)strtoul(value, NULL, 10);
+    if (lumo_shell_protocol_frame_get_u32(frame, "gesture_timeout_ms",
+            &timeout_value)) {
         client->compositor_gesture_timeout_ms = timeout_value;
         fprintf(stderr, "lumo-shell: gesture timeout_ms=%u\n", timeout_value);
-        return;
+        changed = true;
+    }
+
+    if (lumo_shell_protocol_frame_get_bool(frame, "keyboard_resize_pending",
+            &bool_value)) {
+        client->compositor_keyboard_resize_pending = bool_value;
+        fprintf(stderr, "lumo-shell: keyboard resize pending=%s\n",
+            bool_value ? "true" : "false");
+        changed = true;
+    }
+
+    if (lumo_shell_protocol_frame_get_bool(frame, "keyboard_resize_acked",
+            &bool_value)) {
+        client->compositor_keyboard_resize_acked = bool_value;
+        fprintf(stderr, "lumo-shell: keyboard resize acked=%s\n",
+            bool_value ? "true" : "false");
+        changed = true;
+    }
+
+    if (lumo_shell_protocol_frame_get_u32(frame, "keyboard_resize_serial",
+            &timeout_value)) {
+        client->compositor_keyboard_resize_serial = timeout_value;
+        fprintf(stderr, "lumo-shell: keyboard resize serial=%u\n",
+            timeout_value);
+        changed = true;
+    }
+
+    if (lumo_shell_protocol_frame_get(frame, "status", &value) &&
+            strcmp(value, "ok") == 0) {
+        fprintf(stderr, "lumo-shell: compositor response ok for %s\n",
+            frame->name);
+    }
+
+    if (lumo_shell_protocol_frame_get(frame, "code", &value)) {
+        fprintf(stderr, "lumo-shell: compositor response %s code=%s\n",
+            frame->name, value);
+    }
+
+    if (changed) {
+        (void)lumo_shell_client_redraw(client);
     }
 }
 
@@ -715,7 +794,47 @@ static int lumo_shell_client_connect_state_socket(
     return fd;
 }
 
-static bool lumo_shell_client_pump_state(struct lumo_shell_client *client) {
+static void lumo_shell_client_handle_protocol_frame(
+    const struct lumo_shell_protocol_frame *frame,
+    void *data
+) {
+    struct lumo_shell_client *client = data;
+    const char *value = NULL;
+
+    if (client == NULL || frame == NULL) {
+        return;
+    }
+
+    if (frame->kind == LUMO_SHELL_PROTOCOL_FRAME_EVENT &&
+            strcmp(frame->name, "state") == 0) {
+        lumo_shell_client_apply_state_frame(client, frame);
+        return;
+    }
+
+    if (frame->kind == LUMO_SHELL_PROTOCOL_FRAME_RESPONSE) {
+        if (lumo_shell_protocol_frame_get(frame, "status", &value) &&
+                strcmp(value, "ok") == 0) {
+            fprintf(stderr, "lumo-shell: request %s acknowledged\n",
+                frame->name);
+        }
+        return;
+    }
+
+    if (frame->kind == LUMO_SHELL_PROTOCOL_FRAME_ERROR) {
+        const char *code = NULL;
+        const char *reason = NULL;
+
+        (void)lumo_shell_protocol_frame_get(frame, "code", &code);
+        (void)lumo_shell_protocol_frame_get(frame, "reason", &reason);
+        fprintf(stderr,
+            "lumo-shell: compositor error for %s code=%s reason=%s\n",
+            frame->name,
+            code != NULL ? code : "unknown",
+            reason != NULL ? reason : "unknown");
+    }
+}
+
+static bool lumo_shell_client_pump_protocol(struct lumo_shell_client *client) {
     char chunk[128];
     ssize_t bytes_read;
 
@@ -739,24 +858,11 @@ static bool lumo_shell_client_pump_state(struct lumo_shell_client *client) {
             return false;
         }
 
-        for (ssize_t i = 0; i < bytes_read; i++) {
-            char ch = chunk[i];
-
-            if (ch == '\n') {
-                client->state_read_buffer[client->state_read_used] = '\0';
-                if (client->state_read_used > 0) {
-                    lumo_shell_client_apply_state_line(client,
-                        client->state_read_buffer);
-                }
-                client->state_read_used = 0;
-                continue;
-            }
-
-            if (client->state_read_used + 1 >= sizeof(client->state_read_buffer)) {
-                client->state_read_used = 0;
-            }
-
-            client->state_read_buffer[client->state_read_used++] = ch;
+        if (!lumo_shell_protocol_stream_feed(&client->protocol_stream, chunk,
+                (size_t)bytes_read, lumo_shell_client_handle_protocol_frame,
+                client)) {
+            fprintf(stderr, "lumo-shell: invalid protocol frame from compositor\n");
+            return false;
         }
     }
 }
@@ -801,7 +907,7 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
 
         if (client->state_fd >= 0 && nfds > 1 &&
                 (fds[1].revents & (POLLIN | POLLHUP | POLLERR))) {
-            if (!lumo_shell_client_pump_state(client)) {
+            if (!lumo_shell_client_pump_protocol(client)) {
                 close(client->state_fd);
                 client->state_fd = -1;
             }
@@ -1344,12 +1450,16 @@ int main(int argc, char **argv) {
         .mode = LUMO_SHELL_MODE_LAUNCHER,
         .state_fd = -1,
         .active_touch_id = -1,
+        .next_request_id = 1,
         .compositor_launcher_visible = false,
         .compositor_keyboard_visible = false,
         .compositor_scrim_state = LUMO_SHELL_REMOTE_SCRIM_HIDDEN,
         .compositor_rotation_degrees = 0,
         .compositor_gesture_threshold = 32.0,
         .compositor_gesture_timeout_ms = 180,
+        .compositor_keyboard_resize_pending = false,
+        .compositor_keyboard_resize_acked = true,
+        .compositor_keyboard_resize_serial = 0,
     };
 
     for (int i = 1; i < argc; i++) {
@@ -1377,6 +1487,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    lumo_shell_protocol_stream_init(&client.protocol_stream);
+
     client.registry = wl_display_get_registry(client.display);
     wl_registry_add_listener(client.registry, &lumo_shell_registry_listener,
         &client);
@@ -1399,7 +1511,7 @@ int main(int argc, char **argv) {
     if (client.state_fd >= 0) {
         fprintf(stderr, "lumo-shell: connected state socket %s\n",
             client.state_socket_path);
-        (void)lumo_shell_client_pump_state(&client);
+        (void)lumo_shell_client_pump_protocol(&client);
     }
 
     (void)lumo_shell_client_run(&client);

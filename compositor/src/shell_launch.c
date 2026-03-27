@@ -1,4 +1,5 @@
 #include "lumo/compositor.h"
+#include "lumo/shell_protocol.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -22,7 +23,10 @@ struct lumo_shell_process {
 
 struct lumo_shell_bridge_client {
     struct wl_list link;
+    struct wl_event_source *source;
     int fd;
+    struct lumo_compositor *compositor;
+    struct lumo_shell_protocol_stream stream;
 };
 
 struct lumo_shell_bridge {
@@ -37,6 +41,11 @@ struct lumo_shell_state {
     struct lumo_shell_process processes[3];
     struct lumo_shell_bridge bridge;
 };
+
+static void lumo_shell_bridge_remove_client(
+    struct lumo_shell_bridge *bridge,
+    struct lumo_shell_bridge_client *client
+);
 
 static const char *lumo_shell_default_binary_name(void) {
     return "lumo-shell";
@@ -269,18 +278,6 @@ static bool lumo_shell_wait_for_exec_result(int fd) {
     return true;
 }
 
-static const char *lumo_shell_scrim_state_name(enum lumo_scrim_state state) {
-    switch (state) {
-    case LUMO_SCRIM_DIMMED:
-        return "dimmed";
-    case LUMO_SCRIM_MODAL:
-        return "modal";
-    case LUMO_SCRIM_HIDDEN:
-    default:
-        return "hidden";
-    }
-}
-
 static bool lumo_shell_bridge_write_all(
     int fd,
     const char *buffer,
@@ -312,81 +309,100 @@ static bool lumo_shell_bridge_write_all(
     return true;
 }
 
-static void lumo_shell_bridge_remove_client(
-    struct lumo_shell_bridge *bridge,
-    struct lumo_shell_bridge_client *client
+static bool lumo_shell_bridge_send_frame(
+    int fd,
+    const struct lumo_shell_protocol_frame *frame
 ) {
-    if (bridge == NULL || client == NULL) {
-        return;
+    char buffer[1024];
+    size_t length;
+
+    if (fd < 0 || frame == NULL) {
+        return false;
     }
 
-    wl_list_remove(&client->link);
-    if (client->fd >= 0) {
-        close(client->fd);
+    length = lumo_shell_protocol_frame_format(frame, buffer, sizeof(buffer));
+    if (length == 0) {
+        return false;
     }
-    free(client);
+
+    return lumo_shell_bridge_write_all(fd, buffer, length);
 }
 
-static void lumo_shell_bridge_send_snapshot(
+static bool lumo_shell_bridge_build_state_frame(
+    struct lumo_compositor *compositor,
+    struct lumo_shell_protocol_frame *frame
+) {
+    if (compositor == NULL || frame == NULL) {
+        return false;
+    }
+
+    if (!lumo_shell_protocol_frame_init(frame,
+            LUMO_SHELL_PROTOCOL_FRAME_EVENT, "state", 0)) {
+        return false;
+    }
+
+    if (!lumo_shell_protocol_frame_add_bool(frame, "launcher_visible",
+            compositor->launcher_visible)) {
+        return false;
+    }
+    if (!lumo_shell_protocol_frame_add_bool(frame, "keyboard_visible",
+            compositor->keyboard_visible)) {
+        return false;
+    }
+    if (!lumo_shell_protocol_frame_add_string(frame, "scrim_state",
+            lumo_scrim_state_name(compositor->scrim_state))) {
+        return false;
+    }
+    if (!lumo_shell_protocol_frame_add_string(frame, "rotation",
+            lumo_rotation_name(compositor->active_rotation))) {
+        return false;
+    }
+    if (!lumo_shell_protocol_frame_add_double(frame, "gesture_threshold",
+            compositor->gesture_threshold)) {
+        return false;
+    }
+    if (!lumo_shell_protocol_frame_add_u32(frame, "gesture_timeout_ms",
+            compositor->gesture_timeout_ms)) {
+        return false;
+    }
+    if (!lumo_shell_protocol_frame_add_bool(frame, "keyboard_resize_pending",
+            compositor->keyboard_resize_pending)) {
+        return false;
+    }
+    if (!lumo_shell_protocol_frame_add_u32(frame, "keyboard_resize_serial",
+            compositor->keyboard_resize_serial)) {
+        return false;
+    }
+    if (!lumo_shell_protocol_frame_add_bool(frame, "keyboard_resize_acked",
+            compositor->keyboard_resize_acked)) {
+        return false;
+    }
+
+    return true;
+}
+
+static void lumo_shell_bridge_send_state_snapshot(
     struct lumo_compositor *compositor,
     int fd
 ) {
-    char line[128];
-    size_t length;
-    const char *scrim_state;
+    struct lumo_shell_protocol_frame frame;
 
-    if (compositor == NULL || compositor->config == NULL) {
+    if (!lumo_shell_bridge_build_state_frame(compositor, &frame)) {
         return;
     }
 
-    length = lumo_shell_state_format_bool(line, sizeof(line),
-        "launcher visible", compositor->launcher_visible);
-    if (length > 0) {
-        (void)lumo_shell_bridge_write_all(fd, line, length);
-    }
-
-    length = lumo_shell_state_format_bool(line, sizeof(line),
-        "keyboard visible", compositor->keyboard_visible);
-    if (length > 0) {
-        (void)lumo_shell_bridge_write_all(fd, line, length);
-    }
-
-    scrim_state = lumo_shell_scrim_state_name(compositor->scrim_state);
-    length = lumo_shell_state_format_line(line, sizeof(line),
-        "scrim state", scrim_state);
-    if (length > 0) {
-        (void)lumo_shell_bridge_write_all(fd, line, length);
-    }
-
-    length = lumo_shell_state_format_line(line, sizeof(line),
-        "rotation", lumo_rotation_name(compositor->active_rotation));
-    if (length > 0) {
-        (void)lumo_shell_bridge_write_all(fd, line, length);
-    }
-
-    length = lumo_shell_state_format_double(line, sizeof(line),
-        "gesture threshold", compositor->gesture_threshold);
-    if (length > 0) {
-        (void)lumo_shell_bridge_write_all(fd, line, length);
-    }
-
-    length = snprintf(line, sizeof(line), "gesture timeout_ms=%u\n",
-        compositor->gesture_timeout_ms);
-    if (length > 0 && (size_t)length < sizeof(line)) {
-        (void)lumo_shell_bridge_write_all(fd, line, (size_t)length);
-    }
+    (void)lumo_shell_bridge_send_frame(fd, &frame);
 }
 
-static void lumo_shell_bridge_broadcast(
-    struct lumo_compositor *compositor,
-    const char *line,
-    size_t length
+static void lumo_shell_bridge_broadcast_state(
+    struct lumo_compositor *compositor
 ) {
     struct lumo_shell_state *state;
     struct lumo_shell_bridge_client *client;
     struct lumo_shell_bridge_client *tmp;
+    struct lumo_shell_protocol_frame frame;
 
-    if (compositor == NULL || line == NULL || length == 0) {
+    if (compositor == NULL) {
         return;
     }
 
@@ -395,50 +411,291 @@ static void lumo_shell_bridge_broadcast(
         return;
     }
 
+    if (!lumo_shell_bridge_build_state_frame(compositor, &frame)) {
+        return;
+    }
+
     wl_list_for_each_safe(client, tmp, &state->bridge.clients, link) {
-        if (!lumo_shell_bridge_write_all(client->fd, line, length)) {
+        if (!lumo_shell_bridge_send_frame(client->fd, &frame)) {
             lumo_shell_bridge_remove_client(&state->bridge, client);
         }
     }
 }
 
-static void lumo_shell_bridge_broadcast_bool(
-    struct lumo_compositor *compositor,
-    const char *key,
-    bool value
+static bool lumo_shell_bridge_send_result(
+    struct lumo_shell_bridge_client *client,
+    const struct lumo_shell_protocol_frame *request,
+    bool success,
+    const char *code,
+    const char *reason
 ) {
-    char line[64];
-    size_t length = lumo_shell_state_format_bool(line, sizeof(line), key, value);
+    struct lumo_shell_protocol_frame frame;
 
-    if (length > 0) {
-        lumo_shell_bridge_broadcast(compositor, line, length);
+    if (client == NULL || request == NULL) {
+        return false;
     }
+
+    if (!lumo_shell_protocol_frame_init(&frame,
+            success ? LUMO_SHELL_PROTOCOL_FRAME_RESPONSE
+                    : LUMO_SHELL_PROTOCOL_FRAME_ERROR,
+            request->name,
+            request->id)) {
+        return false;
+    }
+
+    if (success) {
+        if (!lumo_shell_protocol_frame_add_field(&frame, "status", "ok")) {
+            return false;
+        }
+    } else {
+        if (!lumo_shell_protocol_frame_add_field(&frame, "status", "error") ||
+                !lumo_shell_protocol_frame_add_field(&frame, "code",
+                    code != NULL ? code : "error") ||
+                !lumo_shell_protocol_frame_add_field(&frame, "reason",
+                    reason != NULL ? reason : "unknown")) {
+            return false;
+        }
+    }
+
+    return lumo_shell_bridge_send_frame(client->fd, &frame);
 }
 
-static void lumo_shell_bridge_broadcast_line(
-    struct lumo_compositor *compositor,
-    const char *key,
-    const char *value
+static void lumo_shell_bridge_handle_request_frame(
+    struct lumo_shell_bridge_client *client,
+    const struct lumo_shell_protocol_frame *frame
 ) {
-    char line[128];
-    size_t length = lumo_shell_state_format_line(line, sizeof(line), key, value);
+    const char *kind_value;
+    enum lumo_shell_target_kind target_kind;
+    uint32_t index = 0;
+    bool handled = false;
 
-    if (length > 0) {
-        lumo_shell_bridge_broadcast(compositor, line, length);
+    if (client == NULL || frame == NULL || client->compositor == NULL) {
+        return;
     }
+
+    if (strcmp(frame->name, "activate_target") == 0) {
+        if (!lumo_shell_protocol_frame_get(frame, "kind", &kind_value) ||
+                !lumo_shell_target_kind_parse(kind_value, &target_kind)) {
+            (void)lumo_shell_bridge_send_result(client, frame, false,
+                "invalid_kind", "missing_kind");
+            return;
+        }
+
+        (void)lumo_shell_protocol_frame_get_u32(frame, "index", &index);
+
+        switch (target_kind) {
+        case LUMO_SHELL_TARGET_LAUNCHER_TILE:
+            wlr_log(WLR_INFO,
+                "shell: activate_target launcher tile %u requested",
+                index);
+            lumo_protocol_set_launcher_visible(client->compositor, false);
+            handled = true;
+            break;
+        case LUMO_SHELL_TARGET_GESTURE_HANDLE:
+            wlr_log(WLR_INFO,
+                "shell: activate_target gesture handle requested");
+            lumo_protocol_set_launcher_visible(client->compositor, true);
+            handled = true;
+            break;
+        case LUMO_SHELL_TARGET_OSK_KEY:
+            wlr_log(WLR_INFO,
+                "shell: activate_target osk key %u requested",
+                index);
+            handled = true;
+            break;
+        case LUMO_SHELL_TARGET_NONE:
+        default:
+            handled = false;
+            break;
+        }
+
+        if (handled) {
+            (void)lumo_shell_bridge_send_result(client, frame, true, NULL,
+                NULL);
+        } else {
+            (void)lumo_shell_bridge_send_result(client, frame, false,
+                "unsupported_target", "unhandled_kind");
+        }
+        return;
+    }
+
+    if (strcmp(frame->name, "set_launcher_visible") == 0) {
+        bool visible = false;
+
+        if (!lumo_shell_protocol_frame_get_bool(frame, "visible", &visible)) {
+            (void)lumo_shell_bridge_send_result(client, frame, false,
+                "missing_field", "visible");
+            return;
+        }
+
+        lumo_protocol_set_launcher_visible(client->compositor, visible);
+        (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
+        return;
+    }
+
+    if (strcmp(frame->name, "set_keyboard_visible") == 0) {
+        bool visible = false;
+
+        if (!lumo_shell_protocol_frame_get_bool(frame, "visible", &visible)) {
+            (void)lumo_shell_bridge_send_result(client, frame, false,
+                "missing_field", "visible");
+            return;
+        }
+
+        lumo_protocol_set_keyboard_visible(client->compositor, visible);
+        (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
+        return;
+    }
+
+    if (strcmp(frame->name, "set_scrim_state") == 0) {
+        const char *value = NULL;
+        enum lumo_scrim_state scrim_state;
+
+        if (!lumo_shell_protocol_frame_get(frame, "state", &value) ||
+                !lumo_scrim_state_parse(value, &scrim_state)) {
+            (void)lumo_shell_bridge_send_result(client, frame, false,
+                "invalid_state", "scrim_state");
+            return;
+        }
+
+        lumo_protocol_set_scrim_state(client->compositor, scrim_state);
+        (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
+        return;
+    }
+
+    if (strcmp(frame->name, "set_gesture_threshold") == 0) {
+        double threshold = 0.0;
+        uint32_t timeout_ms = client->compositor->gesture_timeout_ms;
+
+        if (!lumo_shell_protocol_frame_get_double(frame, "threshold",
+                &threshold)) {
+            (void)lumo_shell_bridge_send_result(client, frame, false,
+                "missing_field", "threshold");
+            return;
+        }
+
+        (void)lumo_shell_protocol_frame_get_u32(frame, "timeout_ms",
+            &timeout_ms);
+        client->compositor->gesture_timeout_ms = timeout_ms;
+        lumo_protocol_set_gesture_threshold(client->compositor, threshold);
+        (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
+        return;
+    }
+
+    if (strcmp(frame->name, "ack_keyboard_resize") == 0) {
+        uint32_t serial = 0;
+
+        if (!lumo_shell_protocol_frame_get_u32(frame, "serial", &serial)) {
+            (void)lumo_shell_bridge_send_result(client, frame, false,
+                "missing_field", "serial");
+            return;
+        }
+
+        lumo_protocol_ack_keyboard_resize(client->compositor, serial);
+        (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
+        return;
+    }
+
+    if (strcmp(frame->name, "set_rotation") == 0) {
+        const char *value = NULL;
+        enum lumo_rotation rotation;
+
+        if (!lumo_shell_protocol_frame_get(frame, "rotation", &value) ||
+                !lumo_rotation_parse(value, &rotation)) {
+            (void)lumo_shell_bridge_send_result(client, frame, false,
+                "invalid_rotation", "rotation");
+            return;
+        }
+
+        lumo_input_set_rotation(client->compositor, rotation);
+        (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
+        return;
+    }
+
+    if (strcmp(frame->name, "ping") == 0) {
+        (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
+        return;
+    }
+
+    wlr_log(WLR_INFO, "shell: unhandled request %s", frame->name);
+    (void)lumo_shell_bridge_send_result(client, frame, false,
+        "unknown_request", "unsupported_name");
 }
 
-static void lumo_shell_bridge_broadcast_double(
-    struct lumo_compositor *compositor,
-    const char *key,
-    double value
+static void lumo_shell_bridge_client_handle_frame(
+    const struct lumo_shell_protocol_frame *frame,
+    void *data
 ) {
-    char line[64];
-    size_t length = lumo_shell_state_format_double(line, sizeof(line), key,
-        value);
+    struct lumo_shell_bridge_client *client = data;
 
-    if (length > 0) {
-        lumo_shell_bridge_broadcast(compositor, line, length);
+    if (client == NULL || frame == NULL) {
+        return;
+    }
+
+    if (frame->kind == LUMO_SHELL_PROTOCOL_FRAME_REQUEST) {
+        lumo_shell_bridge_handle_request_frame(client, frame);
+        return;
+    }
+
+    wlr_log(WLR_DEBUG, "shell: ignoring frame kind=%s name=%s",
+        lumo_shell_protocol_frame_kind_name(frame->kind), frame->name);
+}
+
+static int lumo_shell_bridge_client_event(
+    int fd,
+    uint32_t mask,
+    void *data
+) {
+    struct lumo_shell_bridge_client *client = data;
+    struct lumo_shell_state *state = NULL;
+    struct lumo_shell_bridge *bridge = NULL;
+    char chunk[256];
+
+    (void)mask;
+    if (client == NULL) {
+        return 0;
+    }
+
+    if (client->compositor != NULL) {
+        state = client->compositor->shell_state;
+        if (state != NULL) {
+            bridge = &state->bridge;
+        }
+    }
+
+    for (;;) {
+        ssize_t bytes_read = recv(fd, chunk, sizeof(chunk), 0);
+
+        if (bytes_read < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return 0;
+            }
+            wlr_log_errno(WLR_ERROR, "shell: failed to read protocol frame");
+            if (bridge != NULL) {
+                lumo_shell_bridge_remove_client(bridge, client);
+            }
+            return 0;
+        }
+
+        if (bytes_read == 0) {
+            if (bridge != NULL) {
+                lumo_shell_bridge_remove_client(bridge, client);
+            }
+            return 0;
+        }
+
+        if (!lumo_shell_protocol_stream_feed(&client->stream, chunk,
+                (size_t)bytes_read, lumo_shell_bridge_client_handle_frame,
+                client)) {
+            wlr_log(WLR_ERROR, "shell: invalid protocol frame from client");
+            if (bridge != NULL) {
+                lumo_shell_bridge_remove_client(bridge, client);
+            }
+            return 0;
+        }
     }
 }
 
@@ -489,8 +746,19 @@ static int lumo_shell_bridge_accept_event(
         }
 
         client->fd = client_fd;
+        client->compositor = compositor;
+        lumo_shell_protocol_stream_init(&client->stream);
+        client->source = wl_event_loop_add_fd(compositor->event_loop,
+            client_fd, WL_EVENT_READABLE, lumo_shell_bridge_client_event,
+            client);
+        if (client->source == NULL) {
+            close(client_fd);
+            free(client);
+            continue;
+        }
+
         wl_list_insert(&state->bridge.clients, &client->link);
-        lumo_shell_bridge_send_snapshot(compositor, client_fd);
+        lumo_shell_bridge_send_state_snapshot(compositor, client_fd);
     }
 
     return 0;
@@ -595,6 +863,25 @@ static bool lumo_shell_bridge_start(struct lumo_compositor *compositor) {
     wlr_log(WLR_INFO, "shell: state bridge listening on %s",
         state->bridge.socket_path);
     return true;
+}
+
+static void lumo_shell_bridge_remove_client(
+    struct lumo_shell_bridge *bridge,
+    struct lumo_shell_bridge_client *client
+) {
+    if (bridge == NULL || client == NULL) {
+        return;
+    }
+
+    if (client->source != NULL) {
+        wl_event_source_remove(client->source);
+        client->source = NULL;
+    }
+    wl_list_remove(&client->link);
+    if (client->fd >= 0) {
+        close(client->fd);
+    }
+    free(client);
 }
 
 static void lumo_shell_bridge_stop(struct lumo_shell_state *state) {
@@ -893,22 +1180,24 @@ void lumo_shell_state_broadcast_launcher_visible(
     struct lumo_compositor *compositor,
     bool visible
 ) {
-    lumo_shell_bridge_broadcast_bool(compositor, "launcher visible", visible);
+    (void)visible;
+    lumo_shell_bridge_broadcast_state(compositor);
 }
 
 void lumo_shell_state_broadcast_keyboard_visible(
     struct lumo_compositor *compositor,
     bool visible
 ) {
-    lumo_shell_bridge_broadcast_bool(compositor, "keyboard visible", visible);
+    (void)visible;
+    lumo_shell_bridge_broadcast_state(compositor);
 }
 
 void lumo_shell_state_broadcast_scrim_state(
     struct lumo_compositor *compositor,
     enum lumo_scrim_state state
 ) {
-    lumo_shell_bridge_broadcast_line(compositor, "scrim state",
-        lumo_shell_scrim_state_name(state));
+    (void)state;
+    lumo_shell_bridge_broadcast_state(compositor);
 }
 
 void lumo_shell_state_broadcast_gesture_threshold(
@@ -916,20 +1205,15 @@ void lumo_shell_state_broadcast_gesture_threshold(
     double threshold,
     uint32_t timeout_ms
 ) {
-    char timeout_value[32];
-
-    lumo_shell_bridge_broadcast_double(compositor, "gesture threshold",
-        threshold);
-    if (snprintf(timeout_value, sizeof(timeout_value), "%u", timeout_ms) > 0) {
-        lumo_shell_bridge_broadcast_line(compositor, "gesture timeout_ms",
-            timeout_value);
-    }
+    (void)threshold;
+    (void)timeout_ms;
+    lumo_shell_bridge_broadcast_state(compositor);
 }
 
 void lumo_shell_state_broadcast_rotation(
     struct lumo_compositor *compositor,
     enum lumo_rotation rotation
 ) {
-    lumo_shell_bridge_broadcast_line(compositor, "rotation",
-        lumo_rotation_name(rotation));
+    (void)rotation;
+    lumo_shell_bridge_broadcast_state(compositor);
 }

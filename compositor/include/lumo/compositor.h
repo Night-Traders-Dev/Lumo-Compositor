@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 #include <wayland-server-core.h>
 #include "lumo/shell.h"
 #include <xkbcommon/xkbcommon.h>
@@ -121,6 +122,70 @@ static inline const char *lumo_rotation_name(enum lumo_rotation rotation) {
     default:
         return "normal";
     }
+}
+
+static inline bool lumo_rotation_parse(
+    const char *value,
+    enum lumo_rotation *rotation
+) {
+    if (value == NULL || rotation == NULL) {
+        return false;
+    }
+
+    if (strcmp(value, "normal") == 0 || strcmp(value, "0") == 0) {
+        *rotation = LUMO_ROTATION_NORMAL;
+        return true;
+    }
+    if (strcmp(value, "90") == 0) {
+        *rotation = LUMO_ROTATION_90;
+        return true;
+    }
+    if (strcmp(value, "180") == 0) {
+        *rotation = LUMO_ROTATION_180;
+        return true;
+    }
+    if (strcmp(value, "270") == 0) {
+        *rotation = LUMO_ROTATION_270;
+        return true;
+    }
+
+    return false;
+}
+
+static inline const char *lumo_scrim_state_name(enum lumo_scrim_state state) {
+    switch (state) {
+    case LUMO_SCRIM_DIMMED:
+        return "dimmed";
+    case LUMO_SCRIM_MODAL:
+        return "modal";
+    case LUMO_SCRIM_HIDDEN:
+    default:
+        return "hidden";
+    }
+}
+
+static inline bool lumo_scrim_state_parse(
+    const char *value,
+    enum lumo_scrim_state *state
+) {
+    if (value == NULL || state == NULL) {
+        return false;
+    }
+
+    if (strcmp(value, "hidden") == 0) {
+        *state = LUMO_SCRIM_HIDDEN;
+        return true;
+    }
+    if (strcmp(value, "dimmed") == 0) {
+        *state = LUMO_SCRIM_DIMMED;
+        return true;
+    }
+    if (strcmp(value, "modal") == 0) {
+        *state = LUMO_SCRIM_MODAL;
+        return true;
+    }
+
+    return false;
 }
 
 static inline const char *lumo_hitbox_kind_name(enum lumo_hitbox_kind kind) {

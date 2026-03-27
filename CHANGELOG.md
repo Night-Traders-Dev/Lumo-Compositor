@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.12] - 2026-03-27
+- Added a framed bidirectional shell protocol with typed events, requests, responses, and parser helpers.
+- Wired launcher activation requests from the shell client back into the compositor so touch selections can drive compositor state.
+- Added protocol roundtrip tests so the compositor and shell share one debuggable wire format.
+
 ## [0.0.11] - 2026-03-27
 - Added a compositor-to-shell state socket so shell clients can receive launcher, keyboard, scrim, rotation, and gesture updates.
 - Added line-format helpers and socket path helpers for the bridge so the protocol is easy to inspect and unit test.
