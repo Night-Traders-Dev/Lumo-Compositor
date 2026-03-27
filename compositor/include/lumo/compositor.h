@@ -21,6 +21,7 @@
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_pointer_gestures_v1.h>
 #include <wlr/types/wlr_scene.h>
+#include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_text_input_v3.h>
@@ -497,6 +498,7 @@ struct lumo_compositor {
     struct wlr_input_method_manager_v2 *input_method_manager;
     struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_manager;
     struct wlr_pointer_gestures_v1 *pointer_gestures;
+    struct wlr_screencopy_manager_v1 *screencopy_manager;
     struct wlr_xwayland *xwayland;
     bool xwayland_ready;
     struct wlr_box xwayland_workarea;

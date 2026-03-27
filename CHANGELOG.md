@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.26] - 2026-03-27
+- Added a compositor-backed screencopy manager and a new `lumo-screenshot` client that captures the active output to PNG for remote review and debugging.
+- Added shared screenshot helpers and unit coverage for runtime-dir fallback, socket-name selection, row orientation, and pixel conversion.
+- Updated the Meson build and project docs so screenshot capture builds, installs, and runs cleanly beside the compositor and shell binaries.
+
 ## [0.0.25] - 2026-03-27
 - Reworked the shell toward a mobile UI direction that blends Ubuntu Touch app-drawer and keyboard ergonomics with webOS-inspired surface styling and motion.
 - Removed the shell client's hardcoded `1280x720` bootstrap sizing in favor of live layer-shell sizing and compositor-provided output dimensions.

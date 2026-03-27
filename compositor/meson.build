@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.25',
+  version: '0.0.26',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -22,6 +22,12 @@ lumo_deps = [
 shell_deps = [
   dependency('wayland-client', required: true),
   dependency('wayland-protocols', required: true),
+]
+
+screenshot_deps = [
+  dependency('wayland-client', required: true),
+  dependency('wayland-protocols', required: true),
+  dependency('libpng', required: true),
 ]
 
 add_project_arguments('-DWLR_USE_UNSTABLE', language: 'c')
@@ -73,6 +79,21 @@ shell_protocol_files = [
   ),
 ]
 
+screenshot_protocol_files = [
+  custom_target(
+    'wlr-screencopy-client-protocol-header',
+    input: files('protocol/wlr-screencopy-unstable-v1.xml'),
+    output: 'wlr-screencopy-unstable-v1-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  ),
+  custom_target(
+    'wlr-screencopy-client-protocol-code',
+    input: files('protocol/wlr-screencopy-unstable-v1.xml'),
+    output: 'wlr-screencopy-unstable-v1-client-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  ),
+]
+
 lumo_sources = files(
   'src/backend.c',
   'src/compositor.c',
@@ -92,6 +113,11 @@ shell_sources = files(
   'src/shell_client.c',
   'src/shell_protocol.c',
 ) + shell_protocol_files
+
+screenshot_sources = files(
+  'src/screenshot.c',
+  'src/screenshot_common.c',
+) + screenshot_protocol_files
 
 session_conf = configuration_data()
 session_conf.set('lumo_bindir', join_paths(get_option('prefix'), get_option('bindir')))
@@ -119,6 +145,14 @@ executable(
   shell_sources,
   include_directories: lumo_inc,
   dependencies: shell_deps,
+  install: true,
+)
+
+executable(
+  'lumo-screenshot',
+  screenshot_sources,
+  include_directories: lumo_inc,
+  dependencies: screenshot_deps,
   install: true,
 )
 
@@ -154,6 +188,18 @@ shell_test_exe = executable(
 )
 
 test('lumo-shell', shell_test_exe)
+
+screenshot_test_exe = executable(
+  'lumo-screenshot-tests',
+  files(
+    'src/screenshot_common.c',
+    'tests/test_screenshot.c',
+  ),
+  include_directories: lumo_inc,
+  install: false,
+)
+
+test('lumo-screenshot', screenshot_test_exe)
 
 # Add wlroots, wayland-server, libinput, xkbcommon, pixman, libdrm,
 # GBM, libseat, and wayland-protocols once the real backend lands.

@@ -91,6 +91,7 @@ The compositor binaries land in `compositor/build/` by default:
 ./compositor/build/lumo-shell --mode launcher
 ./compositor/build/lumo-shell --mode osk
 ./compositor/build/lumo-shell --mode gesture
+./compositor/build/lumo-screenshot --output live.png
 ```
 
 On the OrangePi RV2 running Ubuntu 24.04 riscv64, `--backend drm` is the
@@ -107,6 +108,20 @@ SSH sessions fall back to `headless` first; local GUI shells can still steer
 `auto` toward nested `wayland` or `x11` when those are available.
 Avoid launching `lumo-shell` directly with `sudo`; the compositor owns shell
 startup and the shell expects a normal Wayland runtime.
+The `lumo-screenshot` helper connects to the current Wayland session and writes
+out a PNG using the compositor's screencopy protocol. It defaults to the
+`lumo-shell` socket name, so on the OrangePi you can usually capture the live
+session with:
+
+```sh
+XDG_RUNTIME_DIR=/run/user/$(id -u) ./compositor/build/lumo-screenshot --output live.png
+```
+
+You can also override the socket explicitly:
+
+```sh
+./compositor/build/lumo-screenshot --socket lumo-shell --output live.png
+```
 
 ## Troubleshooting
 

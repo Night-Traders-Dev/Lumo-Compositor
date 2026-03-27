@@ -763,6 +763,15 @@ int lumo_protocol_start(struct lumo_compositor *compositor) {
         return -1;
     }
 
+    compositor->screencopy_manager = wlr_screencopy_manager_v1_create(
+        compositor->display
+    );
+    if (compositor->screencopy_manager == NULL) {
+        wlr_log(WLR_ERROR, "protocol: failed to create screencopy manager");
+        free(state);
+        return -1;
+    }
+
     lumo_xwayland_start(compositor);
 
     state->xdg_new_toplevel.notify = lumo_protocol_new_toplevel;
@@ -832,6 +841,7 @@ void lumo_protocol_stop(struct lumo_compositor *compositor) {
     compositor->input_method_manager = NULL;
     compositor->virtual_keyboard_manager = NULL;
     compositor->pointer_gestures = NULL;
+    compositor->screencopy_manager = NULL;
     compositor->protocol_started = false;
 }
 

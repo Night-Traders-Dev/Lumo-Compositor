@@ -60,6 +60,7 @@ Lumo can be launched with an explicit backend mode:
 ./build/lumo-compositor --backend headless
 ./build/lumo-compositor --backend wayland
 ./build/lumo-compositor --backend x11
+./build/lumo-screenshot --output live.png
 ```
 
 The OrangePi RV2 on Ubuntu 24.04 riscv64 should normally use `drm` for the
@@ -74,6 +75,15 @@ now prefers the safest available nested or headless backend instead of waiting
 for the DRM path to time out.
 SSH shells fall back to `headless` first; a local GUI session can still steer
 `auto` toward nested `wayland` or `x11` when that makes more sense.
+
+The build also installs `lumo-screenshot`, a small Wayland client that captures
+the first available output through Lumo's screencopy manager and writes a PNG.
+It defaults to the compositor's `lumo-shell` socket name, which makes it handy
+for OrangePi session review over SSH:
+
+```sh
+XDG_RUNTIME_DIR=/run/user/$(id -u) /usr/local/bin/lumo-screenshot --output live.png
+```
 
 ## Session Troubleshooting
 
