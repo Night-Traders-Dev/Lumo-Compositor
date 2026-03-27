@@ -471,6 +471,7 @@ struct lumo_compositor {
     struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_manager;
     struct wlr_pointer_gestures_v1 *pointer_gestures;
     struct wlr_xwayland *xwayland;
+    bool xwayland_ready;
     struct wlr_box xwayland_workarea;
     bool xwayland_workarea_valid;
     void *shell_state;

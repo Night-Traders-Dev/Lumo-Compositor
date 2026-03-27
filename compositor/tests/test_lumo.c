@@ -201,6 +201,7 @@ static void test_compositor_defaults(void) {
     assert(compositor->scrim_state == LUMO_SCRIM_HIDDEN);
     assert(!compositor->launcher_visible);
     assert(compositor->xwayland == NULL);
+    assert(!compositor->xwayland_ready);
     lumo_compositor_destroy(compositor);
 }
 
@@ -356,6 +357,40 @@ static void test_xwayland_toggle(void) {
     lumo_compositor_destroy(compositor);
 }
 
+static void test_xwayland_ready_gate(void) {
+    const struct lumo_compositor_config config = {
+        .session_name = "lumo-test",
+        .socket_name = "lumo-test-socket",
+        .initial_rotation = LUMO_ROTATION_NORMAL,
+        .debug = false,
+    };
+    struct lumo_compositor *compositor = lumo_compositor_create(&config);
+    struct lumo_output output = {0};
+    struct wlr_box expected = {
+        .x = 12,
+        .y = 24,
+        .width = 800,
+        .height = 600,
+    };
+
+    assert(compositor != NULL);
+    wl_list_init(&output.link);
+    output.usable_area = expected;
+    output.usable_area_valid = true;
+    wl_list_insert(&compositor->outputs, &output.link);
+
+#if LUMO_ENABLE_XWAYLAND
+    compositor->xwayland = (struct wlr_xwayland *)0x1;
+    compositor->xwayland_ready = false;
+    lumo_xwayland_sync_workareas(compositor);
+    assert(!compositor->xwayland_workarea_valid);
+    lumo_xwayland_focus_surface(compositor, NULL);
+#endif
+
+    wl_list_remove(&output.link);
+    lumo_compositor_destroy(compositor);
+}
+
 static void test_state_setters(void) {
     const struct lumo_compositor_config config = {
         .session_name = "lumo-test",
@@ -470,6 +505,7 @@ int main(void) {
     test_shell_hitbox_refresh();
     test_xwayland_workarea_collection();
     test_xwayland_toggle();
+    test_xwayland_ready_gate();
     test_state_setters();
     test_shell_protocol_roundtrip();
     test_shell_binary_resolution();

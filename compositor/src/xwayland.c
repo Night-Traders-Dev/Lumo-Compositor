@@ -65,7 +65,8 @@ bool lumo_xwayland_collect_workarea(
 void lumo_xwayland_sync_workareas(struct lumo_compositor *compositor) {
     struct wlr_box workarea = {0};
 
-    if (compositor == NULL || compositor->xwayland == NULL) {
+    if (compositor == NULL || compositor->xwayland == NULL ||
+            !compositor->xwayland_ready) {
         return;
     }
 
@@ -95,7 +96,8 @@ void lumo_xwayland_focus_surface(
 ) {
     struct wlr_xwayland_surface *xsurface;
 
-    if (compositor == NULL || surface == NULL || compositor->xwayland == NULL) {
+    if (compositor == NULL || surface == NULL || compositor->xwayland == NULL ||
+            !compositor->xwayland_ready) {
         return;
     }
 
@@ -313,6 +315,7 @@ static void lumo_xwayland_ready(
         wlr_log_errno(WLR_ERROR, "xwayland: failed to export DISPLAY");
     }
 
+    compositor->xwayland_ready = true;
     wlr_log(WLR_INFO, "xwayland ready on display %s",
         compositor->xwayland->display_name);
     lumo_xwayland_sync_workareas(compositor);
@@ -394,6 +397,7 @@ int lumo_xwayland_start(struct lumo_compositor *compositor) {
         return 0;
     }
 
+    compositor->xwayland_ready = false;
     compositor->xwayland = wlr_xwayland_create(compositor->display,
         compositor->compositor_protocol, true);
     if (compositor->xwayland == NULL) {
@@ -433,6 +437,7 @@ void lumo_xwayland_stop(struct lumo_compositor *compositor) {
         return;
     }
 
+    compositor->xwayland_ready = false;
     state = compositor->xwayland->data;
     if (state != NULL) {
         wl_list_for_each_safe(surface, tmp, &state->surfaces, link) {
