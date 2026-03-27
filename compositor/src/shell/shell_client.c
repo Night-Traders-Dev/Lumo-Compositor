@@ -315,6 +315,17 @@ static void lumo_fill_rounded_rect(
     }
 
     for (int row = y0; row < y1; row++) {
+        int local_y = row - rect->y;
+        bool in_corner_band = local_y < (int)radius ||
+            local_y >= rect->height - (int)radius;
+
+        if (!in_corner_band) {
+            for (int col = x0; col < x1; col++) {
+                pixels[row * (int)width + col] = color;
+            }
+            continue;
+        }
+
         for (int col = x0; col < x1; col++) {
             if (lumo_rounded_rect_contains(rect, (int)radius, col, row)) {
                 pixels[row * (int)width + col] = color;
@@ -845,26 +856,10 @@ static void lumo_draw_launcher(
     lumo_draw_text(pixels, width, height, panel_rect.x + 26,
         panel_rect.y + 64, 3, title_color, "LUMO");
 
-    if (lumo_shell_launcher_close_rect(width, height, &close_rect)) {
-        close_rect.y += slide_y;
-        lumo_fill_rounded_rect(pixels, width, height, &close_rect, 18,
-            close_fill);
-        lumo_draw_outline(pixels, width, height, &close_rect, 2,
-            active_target != NULL &&
-                active_target->kind == LUMO_SHELL_TARGET_LAUNCHER_CLOSE
-                ? highlight
-                : tile_stroke);
-        close_label_rect = close_rect;
-        lumo_draw_text_centered(pixels, width, height, &close_label_rect, 2,
-            close_label, "CLOSE");
-    }
-
-    accent_rect.x = panel_rect.x + panel_rect.width - 126;
-    accent_rect.y = panel_rect.y + 24;
-    accent_rect.width = 92;
-    accent_rect.height = 10;
-    lumo_fill_rounded_rect(pixels, width, height, &accent_rect, 5,
-        lumo_argb(0xFF, 0xE9, 0x54, 0x20));
+    (void)close_fill;
+    (void)close_label;
+    (void)close_rect;
+    (void)close_label_rect;
     for (uint32_t tile_index = 0; tile_index < tile_count; tile_index++) {
         struct lumo_rect tile_rect;
         struct lumo_rect icon_rect;
@@ -1221,6 +1216,10 @@ static void lumo_draw_status(
     }
 }
 
+static uint32_t bg_row_cache[2048];
+static uint32_t bg_cache_height;
+static uint32_t bg_cache_hour = 0xFF;
+
 static void lumo_draw_animated_bg(
     uint32_t *pixels,
     uint32_t width,
@@ -1231,8 +1230,6 @@ static void lumo_draw_animated_bg(
     struct tm tm_now;
     uint32_t frame;
     uint32_t hour;
-    uint32_t base_r, base_g, base_b;
-    uint32_t warm_r, warm_g, warm_b;
 
     clock_gettime(CLOCK_MONOTONIC, &mono_ts);
     frame = (uint32_t)(mono_ts.tv_sec * 5 + mono_ts.tv_nsec / 200000000);
@@ -1241,38 +1238,52 @@ static void lumo_draw_animated_bg(
     localtime_r(&wall_now, &tm_now);
     hour = (uint32_t)tm_now.tm_hour;
 
-    if (hour >= 6 && hour < 10) {
-        base_r = 0x3A; base_g = 0x08; base_b = 0x20;
-        warm_r = 0xE9; warm_g = 0x74; warm_b = 0x30;
-    } else if (hour >= 10 && hour < 17) {
-        base_r = 0x2C; base_g = 0x00; base_b = 0x1E;
-        warm_r = 0xE9; warm_g = 0x54; warm_b = 0x20;
-    } else if (hour >= 17 && hour < 20) {
-        base_r = 0x40; base_g = 0x0A; base_b = 0x1A;
-        warm_r = 0xE9; warm_g = 0x40; warm_b = 0x18;
-    } else {
-        base_r = 0x18; base_g = 0x00; base_b = 0x14;
-        warm_r = 0x77; warm_g = 0x21; warm_b = 0x6F;
+    if (hour != bg_cache_hour || height != bg_cache_height) {
+        uint32_t base_r, base_g, base_b;
+        if (hour >= 6 && hour < 10) {
+            base_r = 0x3A; base_g = 0x08; base_b = 0x20;
+        } else if (hour >= 10 && hour < 17) {
+            base_r = 0x2C; base_g = 0x00; base_b = 0x1E;
+        } else if (hour >= 17 && hour < 20) {
+            base_r = 0x40; base_g = 0x0A; base_b = 0x1A;
+        } else {
+            base_r = 0x18; base_g = 0x00; base_b = 0x14;
+        }
+
+        uint32_t max_h = height < 2048 ? height : 2048;
+        for (uint32_t y = 0; y < max_h; y++) {
+            uint32_t r = base_r + (y * 0x20) / height;
+            uint32_t g = base_g + (y * 0x08) / height;
+            uint32_t b = base_b + (y * 0x06) / height;
+            if (r > 0xFF) r = 0xFF;
+            bg_row_cache[y] = lumo_argb(0xFF, (uint8_t)r, (uint8_t)g, (uint8_t)b);
+        }
+        bg_cache_height = height;
+        bg_cache_hour = hour;
     }
 
     for (uint32_t y = 0; y < height; y++) {
+        uint32_t row_color = y < 2048 ? bg_row_cache[y] :
+            bg_row_cache[2047];
+        uint32_t *row_ptr = pixels + y * width;
+
         uint32_t phase = (y * 3 + frame * 7) % 512;
         uint32_t wave = phase < 256 ? phase : 511 - phase;
         uint32_t glow = (wave * wave) >> 14;
 
-        uint32_t grad_r = base_r + (y * 0x20) / height;
-        uint32_t grad_g = base_g + (y * 0x08) / height;
-        uint32_t grad_b = base_b + (y * 0x06) / height;
+        if (glow > 4) {
+            uint8_t cr = (uint8_t)(row_color >> 16);
+            uint8_t cg = (uint8_t)(row_color >> 8);
+            uint8_t cb = (uint8_t)row_color;
+            uint32_t r = cr + (glow * 0x30 >> 8);
+            uint32_t g = cg + (glow * 0x14 >> 8);
+            uint32_t b = cb + (glow * 0x08 >> 8);
+            if (r > 0xFF) r = 0xFF;
+            if (g > 0xFF) g = 0xFF;
+            if (b > 0xFF) b = 0xFF;
+            row_color = lumo_argb(0xFF, (uint8_t)r, (uint8_t)g, (uint8_t)b);
+        }
 
-        uint32_t r = grad_r + (glow * (warm_r - base_r) >> 8);
-        uint32_t g = grad_g + (glow * (warm_g > base_g ? warm_g - base_g : 0) >> 8);
-        uint32_t b = grad_b + (glow * (warm_b > base_b ? warm_b - base_b : 0) >> 8);
-        if (r > 0xFF) r = 0xFF;
-        if (g > 0xFF) g = 0xFF;
-        if (b > 0xFF) b = 0xFF;
-
-        uint32_t row_color = lumo_argb(0xFF, (uint8_t)r, (uint8_t)g, (uint8_t)b);
-        uint32_t *row_ptr = pixels + y * width;
         for (uint32_t x = 0; x < width; x++) {
             row_ptr[x] = row_color;
         }
@@ -1280,12 +1291,15 @@ static void lumo_draw_animated_bg(
         if (glow > 12) {
             uint32_t streak_x = (frame * 3 + y * 2) % (width + 200);
             if (streak_x < width) {
+                uint8_t sr = (uint8_t)(row_color >> 16);
+                uint8_t sg = (uint8_t)(row_color >> 8);
+                uint8_t sb = (uint8_t)row_color;
                 uint32_t streak_len = 60 + (y % 40);
-                uint32_t sr = r + 0x18 > 0xFF ? 0xFF : r + 0x18;
-                uint32_t sg = g + 0x0C > 0xFF ? 0xFF : g + 0x0C;
-                uint32_t sb = b + 0x06 > 0xFF ? 0xFF : b + 0x06;
+                uint32_t nr = sr + 0x14 > 0xFF ? 0xFF : sr + 0x14;
+                uint32_t ng = sg + 0x0A > 0xFF ? 0xFF : sg + 0x0A;
+                uint32_t nb = sb + 0x04 > 0xFF ? 0xFF : sb + 0x04;
                 uint32_t streak_color = lumo_argb(0xFF,
-                    (uint8_t)sr, (uint8_t)sg, (uint8_t)sb);
+                    (uint8_t)nr, (uint8_t)ng, (uint8_t)nb);
                 uint32_t end = streak_x + streak_len;
                 if (end > width) end = width;
                 for (uint32_t sx = streak_x; sx < end; sx++) {
@@ -1712,7 +1726,7 @@ static int lumo_shell_client_animation_timeout(
 
     if (client == NULL || !client->animation_active) {
         if (client != NULL && client->mode == LUMO_SHELL_MODE_BACKGROUND) {
-            return 200;
+            return 500;
         }
         if (client != NULL && client->mode == LUMO_SHELL_MODE_STATUS) {
             if (client->compositor_time_panel_visible) {
@@ -1729,8 +1743,8 @@ static int lumo_shell_client_animation_timeout(
         return 0;
     }
 
-    if (end_time - now > 16u) {
-        return 16;
+    if (end_time - now > 24u) {
+        return 24;
     }
 
     return (int)(end_time - now);

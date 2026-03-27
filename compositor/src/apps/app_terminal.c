@@ -5,9 +5,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#define TERM_MAX_LINES 32
-#define TERM_LINE_LEN 80
-
 void lumo_app_render_terminal(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels, uint32_t width, uint32_t height
@@ -15,52 +12,45 @@ void lumo_app_render_terminal(
     bool close_active = ctx != NULL ? ctx->close_active : false;
     uint32_t bg = lumo_app_argb(0xFF, 0x1A, 0x00, 0x14);
     uint32_t text_color = lumo_app_argb(0xFF, 0xE9, 0x54, 0x20);
-    uint32_t cursor_color = lumo_app_argb(0xFF, 0xFF, 0xFF, 0xFF);
+    uint32_t input_color = lumo_app_argb(0xFF, 0xFF, 0xFF, 0xFF);
     uint32_t dim = lumo_app_argb(0xFF, 0x5E, 0x2C, 0x56);
+    uint32_t cursor_color = lumo_app_argb(0xFF, 0xE9, 0x54, 0x20);
     int line_h = 18;
-    int y_start = 60;
+    int y = 48;
+    char prompt[96];
+    const char *user = getenv("USER");
+    char hostname[32] = "lumo";
+    int line_count = ctx != NULL ? ctx->term_line_count : 0;
+
+    gethostname(hostname, sizeof(hostname) - 1);
 
     memset(pixels, 0, (size_t)width * height * 4);
     lumo_app_fill_rect(pixels, width, height, 0, 0, (int)width, (int)height, bg);
 
-    lumo_app_draw_text(pixels, width, height, 16, 16, 2, dim, "LUMO TERMINAL");
-    lumo_app_draw_text(pixels, width, height, 16, 36, 2, text_color,
-        "TAP TO FOCUS  /  TYPE WITH OSK");
+    lumo_app_draw_text(pixels, width, height, 16, 12, 2, dim, "LUMO TERMINAL");
+    lumo_app_draw_text(pixels, width, height, (int)width / 2, 12, 2, dim,
+        "USE OSK TO TYPE");
+    lumo_app_fill_rect(pixels, width, height, 12, 36, (int)width - 24, 1, dim);
 
-    lumo_app_fill_rect(pixels, width, height, 12, y_start - 4,
-        (int)width - 24, 1, dim);
+    for (int i = 0; i < line_count && i < 16; i++) {
+        const char *line = ctx != NULL ? ctx->term_lines[i] : "";
+        if (y + line_h > (int)height - 40) break;
+        lumo_app_draw_text(pixels, width, height, 16, y, 2, text_color, line);
+        y += line_h;
+    }
 
-    {
-        char prompt[96];
-        const char *user = getenv("USER");
-        char hostname[32] = "lumo";
-        gethostname(hostname, sizeof(hostname) - 1);
+    snprintf(prompt, sizeof(prompt), "%s@%s:~$ %s",
+        user != NULL ? user : "user", hostname,
+        ctx != NULL ? ctx->term_input : "");
 
-        snprintf(prompt, sizeof(prompt), "%s@%s:~$",
-            user != NULL ? user : "user", hostname);
-        lumo_app_draw_text(pixels, width, height, 16, y_start, 2,
-            text_color, prompt);
+    if (y + line_h <= (int)height - 20) {
+        lumo_app_draw_text(pixels, width, height, 16, y, 2, input_color, prompt);
 
         {
             int pw = (int)strlen(prompt) * 2 * 6;
-            lumo_app_fill_rect(pixels, width, height, 16 + pw + 4, y_start,
+            lumo_app_fill_rect(pixels, width, height, 16 + pw + 2, y,
                 2, 14, cursor_color);
         }
-    }
-
-    {
-        int info_y = y_start + line_h * 2;
-        lumo_app_draw_text(pixels, width, height, 16, info_y, 2,
-            dim, "KEYBOARD INPUT WILL APPEAR HERE");
-        info_y += line_h;
-        lumo_app_draw_text(pixels, width, height, 16, info_y, 2,
-            dim, "TAP THE SCREEN TO ACTIVATE OSK");
-        info_y += line_h * 2;
-        lumo_app_draw_text(pixels, width, height, 16, info_y, 2,
-            dim, "THIS IS A PLACEHOLDER TERMINAL");
-        info_y += line_h;
-        lumo_app_draw_text(pixels, width, height, 16, info_y, 2,
-            dim, "FULL PTY SUPPORT COMING SOON");
     }
 
     lumo_app_draw_close_button(pixels, width, height, close_active);

@@ -61,6 +61,12 @@ struct lumo_app_client {
     char browse_path[1024];
     double touch_down_x;
     double touch_down_y;
+    struct wl_keyboard *keyboard;
+    char term_lines[16][82];
+    int term_line_count;
+    int term_cursor;
+    char term_input[82];
+    int term_input_len;
     int scroll_offset;
     bool stopwatch_running;
     uint64_t stopwatch_start_ms;
@@ -229,8 +235,12 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             .selected_row = client->selected_row,
             .note_count = client->note_count,
             .note_editing = client->note_editing,
+            .term_line_count = client->term_line_count,
+            .term_input_len = client->term_input_len,
         };
         memcpy(ctx.notes, client->notes, sizeof(ctx.notes));
+        memcpy(ctx.term_lines, client->term_lines, sizeof(ctx.term_lines));
+        memcpy(ctx.term_input, client->term_input, sizeof(ctx.term_input));
         lumo_app_render(&ctx, buffer->data, client->width, client->height);
     }
     wl_surface_attach(client->surface, buffer->buffer, 0, 0);
@@ -735,6 +745,81 @@ static const struct wl_touch_listener lumo_app_touch_listener = {
     .orientation = lumo_app_touch_handle_orientation,
 };
 
+static void lumo_app_keyboard_key(
+    void *data, struct wl_keyboard *kb, uint32_t serial,
+    uint32_t time, uint32_t key, uint32_t state
+) {
+    struct lumo_app_client *client = data;
+    (void)kb; (void)serial; (void)time;
+
+    if (client == NULL || state != WL_KEYBOARD_KEY_STATE_PRESSED) return;
+    if (client->app_id != LUMO_APP_MESSAGES) return;
+
+    if (key == 14 && client->term_input_len > 0) {
+        client->term_input[--client->term_input_len] = '\0';
+        (void)lumo_app_client_redraw(client);
+    } else if (key == 28) {
+        if (client->term_line_count < 16) {
+            char prompt[96];
+            const char *user = getenv("USER");
+            snprintf(prompt, sizeof(prompt), "%s$ %s",
+                user ? user : "user", client->term_input);
+            strncpy(client->term_lines[client->term_line_count],
+                prompt, sizeof(client->term_lines[0]) - 1);
+            client->term_line_count++;
+        }
+        client->term_input[0] = '\0';
+        client->term_input_len = 0;
+        (void)lumo_app_client_redraw(client);
+    } else if (key >= 2 && key <= 52 && client->term_input_len < 78) {
+        static const char keymap[] =
+            "1234567890-="
+            "\0qwertyuiop[]\0\0"
+            "asdfghjkl;'\0\0\0"
+            "zxcvbnm,./";
+        int idx = (int)key - 2;
+        if (idx >= 0 && idx < (int)sizeof(keymap) - 1 && keymap[idx] != '\0') {
+            client->term_input[client->term_input_len++] = keymap[idx];
+            client->term_input[client->term_input_len] = '\0';
+            (void)lumo_app_client_redraw(client);
+        }
+    } else if (key == 57 && client->term_input_len < 78) {
+        client->term_input[client->term_input_len++] = ' ';
+        client->term_input[client->term_input_len] = '\0';
+        (void)lumo_app_client_redraw(client);
+    }
+}
+
+static void lumo_app_keyboard_keymap(void *d, struct wl_keyboard *k,
+    uint32_t fmt, int32_t fd, uint32_t sz) {
+    (void)d; (void)k; (void)fmt; close(fd); (void)sz;
+}
+static void lumo_app_keyboard_enter(void *d, struct wl_keyboard *k,
+    uint32_t s, struct wl_surface *sf, struct wl_array *keys) {
+    (void)d; (void)k; (void)s; (void)sf; (void)keys;
+}
+static void lumo_app_keyboard_leave(void *d, struct wl_keyboard *k,
+    uint32_t s, struct wl_surface *sf) {
+    (void)d; (void)k; (void)s; (void)sf;
+}
+static void lumo_app_keyboard_modifiers(void *d, struct wl_keyboard *k,
+    uint32_t s, uint32_t dep, uint32_t lat, uint32_t lock, uint32_t g) {
+    (void)d; (void)k; (void)s; (void)dep; (void)lat; (void)lock; (void)g;
+}
+static void lumo_app_keyboard_repeat(void *d, struct wl_keyboard *k,
+    int32_t rate, int32_t delay) {
+    (void)d; (void)k; (void)rate; (void)delay;
+}
+
+static const struct wl_keyboard_listener lumo_app_keyboard_listener = {
+    .keymap = lumo_app_keyboard_keymap,
+    .enter = lumo_app_keyboard_enter,
+    .leave = lumo_app_keyboard_leave,
+    .key = lumo_app_keyboard_key,
+    .modifiers = lumo_app_keyboard_modifiers,
+    .repeat_info = lumo_app_keyboard_repeat,
+};
+
 static void lumo_app_seat_handle_capabilities(
     void *data,
     struct wl_seat *seat,
@@ -760,6 +845,17 @@ static void lumo_app_seat_handle_capabilities(
         if (!client->touch_pressed) {
             lumo_app_client_set_close_active(client, false);
         }
+    }
+
+    if ((capabilities & WL_SEAT_CAPABILITY_KEYBOARD) != 0) {
+        if (client->keyboard == NULL) {
+            client->keyboard = wl_seat_get_keyboard(seat);
+            wl_keyboard_add_listener(client->keyboard,
+                &lumo_app_keyboard_listener, client);
+        }
+    } else if (client->keyboard != NULL) {
+        wl_keyboard_release(client->keyboard);
+        client->keyboard = NULL;
     }
 
     if ((capabilities & WL_SEAT_CAPABILITY_TOUCH) != 0) {

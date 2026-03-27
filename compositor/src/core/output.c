@@ -303,6 +303,19 @@ void lumo_output_set_rotation(
     lumo_protocol_refresh_shell_hitboxes(compositor);
     lumo_protocol_mark_layers_dirty(compositor);
 
+    {
+        const char *home = getenv("HOME");
+        if (home != NULL) {
+            char path[256];
+            snprintf(path, sizeof(path), "%s/.lumo-rotation", home);
+            FILE *fp = fopen(path, "w");
+            if (fp != NULL) {
+                fprintf(fp, "%s\n", lumo_rotation_name(rotation));
+                fclose(fp);
+            }
+        }
+    }
+
     if (output_name != NULL && !matched) {
         wlr_log(WLR_INFO,
             "output: rotation request for unknown output '%s'",

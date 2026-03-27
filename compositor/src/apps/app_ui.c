@@ -79,10 +79,19 @@ void lumo_app_fill_rounded_rect(
     int y0 = rect->y < 0 ? 0 : rect->y;
     int x1 = rect->x + rect->width; if (x1 > (int)width) x1 = (int)width;
     int y1 = rect->y + rect->height; if (y1 > (int)height) y1 = (int)height;
-    for (int row = y0; row < y1; row++)
-        for (int col = x0; col < x1; col++)
-            if (lumo_app_rounded_rect_contains(rect, (int)radius, col, row))
+    for (int row = y0; row < y1; row++) {
+        int local_y = row - rect->y;
+        bool in_corner = local_y < (int)radius ||
+            local_y >= rect->height - (int)radius;
+        if (!in_corner) {
+            for (int col = x0; col < x1; col++)
                 pixels[row * (int)width + col] = color;
+        } else {
+            for (int col = x0; col < x1; col++)
+                if (lumo_app_rounded_rect_contains(rect, (int)radius, col, row))
+                    pixels[row * (int)width + col] = color;
+        }
+    }
 }
 
 void lumo_app_draw_outline(

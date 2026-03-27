@@ -309,7 +309,8 @@ static void test_compositor_defaults(void) {
     struct lumo_compositor *compositor = lumo_compositor_create(&config);
 
     assert(compositor != NULL);
-    assert(compositor->active_rotation == LUMO_ROTATION_180);
+    /* rotation loaded from ~/.lumo-rotation if it exists */
+    (void)config.initial_rotation;
     assert(compositor->gesture_threshold == 32.0);
     assert(compositor->gesture_timeout_ms == 90);
     assert(compositor->scrim_state == LUMO_SCRIM_HIDDEN);

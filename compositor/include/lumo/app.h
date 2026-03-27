@@ -45,6 +45,10 @@ struct lumo_app_render_context {
     char notes[8][128];
     int note_count;
     int note_editing;
+    char term_lines[16][82];
+    int term_line_count;
+    char term_input[82];
+    int term_input_len;
 };
 
 void lumo_app_render(

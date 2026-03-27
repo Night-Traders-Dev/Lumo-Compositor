@@ -126,9 +126,25 @@ struct lumo_compositor *lumo_compositor_create(
     compositor->launcher_visible = false;
     compositor->quick_settings_visible = false;
     compositor->time_panel_visible = false;
-    compositor->active_rotation = config != NULL
-        ? config->initial_rotation
-        : LUMO_ROTATION_NORMAL;
+    {
+        enum lumo_rotation saved = LUMO_ROTATION_NORMAL;
+        const char *home = getenv("HOME");
+        if (home != NULL) {
+            char path[256];
+            snprintf(path, sizeof(path), "%s/.lumo-rotation", home);
+            FILE *fp = fopen(path, "r");
+            if (fp != NULL) {
+                char buf[16] = {0};
+                if (fgets(buf, sizeof(buf), fp) != NULL) {
+                    char *nl = strchr(buf, '\n');
+                    if (nl) *nl = '\0';
+                    lumo_rotation_parse(buf, &saved);
+                }
+                fclose(fp);
+            }
+        }
+        compositor->active_rotation = saved;
+    }
     compositor->scrim_state = LUMO_SCRIM_HIDDEN;
     compositor->gesture_threshold = 32.0;
     compositor->gesture_timeout_ms = 90;

@@ -525,8 +525,25 @@ static void lumo_input_focus_surface(
         lumo_xwayland_focus_surface(compositor, surface);
         wlr_seat_keyboard_notify_enter(compositor->seat, surface,
             keycodes, num_keycodes, &modifiers);
+
+        if (!wl_list_empty(&compositor->toplevels) &&
+                !compositor->launcher_visible) {
+            struct lumo_toplevel *tl;
+            wl_list_for_each(tl, &compositor->toplevels, link) {
+                if (tl->xdg_surface != NULL &&
+                        tl->xdg_surface->surface == surface) {
+                    if (!compositor->keyboard_visible) {
+                        lumo_protocol_set_keyboard_visible(compositor, true);
+                    }
+                    break;
+                }
+            }
+        }
     } else {
         wlr_seat_keyboard_notify_clear_focus(compositor->seat);
+        if (compositor->keyboard_visible) {
+            lumo_protocol_set_keyboard_visible(compositor, false);
+        }
     }
 
     if (compositor->text_input_manager != NULL) {
