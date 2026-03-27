@@ -235,15 +235,8 @@ int lumo_output_start(struct lumo_compositor *compositor) {
         return -1;
     }
 
-    {
-        float indicator_color[4] = {0.0f, 1.0f, 0.0f, 0.9f};
-        compositor->touch_indicator = wlr_scene_rect_create(
-            &compositor->scene->tree, 20, 20, indicator_color);
-        if (compositor->touch_indicator != NULL) {
-            wlr_scene_node_set_position(&compositor->touch_indicator->node,
-                -100, -100);
-        }
-    }
+    /* touch indicator disabled */
+    compositor->touch_indicator = NULL;
 
     compositor->backend_new_output.notify = lumo_backend_new_output;
     wl_signal_add(&compositor->backend->events.new_output,

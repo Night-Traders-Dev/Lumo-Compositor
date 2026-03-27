@@ -202,6 +202,16 @@ static bool lumo_input_surface_target_at(
     }
 
     node = wlr_scene_node_at(&compositor->scene->tree.node, lx, ly, &sx, &sy);
+    {
+        FILE *tf = fopen("/home/orangepi/lumo-touch.log", "a");
+        if (tf != NULL) {
+            fprintf(tf, "  NODE_AT lx=%.1f ly=%.1f node=%s type=%d\n",
+                lx, ly,
+                node != NULL ? "found" : "null",
+                node != NULL ? (int)node->type : -1);
+            fclose(tf);
+        }
+    }
     if (node == NULL) {
         return false;
     }
@@ -1557,6 +1567,9 @@ static void lumo_input_touch_down(
         return;
     }
 
+    wlr_log(WLR_ERROR, "TOUCH raw=%.3f,%.3f id=%d", event->x, event->y,
+        event->touch_id);
+
     point = calloc(1, sizeof(*point));
     if (point == NULL) {
         wlr_log_errno(WLR_ERROR, "input: failed to allocate touch point");
@@ -1574,11 +1587,7 @@ static void lumo_input_touch_down(
     lumo_input_transform_touch_coords(compositor, &event->touch->base, event->x,
         event->y, &point->lx, &point->ly, &output);
 
-    if (compositor->touch_indicator != NULL) {
-        wlr_scene_node_set_position(&compositor->touch_indicator->node,
-            (int)point->lx - 10, (int)point->ly - 10);
-        wlr_scene_node_raise_to_top(&compositor->touch_indicator->node);
-    }
+    /* touch indicator disabled for debugging */
 
     wlr_log(WLR_INFO,
         "input: touch DEBUG raw=%.3f,%.3f mapped=%.1f,%.1f transform=%d",
@@ -1593,6 +1602,23 @@ static void lumo_input_touch_down(
     point->sy = target.sy;
     point->down_time_msec = event->time_msec;
     point->hitbox = lumo_protocol_hitbox_at(compositor, point->lx, point->ly);
+
+    {
+        FILE *tf = fopen("/home/orangepi/lumo-touch.log", "a");
+        if (tf != NULL) {
+            fprintf(tf,
+                "DISPATCH id=%d lx=%.1f ly=%.1f surface=%s role=%d "
+                "hitbox=%s qs=%d tp=%d lv=%d\n",
+                point->touch_id, point->lx, point->ly,
+                target.surface != NULL ? "yes" : "no",
+                target.object != NULL ? (int)target.role : -1,
+                point->hitbox != NULL ? point->hitbox->name : "none",
+                compositor->quick_settings_visible,
+                compositor->time_panel_visible,
+                compositor->launcher_visible);
+            fclose(tf);
+        }
+    }
 
     lumo_input_touch_audit_log(compositor, point, output, &target,
         event->x, event->y);
