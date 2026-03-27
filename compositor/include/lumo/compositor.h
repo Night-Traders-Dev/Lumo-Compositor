@@ -499,6 +499,7 @@ struct lumo_compositor {
     uint32_t keyboard_resize_serial;
     bool keyboard_resize_pending;
     bool keyboard_resize_acked;
+    bool layer_config_dirty;
     struct wl_list outputs;
     struct wl_list keyboards;
     struct wl_list toplevels;
@@ -579,6 +580,9 @@ void lumo_xwayland_focus_surface(
 void lumo_protocol_configure_layers(
     struct lumo_compositor *compositor,
     struct lumo_output *output
+);
+void lumo_protocol_configure_all_layers(
+    struct lumo_compositor *compositor
 );
 
 int lumo_protocol_start(struct lumo_compositor *compositor);

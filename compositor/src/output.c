@@ -32,7 +32,9 @@ static void lumo_output_configure_scene(struct lumo_output *output) {
         return;
     }
 
-    lumo_protocol_configure_layers(output->compositor, output);
+    if (output->compositor->layer_config_dirty) {
+        lumo_protocol_configure_all_layers(output->compositor);
+    }
     lumo_xwayland_sync_workareas(output->compositor);
 }
 
@@ -173,6 +175,7 @@ static void lumo_output_add(
     );
 
     wl_list_insert(&compositor->outputs, &output->link);
+    compositor->layer_config_dirty = true;
     lumo_output_configure_scene(output);
     wlr_log(WLR_INFO, "output %s: ready", wlr_output->name);
 }
@@ -276,6 +279,7 @@ void lumo_output_set_rotation(
 
         matched = true;
         lumo_output_apply_rotation(output, rotation);
+        compositor->layer_config_dirty = true;
         lumo_output_configure_scene(output);
     }
 

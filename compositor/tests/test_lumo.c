@@ -215,9 +215,26 @@ static void test_compositor_defaults(void) {
     assert(compositor->gesture_threshold == 32.0);
     assert(compositor->gesture_timeout_ms == 180);
     assert(compositor->scrim_state == LUMO_SCRIM_HIDDEN);
+    assert(compositor->layer_config_dirty);
     assert(!compositor->launcher_visible);
     assert(compositor->xwayland == NULL);
     assert(!compositor->xwayland_ready);
+    lumo_compositor_destroy(compositor);
+}
+
+static void test_layer_configuration_dirty_without_outputs(void) {
+    const struct lumo_compositor_config config = {
+        .session_name = "lumo-test",
+        .socket_name = "lumo-test-socket",
+        .initial_rotation = LUMO_ROTATION_NORMAL,
+        .debug = false,
+    };
+    struct lumo_compositor *compositor = lumo_compositor_create(&config);
+
+    assert(compositor != NULL);
+    compositor->layer_config_dirty = false;
+    lumo_protocol_configure_all_layers(compositor);
+    assert(compositor->layer_config_dirty);
     lumo_compositor_destroy(compositor);
 }
 
@@ -517,6 +534,7 @@ int main(void) {
     test_backend_helpers();
     test_rotation_helpers();
     test_compositor_defaults();
+    test_layer_configuration_dirty_without_outputs();
     test_hitbox_state();
     test_shell_hitbox_refresh();
     test_xwayland_workarea_collection();

@@ -122,6 +122,11 @@ On the OrangePi RV2, the most useful markers are:
 - whether the shell bridge starts and `lumo-shell` connects
 - whether the failure happens before or after the first shell surface arrives
 
+If you see the colored launcher tiles and keyboard outline on-screen, the
+session has already made it through DRM startup, shell autostart, and initial
+layer-shell creation. At that point the remaining bugs are in live rendering or
+surface lifecycle handling, not in the GDM session entry.
+
 That split makes it much easier to tell session-manager problems apart from
 compositor bring-up bugs.
 

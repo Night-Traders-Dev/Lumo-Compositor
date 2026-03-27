@@ -180,10 +180,6 @@ static void lumo_protocol_teardown_toplevel(struct lumo_toplevel *toplevel) {
         return;
     }
 
-    if (toplevel->scene_tree != NULL) {
-        toplevel->scene_tree->node.data = NULL;
-    }
-
     wl_list_remove(&toplevel->request_maximize.link);
     wl_list_remove(&toplevel->request_fullscreen.link);
     wl_list_remove(&toplevel->request_minimize.link);
@@ -203,10 +199,6 @@ static void lumo_protocol_teardown_popup(struct lumo_popup *popup) {
         return;
     }
 
-    if (popup->scene_tree != NULL) {
-        popup->scene_tree->node.data = NULL;
-    }
-
     wl_list_remove(&popup->destroy.link);
     wl_list_remove(&popup->link);
     free(popup);
@@ -218,14 +210,6 @@ static void lumo_protocol_teardown_layer_surface(
     if (layer_surface == NULL) {
         return;
     }
-
-    if (layer_surface->scene_surface != NULL && layer_surface->scene_surface->tree != NULL) {
-        layer_surface->scene_surface->tree->node.data = NULL;
-    }
-
-    wl_list_remove(&layer_surface->map.link);
-    wl_list_remove(&layer_surface->unmap.link);
-    wl_list_remove(&layer_surface->commit.link);
     wl_list_remove(&layer_surface->destroy.link);
     wl_list_remove(&layer_surface->link);
     free(layer_surface);
@@ -391,8 +375,14 @@ static void lumo_protocol_layer_surface_destroy(
 ) {
     struct lumo_layer_surface *layer_surface =
         wl_container_of(listener, layer_surface, destroy);
+    struct lumo_compositor *compositor =
+        layer_surface != NULL ? layer_surface->compositor : NULL;
     (void)data;
     lumo_protocol_teardown_layer_surface(layer_surface);
+
+    if (compositor != NULL && compositor->protocol_started) {
+        compositor->layer_config_dirty = true;
+    }
 }
 
 static void lumo_protocol_new_toplevel(
@@ -553,6 +543,7 @@ static void lumo_protocol_new_layer_surface(
     wl_signal_add(&layer_surface->events.destroy, &surface->destroy);
 
     wl_list_insert(&compositor->layer_surfaces, &surface->link);
+    compositor->layer_config_dirty = true;
     wlr_log(WLR_INFO, "protocol: new layer surface");
 }
 
@@ -865,6 +856,7 @@ void lumo_protocol_configure_layers(
     struct wlr_box usable_area = {0};
     int width = 0;
     int height = 0;
+    bool pending_initialization = false;
 
     if (compositor == NULL || output == NULL || output->wlr_output == NULL ||
             compositor->scene == NULL) {
@@ -905,6 +897,11 @@ void lumo_protocol_configure_layers(
                 continue;
             }
 
+            if (!layer_surface->layer_surface->initialized) {
+                pending_initialization = true;
+                continue;
+            }
+
             lumo_protocol_configure_layer_surface_for_output(layer_surface,
                 output, &full_area, &usable_area);
         }
@@ -919,4 +916,25 @@ void lumo_protocol_configure_layers(
     }
 
     lumo_protocol_refresh_shell_hitboxes(compositor);
+    if (pending_initialization) {
+        compositor->layer_config_dirty = true;
+    }
+}
+
+void lumo_protocol_configure_all_layers(struct lumo_compositor *compositor) {
+    struct lumo_output *output;
+
+    if (compositor == NULL) {
+        return;
+    }
+
+    if (wl_list_empty(&compositor->outputs)) {
+        compositor->layer_config_dirty = true;
+        return;
+    }
+
+    compositor->layer_config_dirty = false;
+    wl_list_for_each(output, &compositor->outputs, link) {
+        lumo_protocol_configure_layers(compositor, output);
+    }
 }

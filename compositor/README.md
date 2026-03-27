@@ -87,3 +87,6 @@ journalctl -b --no-pager | grep -iE 'gdm-wayland-session|lumo-compositor|lumo-sh
 The key breakpoint is whether Lumo reaches `output ...: ready` and starts the
 bundled shell clients. If it does, the problem is usually in compositor
 surface bring-up rather than the GDM session entry itself.
+If the device shows the launcher rectangles and keyboard outline before the
+session drops, the crash is later in rendering or surface teardown, not in the
+session selection path.
