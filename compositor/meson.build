@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.1.0',
+  version: '0.0.1',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -28,4 +28,3 @@ executable(
 
 # Add wlroots, wayland-server, libinput, xkbcommon, pixman, libdrm,
 # GBM, libseat, and wayland-protocols once the real backend lands.
-
