@@ -1,8 +1,14 @@
+#define _DEFAULT_SOURCE
 #include "lumo/app.h"
 
 #include <ctype.h>
+#include <dirent.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/statvfs.h>
 #include <time.h>
+#include <unistd.h>
 
 static uint32_t lumo_app_argb(uint8_t a, uint8_t r, uint8_t g, uint8_t b) {
     return ((uint32_t)a << 24) |
@@ -367,6 +373,376 @@ static void lumo_app_card_text(
     }
 }
 
+static void lumo_app_render_clock(
+    uint32_t *pixels,
+    uint32_t width,
+    uint32_t height,
+    bool close_active
+) {
+    struct lumo_rect full = {0, 0, (int)width, (int)height};
+    struct lumo_rect close_rect = {0};
+    uint32_t accent = lumo_app_accent_argb(LUMO_APP_CLOCK);
+    uint32_t bg_top = lumo_app_argb(0xFF, 0x06, 0x0B, 0x12);
+    uint32_t bg_bottom = lumo_app_argb(0xFF, 0x0E, 0x16, 0x22);
+    uint32_t text_primary = lumo_app_argb(0xFF, 0xF2, 0xF6, 0xFB);
+    uint32_t text_secondary = lumo_app_argb(0xFF, 0x95, 0xA6, 0xB9);
+    uint32_t panel_fill = lumo_app_argb(0xFF, 0x12, 0x1A, 0x27);
+    uint32_t panel_stroke = lumo_app_argb(0xFF, 0x2B, 0x3D, 0x52);
+    time_t now = time(NULL);
+    struct tm tm_now = {0};
+    char time_buf[16] = {0};
+    char date_buf[32] = {0};
+    char alarm_buf[32] = "06:30 TOMORROW";
+    int cx = (int)width / 2;
+
+    localtime_r(&now, &tm_now);
+    strftime(time_buf, sizeof(time_buf), "%H:%M", &tm_now);
+    strftime(date_buf, sizeof(date_buf), "%Y-%m-%d", &tm_now);
+
+    memset(pixels, 0, (size_t)width * height * 4);
+    lumo_app_fill_gradient(pixels, width, height, &full, bg_top, bg_bottom);
+
+    {
+        int tw = (int)strlen(time_buf) * 8 * 6 - 8;
+        lumo_app_draw_text(pixels, width, height, cx - tw / 2,
+            (int)height / 4 - 28, 8, accent, time_buf);
+    }
+    {
+        int dw = (int)strlen(date_buf) * 3 * 6 - 3;
+        lumo_app_draw_text(pixels, width, height, cx - dw / 2,
+            (int)height / 4 + 40, 3, text_secondary, date_buf);
+    }
+
+    {
+        struct lumo_rect alarm_card = {
+            .x = 28, .y = (int)height / 2 + 20,
+            .width = (int)width - 56, .height = 90
+        };
+        lumo_app_fill_rounded_rect(pixels, width, height, &alarm_card, 18,
+            panel_fill);
+        lumo_app_draw_outline(pixels, width, height, &alarm_card, 2,
+            panel_stroke);
+        lumo_app_draw_text(pixels, width, height, alarm_card.x + 20,
+            alarm_card.y + 16, 2, text_secondary, "NEXT ALARM");
+        lumo_app_draw_text(pixels, width, height, alarm_card.x + 20,
+            alarm_card.y + 46, 3, text_primary, alarm_buf);
+    }
+    {
+        struct lumo_rect timer_card = {
+            .x = 28, .y = (int)height / 2 + 130,
+            .width = (int)width - 56, .height = 90
+        };
+        lumo_app_fill_rounded_rect(pixels, width, height, &timer_card, 18,
+            panel_fill);
+        lumo_app_draw_outline(pixels, width, height, &timer_card, 2,
+            panel_stroke);
+        lumo_app_draw_text(pixels, width, height, timer_card.x + 20,
+            timer_card.y + 16, 2, text_secondary, "STOPWATCH");
+        lumo_app_draw_text(pixels, width, height, timer_card.x + 20,
+            timer_card.y + 46, 3, text_primary, "00:00:00");
+    }
+
+    if (lumo_app_close_rect(width, height, &close_rect)) {
+        lumo_app_fill_rounded_rect(pixels, width, height, &close_rect, 18,
+            lumo_app_argb(0xFF, 0x16, 0x20, 0x2E));
+        lumo_app_draw_outline(pixels, width, height, &close_rect, 2,
+            close_active ? text_primary : panel_stroke);
+        lumo_app_draw_text_centered(pixels, width, height, &close_rect, 2,
+            text_primary, "CLOSE");
+    }
+}
+
+static void lumo_app_render_files(
+    uint32_t *pixels,
+    uint32_t width,
+    uint32_t height,
+    bool close_active
+) {
+    struct lumo_rect full = {0, 0, (int)width, (int)height};
+    struct lumo_rect close_rect = {0};
+    uint32_t accent = lumo_app_accent_argb(LUMO_APP_FILES);
+    uint32_t bg_top = lumo_app_argb(0xFF, 0x06, 0x0B, 0x12);
+    uint32_t bg_bottom = lumo_app_argb(0xFF, 0x0E, 0x16, 0x22);
+    uint32_t text_primary = lumo_app_argb(0xFF, 0xF2, 0xF6, 0xFB);
+    uint32_t text_secondary = lumo_app_argb(0xFF, 0x95, 0xA6, 0xB9);
+    uint32_t panel_fill = lumo_app_argb(0xFF, 0x12, 0x1A, 0x27);
+    uint32_t panel_stroke = lumo_app_argb(0xFF, 0x2B, 0x3D, 0x52);
+    uint32_t folder_color = lumo_app_argb(0xFF, 0xFF, 0xD1, 0x66);
+    uint32_t file_color = lumo_app_argb(0xFF, 0x7B, 0xA3, 0xFF);
+    int row_y;
+    DIR *dir;
+    const char *browse_path;
+
+    memset(pixels, 0, (size_t)width * height * 4);
+    lumo_app_fill_gradient(pixels, width, height, &full, bg_top, bg_bottom);
+
+    lumo_app_draw_text(pixels, width, height, 28, 28, 2,
+        text_secondary, "FILE MANAGER");
+    lumo_app_draw_text(pixels, width, height, 28, 60, 4, text_primary,
+        "Files");
+
+    browse_path = getenv("HOME");
+    if (browse_path == NULL) {
+        browse_path = "/home";
+    }
+
+    lumo_app_draw_text(pixels, width, height, 28, 108, 2,
+        accent, browse_path);
+
+    {
+        struct lumo_rect sep = {28, 130, (int)width - 56, 1};
+        lumo_app_fill_rect(pixels, width, height, sep.x, sep.y,
+            sep.width, sep.height, panel_stroke);
+    }
+
+    row_y = 148;
+    dir = opendir(browse_path);
+    if (dir != NULL) {
+        struct dirent *entry;
+        int count = 0;
+        int max_rows = ((int)height - row_y - 60) / 44;
+
+        if (max_rows < 1) {
+            max_rows = 1;
+        }
+        while ((entry = readdir(dir)) != NULL && count < max_rows) {
+            bool is_dir;
+            struct lumo_rect row_rect;
+
+            if (entry->d_name[0] == '.') {
+                continue;
+            }
+            is_dir = entry->d_type == DT_DIR;
+
+            row_rect.x = 28;
+            row_rect.y = row_y;
+            row_rect.width = (int)width - 56;
+            row_rect.height = 40;
+            lumo_app_fill_rounded_rect(pixels, width, height, &row_rect,
+                10, panel_fill);
+
+            {
+                struct lumo_rect icon = {
+                    row_rect.x + 10, row_rect.y + 10, 20, 20
+                };
+                lumo_app_fill_rounded_rect(pixels, width, height, &icon,
+                    4, is_dir ? folder_color : file_color);
+            }
+
+            lumo_app_draw_text(pixels, width, height, row_rect.x + 42,
+                row_rect.y + 12, 2, text_primary, entry->d_name);
+            lumo_app_draw_text(pixels, width, height,
+                row_rect.x + row_rect.width - 60, row_rect.y + 12, 2,
+                text_secondary, is_dir ? "DIR" : "FILE");
+
+            row_y += 44;
+            count++;
+        }
+        closedir(dir);
+
+        if (count == 0) {
+            lumo_app_draw_text(pixels, width, height, 28, row_y, 2,
+                text_secondary, "EMPTY DIRECTORY");
+        }
+    } else {
+        lumo_app_draw_text(pixels, width, height, 28, row_y, 2,
+            text_secondary, "CANNOT OPEN DIRECTORY");
+    }
+
+    {
+        struct statvfs st;
+        if (statvfs("/", &st) == 0) {
+            char storage_buf[64];
+            unsigned long free_mb = (unsigned long)(st.f_bavail *
+                (st.f_frsize / 1024)) / 1024;
+            unsigned long total_mb = (unsigned long)(st.f_blocks *
+                (st.f_frsize / 1024)) / 1024;
+            snprintf(storage_buf, sizeof(storage_buf),
+                "%lu / %lu MB FREE", free_mb, total_mb);
+            lumo_app_draw_text(pixels, width, height, 28,
+                (int)height - 40, 2, text_secondary, storage_buf);
+        }
+    }
+
+    if (lumo_app_close_rect(width, height, &close_rect)) {
+        lumo_app_fill_rounded_rect(pixels, width, height, &close_rect, 18,
+            lumo_app_argb(0xFF, 0x16, 0x20, 0x2E));
+        lumo_app_draw_outline(pixels, width, height, &close_rect, 2,
+            close_active ? text_primary : panel_stroke);
+        lumo_app_draw_text_centered(pixels, width, height, &close_rect, 2,
+            text_primary, "CLOSE");
+    }
+}
+
+static void lumo_app_render_settings(
+    uint32_t *pixels,
+    uint32_t width,
+    uint32_t height,
+    bool close_active
+) {
+    struct lumo_rect full = {0, 0, (int)width, (int)height};
+    struct lumo_rect close_rect = {0};
+    uint32_t accent = lumo_app_accent_argb(LUMO_APP_SETTINGS);
+    uint32_t bg_top = lumo_app_argb(0xFF, 0x06, 0x0B, 0x12);
+    uint32_t bg_bottom = lumo_app_argb(0xFF, 0x0E, 0x16, 0x22);
+    uint32_t text_primary = lumo_app_argb(0xFF, 0xF2, 0xF6, 0xFB);
+    uint32_t text_secondary = lumo_app_argb(0xFF, 0x95, 0xA6, 0xB9);
+    uint32_t panel_fill = lumo_app_argb(0xFF, 0x12, 0x1A, 0x27);
+    uint32_t panel_stroke = lumo_app_argb(0xFF, 0x2B, 0x3D, 0x52);
+    int row_y;
+    char hostname_buf[64] = "orangepi";
+    char kernel_buf[128] = "unknown";
+
+    memset(pixels, 0, (size_t)width * height * 4);
+    lumo_app_fill_gradient(pixels, width, height, &full, bg_top, bg_bottom);
+
+    lumo_app_draw_text(pixels, width, height, 28, 28, 2,
+        text_secondary, "SYSTEM SETTINGS");
+    lumo_app_draw_text(pixels, width, height, 28, 60, 4, text_primary,
+        "Settings");
+
+    gethostname(hostname_buf, sizeof(hostname_buf) - 1);
+    {
+        FILE *fp = fopen("/proc/version", "r");
+        if (fp != NULL) {
+            if (fgets(kernel_buf, sizeof(kernel_buf), fp) != NULL) {
+                char *space = strchr(kernel_buf, ' ');
+                if (space != NULL) {
+                    space = strchr(space + 1, ' ');
+                }
+                if (space != NULL) {
+                    char *end = strchr(space + 1, ' ');
+                    if (end != NULL) {
+                        *end = '\0';
+                    }
+                }
+                if (space != NULL && space[0] != '\0') {
+                    memmove(kernel_buf, space + 1,
+                        strlen(space + 1) + 1);
+                }
+            }
+            fclose(fp);
+        }
+    }
+
+    row_y = 120;
+
+    {
+        struct lumo_rect card = {28, row_y, (int)width - 56, 70};
+        int val_x = card.x + card.width / 3;
+        lumo_app_fill_rounded_rect(pixels, width, height, &card, 14,
+            panel_fill);
+        lumo_app_draw_outline(pixels, width, height, &card, 1,
+            panel_stroke);
+        lumo_app_draw_text(pixels, width, height, card.x + 20,
+            card.y + 14, 2, text_secondary, "HOSTNAME");
+        lumo_app_draw_text(pixels, width, height, val_x,
+            card.y + 14, 2, text_primary, hostname_buf);
+        lumo_app_draw_text(pixels, width, height, card.x + 20,
+            card.y + 42, 2, text_secondary, "KERNEL");
+        lumo_app_draw_text(pixels, width, height, val_x,
+            card.y + 42, 2, text_primary, kernel_buf);
+    }
+    row_y += 86;
+
+    {
+        struct lumo_rect card = {28, row_y, (int)width - 56, 70};
+        int val_x = card.x + card.width / 3;
+        char uptime_buf[64] = "unknown";
+        char mem_buf[64] = "unknown";
+        FILE *fp;
+
+        fp = fopen("/proc/uptime", "r");
+        if (fp != NULL) {
+            double up_secs = 0.0;
+            if (fscanf(fp, "%lf", &up_secs) == 1) {
+                int hours = (int)(up_secs / 3600);
+                int mins = (int)((up_secs - hours * 3600) / 60);
+                snprintf(uptime_buf, sizeof(uptime_buf),
+                    "%dH %dM", hours, mins);
+            }
+            fclose(fp);
+        }
+
+        fp = fopen("/proc/meminfo", "r");
+        if (fp != NULL) {
+            unsigned long total = 0;
+            unsigned long avail = 0;
+            char line[128];
+            while (fgets(line, sizeof(line), fp) != NULL) {
+                if (sscanf(line, "MemTotal: %lu", &total) == 1) {
+                    continue;
+                }
+                sscanf(line, "MemAvailable: %lu", &avail);
+            }
+            fclose(fp);
+            if (total > 0) {
+                snprintf(mem_buf, sizeof(mem_buf), "%lu / %lu MB",
+                    avail / 1024, total / 1024);
+            }
+        }
+
+        lumo_app_fill_rounded_rect(pixels, width, height, &card, 14,
+            panel_fill);
+        lumo_app_draw_outline(pixels, width, height, &card, 1,
+            panel_stroke);
+        lumo_app_draw_text(pixels, width, height, card.x + 20,
+            card.y + 14, 2, text_secondary, "UPTIME");
+        lumo_app_draw_text(pixels, width, height, val_x,
+            card.y + 14, 2, text_primary, uptime_buf);
+        lumo_app_draw_text(pixels, width, height, card.x + 20,
+            card.y + 42, 2, text_secondary, "MEMORY");
+        lumo_app_draw_text(pixels, width, height, val_x,
+            card.y + 42, 2, text_primary, mem_buf);
+    }
+    row_y += 86;
+
+    {
+        struct lumo_rect card = {28, row_y, (int)width - 56, 70};
+        int val_x = card.x + card.width / 3;
+        char wifi_buf[64] = "NOT CONNECTED";
+        FILE *fp;
+
+        fp = popen("nmcli -t -f active,ssid dev wifi 2>/dev/null", "r");
+        if (fp != NULL) {
+            char line[128];
+            while (fgets(line, sizeof(line), fp) != NULL) {
+                if (strncmp(line, "yes:", 4) == 0) {
+                    char *nl = strchr(line + 4, '\n');
+                    if (nl != NULL) {
+                        *nl = '\0';
+                    }
+                    snprintf(wifi_buf, sizeof(wifi_buf), "%s", line + 4);
+                    break;
+                }
+            }
+            pclose(fp);
+        }
+
+        lumo_app_fill_rounded_rect(pixels, width, height, &card, 14,
+            panel_fill);
+        lumo_app_draw_outline(pixels, width, height, &card, 1,
+            panel_stroke);
+        lumo_app_draw_text(pixels, width, height, card.x + 20,
+            card.y + 14, 2, text_secondary, "WI-FI");
+        lumo_app_draw_text(pixels, width, height, val_x,
+            card.y + 14, 2, text_primary, wifi_buf);
+        lumo_app_draw_text(pixels, width, height, card.x + 20,
+            card.y + 42, 2, text_secondary, "COMPOSITOR");
+        lumo_app_draw_text(pixels, width, height, val_x,
+            card.y + 42, 2, accent, "LUMO 0.0.48");
+    }
+
+    if (lumo_app_close_rect(width, height, &close_rect)) {
+        lumo_app_fill_rounded_rect(pixels, width, height, &close_rect, 18,
+            lumo_app_argb(0xFF, 0x16, 0x20, 0x2E));
+        lumo_app_draw_outline(pixels, width, height, &close_rect, 2,
+            close_active ? text_primary : panel_stroke);
+        lumo_app_draw_text_centered(pixels, width, height, &close_rect, 2,
+            text_primary, "CLOSE");
+    }
+}
+
 void lumo_app_render(
     enum lumo_app_id app_id,
     uint32_t *pixels,
@@ -374,6 +750,19 @@ void lumo_app_render(
     uint32_t height,
     bool close_active
 ) {
+    if (app_id == LUMO_APP_CLOCK) {
+        lumo_app_render_clock(pixels, width, height, close_active);
+        return;
+    }
+    if (app_id == LUMO_APP_FILES) {
+        lumo_app_render_files(pixels, width, height, close_active);
+        return;
+    }
+    if (app_id == LUMO_APP_SETTINGS) {
+        lumo_app_render_settings(pixels, width, height, close_active);
+        return;
+    }
+    {
     struct lumo_rect full = {0, 0, (int)width, (int)height};
     struct lumo_rect hero;
     struct lumo_rect close_rect = {0};
@@ -478,4 +867,5 @@ void lumo_app_render(
         lumo_app_draw_text_centered(pixels, width, height, &close_rect, 2,
             text_primary, "CLOSE");
     }
+    } /* end fallback block */
 }
