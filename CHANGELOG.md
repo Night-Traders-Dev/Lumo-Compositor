@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.40] - 2026-03-27
+- Fixed a layer-shell timing bug where the app drawer could be reconfigured before the launcher client committed its full-screen overlay request, which left it stuck at the hidden `1x1` bootstrap size.
+- Added a shared `lumo_protocol_mark_layers_dirty()` path that schedules output frames instead of forcing immediate reconfiguration, and wired layer-surface commits into that dirty path so shell resizes are applied after client commits arrive.
+
+## [0.0.39] - 2026-03-27
+- Scheduled explicit output repaints after layer-shell reconfiguration so launcher and audit surface resizes do not depend on incidental DRM frame timing.
+- Added shell-side configure logging for launcher, keyboard, gesture, and status clients so live OrangePi sessions now tell us the actual surface size each layer receives during bring-up and visibility changes.
+
+## [0.0.38] - 2026-03-27
+- Fixed the app drawer visibility path so launcher, keyboard, and touch-audit state changes now trigger immediate layer-shell reconfiguration instead of leaving clients stuck in their hidden bootstrap size.
+- Broadcast scrim-state changes alongside launcher and keyboard visibility updates so shell clients stay visually in sync with compositor modal state.
+- Added regression coverage to ensure those shell visibility setters mark the layer configuration dirty path that drives real surface resizing.
+
 ## [0.0.37] - 2026-03-27
 - Made the top-edge touch-audit gesture debug-only so normal mobile sessions no longer displace the launcher with an accidental calibration overlay.
 - Restored an escape path from touch-audit mode by allowing the left-edge dismiss gesture even while audit is active.

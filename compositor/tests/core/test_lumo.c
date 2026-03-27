@@ -623,13 +623,17 @@ static void test_state_setters(void) {
     lumo_protocol_set_gesture_threshold(compositor, 44.0);
     assert(compositor->gesture_threshold == 44.0);
 
+    compositor->layer_config_dirty = false;
     lumo_protocol_set_launcher_visible(compositor, true);
     assert(compositor->launcher_visible);
     assert(compositor->scrim_state == LUMO_SCRIM_MODAL);
+    assert(compositor->layer_config_dirty);
 
+    compositor->layer_config_dirty = false;
     lumo_protocol_set_keyboard_visible(compositor, true);
     assert(compositor->keyboard_visible);
     assert(compositor->keyboard_resize_pending);
+    assert(compositor->layer_config_dirty);
 
     lumo_protocol_ack_keyboard_resize(compositor,
         compositor->keyboard_resize_serial);
@@ -647,9 +651,11 @@ static void test_state_setters(void) {
     lumo_input_set_rotation(compositor, LUMO_ROTATION_90);
     assert(compositor->active_rotation == LUMO_ROTATION_90);
 
+    compositor->layer_config_dirty = false;
     lumo_touch_audit_set_active(compositor, true);
     assert(compositor->touch_audit_active);
     assert(compositor->scrim_state == LUMO_SCRIM_DIMMED);
+    assert(compositor->layer_config_dirty);
     lumo_touch_audit_set_active(compositor, false);
     assert(!compositor->touch_audit_active);
 

@@ -314,6 +314,7 @@ void lumo_touch_audit_set_active(
     }
 
     lumo_shell_state_broadcast_touch_audit(compositor);
+    lumo_protocol_mark_layers_dirty(compositor);
 }
 
 void lumo_touch_audit_note_touch(

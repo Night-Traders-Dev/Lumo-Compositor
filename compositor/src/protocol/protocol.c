@@ -58,6 +58,21 @@ static struct lumo_output *lumo_protocol_first_output(
     return output;
 }
 
+void lumo_protocol_mark_layers_dirty(struct lumo_compositor *compositor) {
+    struct lumo_output *output;
+
+    if (compositor == NULL) {
+        return;
+    }
+
+    compositor->layer_config_dirty = true;
+    wl_list_for_each(output, &compositor->outputs, link) {
+        if (output->wlr_output != NULL) {
+            wlr_output_schedule_frame(output->wlr_output);
+        }
+    }
+}
+
 void lumo_protocol_refresh_keyboard_visibility(
     struct lumo_compositor *compositor
 ) {
@@ -339,6 +354,7 @@ static void lumo_protocol_teardown_layer_surface(
     if (layer_surface == NULL) {
         return;
     }
+    wl_list_remove(&layer_surface->commit.link);
     wl_list_remove(&layer_surface->destroy.link);
     wl_list_remove(&layer_surface->link);
     free(layer_surface);
@@ -510,8 +526,24 @@ static void lumo_protocol_layer_surface_destroy(
     lumo_protocol_teardown_layer_surface(layer_surface);
 
     if (compositor != NULL && compositor->protocol_started) {
-        compositor->layer_config_dirty = true;
+        lumo_protocol_mark_layers_dirty(compositor);
     }
+}
+
+static void lumo_protocol_layer_surface_commit(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_layer_surface *layer_surface =
+        wl_container_of(listener, layer_surface, commit);
+
+    (void)data;
+    if (layer_surface == NULL || layer_surface->compositor == NULL ||
+            !layer_surface->compositor->protocol_started) {
+        return;
+    }
+
+    lumo_protocol_mark_layers_dirty(layer_surface->compositor);
 }
 
 static void lumo_protocol_new_toplevel(
@@ -668,11 +700,13 @@ static void lumo_protocol_new_layer_surface(
         surface->scene_surface->tree->node.data = surface;
     }
 
+    surface->commit.notify = lumo_protocol_layer_surface_commit;
+    wl_signal_add(&layer_surface->surface->events.commit, &surface->commit);
     surface->destroy.notify = lumo_protocol_layer_surface_destroy;
     wl_signal_add(&layer_surface->events.destroy, &surface->destroy);
 
     wl_list_insert(&compositor->layer_surfaces, &surface->link);
-    compositor->layer_config_dirty = true;
+    lumo_protocol_mark_layers_dirty(compositor);
     wlr_log(WLR_INFO, "protocol: new layer surface");
 }
 
@@ -917,6 +951,10 @@ void lumo_protocol_set_launcher_visible(
         return;
     }
 
+    if (compositor->launcher_visible == visible) {
+        return;
+    }
+
     compositor->launcher_visible = visible;
     if (visible) {
         compositor->scrim_state = LUMO_SCRIM_MODAL;
@@ -926,7 +964,9 @@ void lumo_protocol_set_launcher_visible(
 
     wlr_log(WLR_INFO, "protocol: launcher %s", visible ? "visible" : "hidden");
     lumo_shell_state_broadcast_launcher_visible(compositor, visible);
+    lumo_shell_state_broadcast_scrim_state(compositor, compositor->scrim_state);
     lumo_protocol_refresh_shell_hitboxes(compositor);
+    lumo_protocol_mark_layers_dirty(compositor);
 }
 
 void lumo_protocol_set_scrim_state(
@@ -991,7 +1031,9 @@ void lumo_protocol_set_keyboard_visible(
     wlr_log(WLR_INFO, "protocol: keyboard %s serial=%u",
         visible ? "visible" : "hidden", compositor->keyboard_resize_serial);
     lumo_shell_state_broadcast_keyboard_visible(compositor, visible);
+    lumo_shell_state_broadcast_scrim_state(compositor, compositor->scrim_state);
     lumo_protocol_refresh_shell_hitboxes(compositor);
+    lumo_protocol_mark_layers_dirty(compositor);
 }
 
 void lumo_protocol_configure_layers(

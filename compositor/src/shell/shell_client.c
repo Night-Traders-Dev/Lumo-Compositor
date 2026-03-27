@@ -2426,6 +2426,9 @@ static void lumo_shell_handle_configure(
         return;
     }
 
+    fprintf(stderr, "lumo-shell: %s configure %ux%u\n",
+        lumo_shell_mode_name(client->mode), draw_width, draw_height);
+
     if (client->mode == LUMO_SHELL_MODE_LAUNCHER) {
         client->output_width_hint = draw_width;
         client->output_height_hint = draw_height;
