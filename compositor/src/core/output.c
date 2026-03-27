@@ -216,6 +216,8 @@ int lumo_output_start(struct lumo_compositor *compositor) {
         if (bg != NULL) {
             wlr_scene_node_set_position(&bg->node, -4096, -4096);
             wlr_scene_node_lower_to_bottom(&bg->node);
+            bg->node.data = NULL;
+            wlr_scene_node_set_enabled(&bg->node, true);
         }
     }
 

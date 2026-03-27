@@ -1,21 +1,68 @@
 #include "lumo/compositor.h"
 
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 #include <unistd.h>
+
+static bool lumo_read_parent_notify_socket(char *buf, size_t bufsz) {
+    pid_t ppid = getppid();
+    char envpath[64];
+    int fd;
+    ssize_t n;
+    char *p;
+
+    if (ppid <= 1 || buf == NULL || bufsz == 0) {
+        return false;
+    }
+
+    snprintf(envpath, sizeof(envpath), "/proc/%d/environ", (int)ppid);
+    fd = open(envpath, O_RDONLY);
+    if (fd < 0) {
+        return false;
+    }
+
+    char tmp[4096];
+    n = read(fd, tmp, sizeof(tmp) - 1);
+    close(fd);
+    if (n <= 0) {
+        return false;
+    }
+    tmp[n] = '\0';
+
+    for (p = tmp; p < tmp + n; p += strlen(p) + 1) {
+        if (strncmp(p, "NOTIFY_SOCKET=", 14) == 0) {
+            const char *val = p + 14;
+            size_t len = strlen(val);
+            if (len > 0 && len < bufsz) {
+                memcpy(buf, val, len + 1);
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 
 static void lumo_notify_ready(void) {
     const char *socket_path = getenv("NOTIFY_SOCKET");
+    char parent_socket[256];
     struct sockaddr_un addr;
     int fd;
     ssize_t sent;
 
     if (socket_path == NULL || socket_path[0] == '\0') {
-        wlr_log(WLR_INFO, "sd_notify: NOTIFY_SOCKET not set, skipping");
-        return;
+        if (lumo_read_parent_notify_socket(parent_socket, sizeof(parent_socket))) {
+            socket_path = parent_socket;
+            wlr_log(WLR_INFO, "sd_notify: inherited NOTIFY_SOCKET=%s from parent", socket_path);
+        } else {
+            wlr_log(WLR_INFO, "sd_notify: NOTIFY_SOCKET not set, skipping");
+            return;
+        }
     }
 
     wlr_log(WLR_INFO, "sd_notify: sending READY=1 to %s", socket_path);
@@ -44,6 +91,7 @@ static void lumo_notify_ready(void) {
     }
     close(fd);
 }
+
 
 static const char *lumo_default_session_name(void) {
     return "lumo";
