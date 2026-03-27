@@ -1,2 +1,6 @@
 option('xwayland', type: 'feature', value: 'enabled',
   description: 'Build xWayland integration')
+option('orangepi_touch_quirks', type: 'feature', value: 'enabled',
+  description: 'Install OrangePi RV2 touchscreen calibration override udev rule')
+option('udev_rules_dir', type: 'string', value: '/etc/udev/rules.d',
+  description: 'Directory used for installed udev rules')

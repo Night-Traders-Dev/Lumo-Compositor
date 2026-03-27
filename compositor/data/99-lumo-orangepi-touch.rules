@@ -1,0 +1,7 @@
+# Lumo owns logical output rotation, so the OrangePi RV2 touchscreen should not
+# inherit the old 180-degree libinput flip that some panel setup scripts leave
+# behind for rotated desktop sessions.
+#
+# This override is intentionally narrow: it only matches the known test-panel
+# touchscreen controller and resets it to an identity calibration matrix.
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_TOUCHSCREEN}=="1", ATTRS{id/vendor}=="0712", ATTRS{id/product}=="0010", ATTRS{name}=="hotlotus wcidtest", ENV{LIBINPUT_CALIBRATION_MATRIX}="1 0 0 0 1 0"

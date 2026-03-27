@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.31',
+  version: '0.0.32',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -11,6 +11,9 @@ project(
 lumo_inc = include_directories('include')
 xwayland_option = get_option('xwayland')
 xwayland_enabled = not xwayland_option.disabled()
+orangepi_touch_quirks_option = get_option('orangepi_touch_quirks')
+orangepi_touch_quirks_enabled = not orangepi_touch_quirks_option.disabled()
+udev_rules_dir = get_option('udev_rules_dir')
 
 lumo_deps = [
   dependency('wlroots-0.18', required: true),
@@ -161,6 +164,13 @@ install_data(
   session_debug_desktop,
   install_dir: join_paths(get_option('datadir'), 'wayland-sessions'),
 )
+
+if orangepi_touch_quirks_enabled
+  install_data(
+    'data/99-lumo-orangepi-touch.rules',
+    install_dir: udev_rules_dir,
+  )
+endif
 
 test_sources = lumo_sources + files('tests/core/test_lumo.c')
 

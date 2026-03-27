@@ -77,6 +77,10 @@ The debug session launches `lumo-compositor --backend headless --debug --session
 lumo-headless --socket lumo-shell-headless --shell lumo-shell`.
 In both cases, the compositor still owns shell startup, so the bundled launcher,
 OSK, and gesture surfaces come up automatically after login or launch.
+When the OrangePi touch-quirk install is enabled, Lumo also installs a narrow
+udev override that resets the known `hotlotus wcidtest` panel to an identity
+libinput calibration matrix. That keeps old panel-rotation scripts from
+fighting Lumo's own compositor-driven rotation and touch mapping.
 Use `sudo` for the install step if your prefix points at a system directory
 like `/usr` or `/usr/local`.
 
@@ -104,6 +108,9 @@ remote shell.
 In Lumo, explicit DRM mode maps to wlroots `libinput,drm` so direct-display
 sessions still bring up touchscreen and keyboard devices alongside the scanout
 backend.
+Touch rotation is corrected dynamically from the active output transform inside
+the compositor, so rotated displays should not need a global 180-degree
+libinput flip rule to keep touch and scanout aligned.
 `--backend drm` is still a bad fit for SSH and other non-seat shells, but it no
 longer requires a visible tty when a display manager is launching the session.
 When you leave the compositor in `--backend auto` and launch it from SSH or
@@ -144,6 +151,9 @@ On the OrangePi RV2, the most useful markers are:
 - whether tapping or dragging the bottom gesture pill leaves a temporary touch
   debug marker on that surface, which tells us the compositor is receiving and
   classifying touchscreen input even if the launcher does not open yet
+- whether the device still has a leftover `/etc/udev/rules.d/99-7ep-caplcd-touch.rules`
+  style calibration file forcing `LIBINPUT_CALIBRATION_MATRIX=-1 0 1 0 -1 1`,
+  which can invert the panel even when Lumo's own rotation is correct
 - whether the failure happens before or after the first shell surface arrives
 
 If you see the colored launcher tiles and keyboard outline on-screen, the

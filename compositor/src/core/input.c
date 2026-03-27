@@ -129,20 +129,11 @@ static bool lumo_input_transform_touch_coords(
     if (output != NULL && output->wlr_output != NULL) {
         wlr_output_layout_get_box(compositor->output_layout, output->wlr_output,
             &box);
-        if (!wlr_box_empty(&box)) {
-            struct wlr_fbox point = {
-                .x = (mapped_x - box.x) / box.width,
-                .y = (mapped_y - box.y) / box.height,
-                .width = 0.0,
-                .height = 0.0,
-            };
-
-            wlr_fbox_transform(&point, &point,
-                wlr_output_transform_invert(output->wlr_output->transform),
-                1.0, 1.0);
-
-            mapped_x = box.x + point.x * box.width;
-            mapped_y = box.y + point.y * box.height;
+        if (!wlr_box_empty(&box) &&
+                lumo_transform_layout_coords_in_box(&box,
+                    wlr_output_transform_invert(output->wlr_output->transform),
+                    mapped_x, mapped_y, &mapped_x, &mapped_y)) {
+            /* Layout coordinates now match the compositor's logical rotation. */
         }
     }
 

@@ -199,6 +199,33 @@ static inline bool lumo_rotation_parse(
     return false;
 }
 
+static inline bool lumo_transform_layout_coords_in_box(
+    const struct wlr_box *box,
+    enum wl_output_transform transform,
+    double raw_x,
+    double raw_y,
+    double *lx,
+    double *ly
+) {
+    struct wlr_fbox point = {0};
+
+    if (box == NULL || lx == NULL || ly == NULL || box->width <= 0 ||
+            box->height <= 0) {
+        return false;
+    }
+
+    point.x = (raw_x - box->x) / box->width;
+    point.y = (raw_y - box->y) / box->height;
+    point.width = 0.0;
+    point.height = 0.0;
+
+    wlr_fbox_transform(&point, &point, transform, 1.0, 1.0);
+
+    *lx = box->x + point.x * box->width;
+    *ly = box->y + point.y * box->height;
+    return true;
+}
+
 static inline const char *lumo_backend_mode_name(
     enum lumo_backend_mode mode
 ) {

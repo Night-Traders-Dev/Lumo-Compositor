@@ -26,6 +26,40 @@ static void test_rotation_helpers(void) {
         LUMO_ROTATION_270);
 }
 
+static void test_touch_rotation_mapping(void) {
+    struct wlr_box box = {
+        .x = 10,
+        .y = 20,
+        .width = 100,
+        .height = 200,
+    };
+    double lx = 0.0;
+    double ly = 0.0;
+
+    assert(lumo_transform_layout_coords_in_box(&box,
+        WL_OUTPUT_TRANSFORM_NORMAL, 20.0, 40.0, &lx, &ly));
+    assert(lx == 20.0);
+    assert(ly == 40.0);
+
+    assert(lumo_transform_layout_coords_in_box(&box,
+        WL_OUTPUT_TRANSFORM_180, 20.0, 40.0, &lx, &ly));
+    assert(lx == 100.0);
+    assert(ly == 200.0);
+
+    assert(lumo_transform_layout_coords_in_box(&box,
+        WL_OUTPUT_TRANSFORM_90, 20.0, 40.0, &lx, &ly));
+    assert(lx == 20.0);
+    assert(ly == 200.0);
+
+    assert(lumo_transform_layout_coords_in_box(&box,
+        WL_OUTPUT_TRANSFORM_270, 20.0, 40.0, &lx, &ly));
+    assert(lx == 100.0);
+    assert(ly == 40.0);
+
+    assert(!lumo_transform_layout_coords_in_box(NULL,
+        WL_OUTPUT_TRANSFORM_NORMAL, 0.0, 0.0, &lx, &ly));
+}
+
 static void test_backend_helpers(void) {
     enum lumo_backend_mode mode = LUMO_BACKEND_AUTO;
 
@@ -593,6 +627,7 @@ static void test_shell_state_helpers(void) {
 int main(void) {
     test_backend_helpers();
     test_rotation_helpers();
+    test_touch_rotation_mapping();
     test_compositor_defaults();
     test_layer_configuration_dirty_without_outputs();
     test_hitbox_state();

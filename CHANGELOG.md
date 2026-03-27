@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.32] - 2026-03-27
+- Made touch rotation correction explicit and testable in the compositor by factoring the output-transform mapping into a shared helper with regression coverage for normal, 90, 180, and 270 degree layouts.
+- Added a bundled OrangePi RV2 touchscreen udev override that resets the known `hotlotus wcidtest` panel to an identity libinput calibration matrix so legacy 180-degree panel scripts do not invert touch under Lumo.
+- Extended `build.sh` and the install docs with the new touch-quirk options and documented that Lumo treats compositor rotation, not global touchscreen flip rules, as the source of truth.
+
 ## [0.0.31] - 2026-03-27
 - Tightened launcher gesture policy around the mobile shell model: the generic launcher edge now only tracks the bottom edge, and bottom-edge taps or swipes can open the launcher even when they miss the small visual pill hitbox.
 - Added a compositor helper and regression coverage for launcher-edge touch captures so the bottom-edge gesture path stays testable as we keep refining touchscreen behavior on the OrangePi.

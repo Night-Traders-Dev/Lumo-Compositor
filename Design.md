@@ -96,6 +96,7 @@ Animation principles:
 - touch hit targets should remain large even when the visuals are compact
 - transparent outer surfaces are preferred when only a sheet or panel needs to be visible
 - launcher and OSK visuals should reserve visual breathing room around the edge of the panel
+- touch rotation should follow the compositor's active output transform dynamically, so display rotation stays the source of truth instead of legacy system-wide touchscreen flip rules
 
 ## Architecture Notes
 

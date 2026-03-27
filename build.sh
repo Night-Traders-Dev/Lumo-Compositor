@@ -11,6 +11,9 @@ Options:
   -b, --build-dir DIR         Meson build directory relative to compositor/
                               (default: build)
   -x, --xwayland MODE         xWayland feature mode: enabled, disabled, or auto
+  -t, --touch-quirks MODE     OrangePi touch-quirk install mode: enabled,
+                              disabled, or auto
+      --udev-rules-dir DIR    Install path for bundled udev rules
       --buildtype TYPE        Meson build type (debug, debugoptimized, release,
                               plain)
       --reconfigure           Force meson setup --reconfigure
@@ -25,6 +28,7 @@ Options:
 Examples:
   ./build.sh
   ./build.sh --xwayland disabled
+  ./build.sh --touch-quirks disabled
   ./build.sh --build-dir build-noxwayland --xwayland disabled --test
   ./build.sh --buildtype debugoptimized --test
 EOF
@@ -35,6 +39,8 @@ project_dir="$script_dir/compositor"
 
 build_dir="build"
 xwayland_mode="enabled"
+touch_quirks_mode="enabled"
+udev_rules_dir=""
 buildtype=""
 force_reconfigure=false
 wipe=false
@@ -64,6 +70,20 @@ while (($#)); do
       ;;
     --xwayland=*)
       xwayland_mode="${1#*=}"
+      ;;
+    -t|--touch-quirks)
+      shift
+      touch_quirks_mode="${1:?build.sh: missing touch quirk mode}"
+      ;;
+    --touch-quirks=*)
+      touch_quirks_mode="${1#*=}"
+      ;;
+    --udev-rules-dir)
+      shift
+      udev_rules_dir="${1:?build.sh: missing udev rules dir}"
+      ;;
+    --udev-rules-dir=*)
+      udev_rules_dir="${1#*=}"
       ;;
     --buildtype)
       shift
@@ -124,6 +144,15 @@ case "$xwayland_mode" in
     ;;
 esac
 
+case "$touch_quirks_mode" in
+  enabled|disabled|auto) ;;
+  *)
+    printf 'build.sh: invalid touch quirk mode: %s (expected enabled, disabled, or auto)\n' \
+      "$touch_quirks_mode" >&2
+    exit 1
+    ;;
+esac
+
 if [[ -z "$buildtype" ]]; then
   :
 else
@@ -131,6 +160,10 @@ else
 fi
 
 meson_setup_args+=(-Dxwayland="$xwayland_mode")
+meson_setup_args+=(-Dorangepi_touch_quirks="$touch_quirks_mode")
+if [[ -n "$udev_rules_dir" ]]; then
+  meson_setup_args+=(-Dudev_rules_dir="$udev_rules_dir")
+fi
 
 if [[ "$build_dir" = /* ]]; then
   build_path="$build_dir"

@@ -34,6 +34,17 @@ the repository root, the same flag is available through `build.sh`:
 Leave the option enabled for normal desktop-app compatibility. Disable it for
 smaller builds or environments where xWayland is not available.
 
+The OrangePi RV2 touchscreen quirk install is also available through Meson and
+`build.sh`:
+
+```sh
+./build.sh --touch-quirks enabled --test
+```
+
+That install path drops a narrow udev override for the known `hotlotus
+wcidtest` panel so legacy 180-degree libinput calibration rules do not fight
+Lumo's compositor-owned touch rotation logic.
+
 The build also installs a Wayland session file when you run `meson install`:
 
 ```sh
@@ -71,6 +82,9 @@ to isolate backend problems.
 Lumo maps explicit DRM mode to wlroots `libinput,drm` so touchscreen and
 keyboard devices stay available in the direct-display session instead of
 starting a scanout-only backend.
+Touch coordinates are corrected from the active output transform inside the
+compositor, which keeps rotated outputs and gesture hitboxes aligned without
+depending on a global 180-degree touchscreen flip rule.
 `drm` is still the wrong choice for SSH and other non-seat shells, but it does
 not require a visible tty when GDM or another display manager starts the
 session.
