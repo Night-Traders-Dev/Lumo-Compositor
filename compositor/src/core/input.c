@@ -186,9 +186,11 @@ static bool lumo_input_surface_target_at(
         return false;
     }
 
-    scene_buffer = wlr_scene_buffer_from_node(node);
-    if (scene_buffer != NULL) {
-        scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
+    if (node->type == WLR_SCENE_NODE_BUFFER) {
+        scene_buffer = wlr_scene_buffer_from_node(node);
+        if (scene_buffer != NULL) {
+            scene_surface = wlr_scene_surface_try_from_buffer(scene_buffer);
+        }
     }
     if (scene_surface != NULL) {
         target->surface = scene_surface->surface;
@@ -922,7 +924,7 @@ static void lumo_input_pointer_notify_surface(
 
     node = wlr_scene_node_at(&compositor->scene->tree.node, compositor->cursor->x,
         compositor->cursor->y, &sx, &sy);
-    if (node != NULL) {
+    if (node != NULL && node->type == WLR_SCENE_NODE_BUFFER) {
         struct wlr_scene_surface *scene_surface = NULL;
 
         scene_buffer = wlr_scene_buffer_from_node(node);
