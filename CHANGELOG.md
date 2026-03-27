@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.33] - 2026-03-27
+- Added explicit touch-audit helpers and live compositor logging for touch-down events so OrangePi debugging now reports raw percentages, logical percentages, output name, edge or corner region, and hitbox or surface classification in one line.
+- Added regression coverage for edge and corner region naming so full-screen touch audits stay stable as the gesture and shell hitbox model evolves.
+- Updated the troubleshooting docs to point at the richer touch-audit log format for live panel and gesture verification.
+
 ## [0.0.32] - 2026-03-27
 - Made touch rotation correction explicit and testable in the compositor by factoring the output-transform mapping into a shared helper with regression coverage for normal, 90, 180, and 270 degree layouts.
 - Added a bundled OrangePi RV2 touchscreen udev override that resets the known `hotlotus wcidtest` panel to an identity libinput calibration matrix so legacy 180-degree panel scripts do not invert touch under Lumo.

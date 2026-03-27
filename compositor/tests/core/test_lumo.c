@@ -60,6 +60,36 @@ static void test_touch_rotation_mapping(void) {
         WL_OUTPUT_TRANSFORM_NORMAL, 0.0, 0.0, &lx, &ly));
 }
 
+static void test_touch_region_helpers(void) {
+    struct wlr_box box = {
+        .x = 10,
+        .y = 20,
+        .width = 100,
+        .height = 200,
+    };
+
+    assert(strcmp(lumo_touch_region_name_in_box(&box, 15.0, 25.0, 20.0),
+        "top-left") == 0);
+    assert(strcmp(lumo_touch_region_name_in_box(&box, 60.0, 25.0, 20.0),
+        "top-center") == 0);
+    assert(strcmp(lumo_touch_region_name_in_box(&box, 105.0, 25.0, 20.0),
+        "top-right") == 0);
+    assert(strcmp(lumo_touch_region_name_in_box(&box, 15.0, 120.0, 20.0),
+        "left-center") == 0);
+    assert(strcmp(lumo_touch_region_name_in_box(&box, 60.0, 120.0, 20.0),
+        "center") == 0);
+    assert(strcmp(lumo_touch_region_name_in_box(&box, 105.0, 120.0, 20.0),
+        "right-center") == 0);
+    assert(strcmp(lumo_touch_region_name_in_box(&box, 15.0, 215.0, 20.0),
+        "bottom-left") == 0);
+    assert(strcmp(lumo_touch_region_name_in_box(&box, 60.0, 215.0, 20.0),
+        "bottom-center") == 0);
+    assert(strcmp(lumo_touch_region_name_in_box(&box, 105.0, 215.0, 20.0),
+        "bottom-right") == 0);
+    assert(strcmp(lumo_touch_region_name_in_box(&box, 0.0, 0.0, 20.0),
+        "outside") == 0);
+}
+
 static void test_backend_helpers(void) {
     enum lumo_backend_mode mode = LUMO_BACKEND_AUTO;
 
@@ -628,6 +658,7 @@ int main(void) {
     test_backend_helpers();
     test_rotation_helpers();
     test_touch_rotation_mapping();
+    test_touch_region_helpers();
     test_compositor_defaults();
     test_layer_configuration_dirty_without_outputs();
     test_hitbox_state();

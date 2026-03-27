@@ -151,6 +151,9 @@ On the OrangePi RV2, the most useful markers are:
 - whether tapping or dragging the bottom gesture pill leaves a temporary touch
   debug marker on that surface, which tells us the compositor is receiving and
   classifying touchscreen input even if the launcher does not open yet
+- whether `lumo-compositor` logs `input: touch ... audit ...` lines with the
+  expected raw and logical percentages plus `top-left`, `bottom-center`, and
+  similar region names during a live edge or corner sweep
 - whether the device still has a leftover `/etc/udev/rules.d/99-7ep-caplcd-touch.rules`
   style calibration file forcing `LIBINPUT_CALIBRATION_MATRIX=-1 0 1 0 -1 1`,
   which can invert the panel even when Lumo's own rotation is correct

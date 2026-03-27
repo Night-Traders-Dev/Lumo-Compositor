@@ -123,3 +123,7 @@ bottom gesture pill and look for the temporary touch debug marker on that
 surface. That marker confirms the compositor is receiving and classifying touch
 input, which helps narrow the problem to gesture policy versus missing device
 events.
+For broader OrangePi touch audits, Lumo now also logs touch-down audit lines
+with raw percentages, logical percentages, and edge or corner region names, so
+we can compare the physical panel input against compositor hitboxes without a
+separate calibration tool.

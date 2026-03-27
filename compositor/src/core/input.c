@@ -291,6 +291,60 @@ static bool lumo_input_in_launcher_edge_zone(
     return ly >= box.y + box.height - threshold;
 }
 
+static void lumo_input_touch_audit_log(
+    struct lumo_compositor *compositor,
+    const struct lumo_touch_point *point,
+    const struct lumo_output *output,
+    const struct lumo_surface_target *target,
+    double raw_x,
+    double raw_y
+) {
+    struct wlr_box box = {0};
+    const char *region = "unknown";
+    const char *target_name = "none";
+    const char *hitbox_name = "none";
+    const char *output_name = "(none)";
+    double logical_x_pct = 0.0;
+    double logical_y_pct = 0.0;
+    double threshold = 24.0;
+
+    if (compositor == NULL || point == NULL || output == NULL ||
+            output->wlr_output == NULL || compositor->output_layout == NULL) {
+        return;
+    }
+
+    wlr_output_layout_get_box(compositor->output_layout, output->wlr_output, &box);
+    if (wlr_box_empty(&box)) {
+        return;
+    }
+
+    threshold = compositor->gesture_threshold > 0.0
+        ? compositor->gesture_threshold
+        : 24.0;
+    logical_x_pct = ((point->lx - box.x) / box.width) * 100.0;
+    logical_y_pct = ((point->ly - box.y) / box.height) * 100.0;
+    region = lumo_touch_region_name_in_box(&box, point->lx, point->ly, threshold);
+    output_name = output->wlr_output->name != NULL
+        ? output->wlr_output->name
+        : "(unnamed)";
+
+    if (point->hitbox != NULL) {
+        target_name = "hitbox";
+        hitbox_name = point->hitbox->name != NULL
+            ? point->hitbox->name
+            : lumo_hitbox_kind_name(point->hitbox->kind);
+    } else if (target != NULL && lumo_input_target_is_shell(target)) {
+        target_name = "shell-surface";
+    } else if (target != NULL && target->surface != NULL) {
+        target_name = "app-surface";
+    }
+
+    wlr_log(WLR_INFO,
+        "input: touch %d audit output=%s raw=%.1f%%,%.1f%% logical=%.1f%%,%.1f%% region=%s target=%s hitbox=%s",
+        point->touch_id, output_name, raw_x * 100.0, raw_y * 100.0,
+        logical_x_pct, logical_y_pct, region, target_name, hitbox_name);
+}
+
 static struct lumo_touch_point *lumo_input_touch_point_for_id(
     struct lumo_compositor *compositor,
     int32_t touch_id
@@ -1423,6 +1477,9 @@ static void lumo_input_touch_down(
     point->sy = target.sy;
     point->down_time_msec = event->time_msec;
     point->hitbox = lumo_protocol_hitbox_at(compositor, point->lx, point->ly);
+
+    lumo_input_touch_audit_log(compositor, point, output, &target,
+        event->x, event->y);
 
     lumo_input_touch_sample_append(point, LUMO_TOUCH_SAMPLE_DOWN,
         event->time_msec, point->lx, point->ly, point->sx, point->sy);

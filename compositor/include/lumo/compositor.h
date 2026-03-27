@@ -501,6 +501,71 @@ static inline const char *lumo_touch_target_kind_name(
     }
 }
 
+static inline const char *lumo_touch_region_name_in_box(
+    const struct wlr_box *box,
+    double lx,
+    double ly,
+    double threshold
+) {
+    bool left;
+    bool right;
+    bool top;
+    bool bottom;
+    double edge = threshold;
+
+    if (box == NULL || box->width <= 0 || box->height <= 0) {
+        return "unknown";
+    }
+
+    if (lx < box->x || ly < box->y ||
+            lx >= box->x + box->width ||
+            ly >= box->y + box->height) {
+        return "outside";
+    }
+
+    if (edge <= 0.0) {
+        edge = 24.0;
+    }
+    if (edge * 2.0 > box->width) {
+        edge = box->width / 2.0;
+    }
+    if (edge * 2.0 > box->height) {
+        edge = box->height / 2.0;
+    }
+
+    left = lx < box->x + edge;
+    right = lx >= box->x + box->width - edge;
+    top = ly < box->y + edge;
+    bottom = ly >= box->y + box->height - edge;
+
+    if (top && left) {
+        return "top-left";
+    }
+    if (top && right) {
+        return "top-right";
+    }
+    if (bottom && left) {
+        return "bottom-left";
+    }
+    if (bottom && right) {
+        return "bottom-right";
+    }
+    if (top) {
+        return "top-center";
+    }
+    if (bottom) {
+        return "bottom-center";
+    }
+    if (left) {
+        return "left-center";
+    }
+    if (right) {
+        return "right-center";
+    }
+
+    return "center";
+}
+
 enum lumo_touch_sample_type {
     LUMO_TOUCH_SAMPLE_DOWN = 0,
     LUMO_TOUCH_SAMPLE_MOTION,
