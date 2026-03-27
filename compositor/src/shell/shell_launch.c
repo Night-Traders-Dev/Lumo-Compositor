@@ -410,6 +410,21 @@ static bool lumo_shell_bridge_build_state_frame(
             compositor->keyboard_resize_acked)) {
         return false;
     }
+    if (!lumo_shell_protocol_frame_add_bool(frame, "touch_audit_active",
+            compositor->touch_audit_active) ||
+            !lumo_shell_protocol_frame_add_u32(frame, "touch_audit_step",
+                compositor->touch_audit_step) ||
+            !lumo_shell_protocol_frame_add_u32(frame,
+                "touch_audit_completed_mask",
+                compositor->touch_audit_completed_mask) ||
+            !lumo_shell_protocol_frame_add_bool(frame, "touch_audit_saved",
+                compositor->touch_audit_saved) ||
+            !lumo_shell_protocol_frame_add_string(frame, "touch_audit_profile",
+                compositor->touch_audit_profile_name[0] != '\0'
+                    ? compositor->touch_audit_profile_name
+                    : "none")) {
+        return false;
+    }
     if (lumo_shell_bridge_output_size(compositor, &output_width, &output_height)) {
         if (!lumo_shell_protocol_frame_add_u32(frame, "output_width",
                 output_width) ||
@@ -743,6 +758,20 @@ static void lumo_shell_bridge_handle_request_frame(
         }
 
         lumo_input_set_rotation(client->compositor, rotation);
+        (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
+        return;
+    }
+
+    if (strcmp(frame->name, "set_touch_audit_active") == 0) {
+        bool active = false;
+
+        if (!lumo_shell_protocol_frame_get_bool(frame, "active", &active)) {
+            (void)lumo_shell_bridge_send_result(client, frame, false,
+                "missing_field", "active");
+            return;
+        }
+
+        lumo_touch_audit_set_active(client->compositor, active);
         (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
         return;
     }
@@ -1354,5 +1383,9 @@ void lumo_shell_state_broadcast_rotation(
 }
 
 void lumo_shell_state_broadcast_touch_debug(struct lumo_compositor *compositor) {
+    lumo_shell_bridge_broadcast_state(compositor);
+}
+
+void lumo_shell_state_broadcast_touch_audit(struct lumo_compositor *compositor) {
     lumo_shell_bridge_broadcast_state(compositor);
 }

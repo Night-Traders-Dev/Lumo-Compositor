@@ -264,7 +264,7 @@ static bool lumo_input_hitbox_is_shell_reserved(
     }
 }
 
-static bool lumo_input_in_launcher_edge_zone(
+static enum lumo_edge_zone lumo_input_system_edge_zone(
     struct lumo_compositor *compositor,
     const struct lumo_output *output,
     double lx,
@@ -274,21 +274,19 @@ static bool lumo_input_in_launcher_edge_zone(
     double threshold;
 
     if (compositor == NULL || output == NULL || output->wlr_output == NULL) {
-        return false;
+        return LUMO_EDGE_NONE;
     }
-    (void)lx;
 
     wlr_output_layout_get_box(compositor->output_layout, output->wlr_output,
         &box);
     if (wlr_box_empty(&box)) {
-        return false;
+        return LUMO_EDGE_NONE;
     }
 
     threshold = compositor->gesture_threshold > 0.0
         ? compositor->gesture_threshold
         : 24.0;
-
-    return ly >= box.y + box.height - threshold;
+    return lumo_edge_zone_in_box(&box, lx, ly, threshold);
 }
 
 static void lumo_input_touch_audit_log(
@@ -736,8 +734,7 @@ static int lumo_input_gesture_timeout_cb(void *data) {
             continue;
         }
 
-        if (point->surface != NULL && point->hitbox != NULL &&
-                point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE) {
+        if (point->surface != NULL && point->capture_edge != LUMO_EDGE_NONE) {
             lumo_input_replay_touch_point(compositor, point);
             replayed = true;
         }
@@ -774,6 +771,9 @@ static void lumo_input_touch_point_begin_capture(
             point->touch_id,
             point->hitbox->name != NULL ? point->hitbox->name : "(unnamed)",
             lumo_hitbox_kind_name(point->hitbox->kind));
+    } else if (point->capture_edge != LUMO_EDGE_NONE) {
+        wlr_log(WLR_INFO, "input: touch %d captured by %s edge zone",
+            point->touch_id, lumo_edge_zone_name(point->capture_edge));
     } else {
         wlr_log(WLR_INFO, "input: touch %d captured for gesture", point->touch_id);
     }
@@ -804,7 +804,31 @@ static void lumo_input_touch_point_deliver_now(
     wlr_log(WLR_INFO, "input: touch %d delivered to surface", point->touch_id);
 }
 
-static void lumo_input_touch_point_trigger_gesture(
+static double lumo_input_touch_point_edge_progress(
+    const struct lumo_touch_point *point,
+    double lx,
+    double ly
+) {
+    if (point == NULL) {
+        return 0.0;
+    }
+
+    switch (point->capture_edge) {
+    case LUMO_EDGE_TOP:
+        return ly - point->down_ly;
+    case LUMO_EDGE_LEFT:
+        return lx - point->down_lx;
+    case LUMO_EDGE_RIGHT:
+        return point->down_lx - lx;
+    case LUMO_EDGE_BOTTOM:
+        return point->down_ly - ly;
+    case LUMO_EDGE_NONE:
+    default:
+        return 0.0;
+    }
+}
+
+static void lumo_input_touch_point_trigger_edge_action(
     struct lumo_compositor *compositor,
     struct lumo_touch_point *point,
     uint32_t time_msec
@@ -814,28 +838,44 @@ static void lumo_input_touch_point_trigger_gesture(
     }
 
     point->gesture_triggered = true;
-    lumo_protocol_set_launcher_visible(compositor, true);
-    lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_MODAL);
-    wlr_log(WLR_INFO, "input: touch %d triggered launcher gesture at %u",
-        point->touch_id, time_msec);
-}
 
-static bool lumo_input_touch_point_dist_exceeded(
-    const struct lumo_touch_point *point,
-    double lx,
-    double ly,
-    double threshold
-) {
-    double dx;
-    double dy;
-
-    if (point == NULL) {
-        return false;
+    switch (point->capture_edge) {
+    case LUMO_EDGE_TOP:
+        lumo_touch_audit_set_active(compositor, !compositor->touch_audit_active);
+        wlr_log(WLR_INFO, "input: touch %d toggled top-edge audit at %u",
+            point->touch_id, time_msec);
+        return;
+    case LUMO_EDGE_LEFT:
+        if (compositor->touch_audit_active) {
+            lumo_touch_audit_set_active(compositor, false);
+        } else if (compositor->launcher_visible) {
+            lumo_protocol_set_launcher_visible(compositor, false);
+        } else if (compositor->keyboard_visible) {
+            lumo_protocol_set_keyboard_visible(compositor, false);
+        } else {
+            lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_HIDDEN);
+        }
+        wlr_log(WLR_INFO, "input: touch %d triggered left-edge dismiss at %u",
+            point->touch_id, time_msec);
+        return;
+    case LUMO_EDGE_RIGHT:
+    case LUMO_EDGE_BOTTOM:
+        if (compositor->touch_audit_active) {
+            lumo_touch_audit_set_active(compositor, false);
+        }
+        lumo_protocol_set_launcher_visible(compositor, true);
+        lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_MODAL);
+        wlr_log(WLR_INFO,
+            "input: touch %d triggered %s-edge launcher gesture at %u",
+            point->touch_id, lumo_edge_zone_name(point->capture_edge),
+            time_msec);
+        return;
+    case LUMO_EDGE_NONE:
+    default:
+        wlr_log(WLR_INFO, "input: touch %d edge action skipped at %u",
+            point->touch_id, time_msec);
+        return;
     }
-
-    dx = lx - point->down_lx;
-    dy = ly - point->down_ly;
-    return dx * dx + dy * dy >= threshold * threshold;
 }
 
 static int lumo_input_gesture_timeout_cb(void *data);
@@ -1382,10 +1422,11 @@ static void lumo_input_touch_motion(
         ? compositor->gesture_threshold
         : 24.0;
 
-    if (lumo_touch_point_is_launcher_capture(point) &&
+    if (point->captured && point->capture_edge != LUMO_EDGE_NONE &&
             !point->gesture_triggered &&
-            lumo_input_touch_point_dist_exceeded(point, lx, ly, threshold)) {
-        lumo_input_touch_point_trigger_gesture(compositor, point, event->time_msec);
+            lumo_input_touch_point_edge_progress(point, lx, ly) >= threshold) {
+        lumo_input_touch_point_trigger_edge_action(compositor, point,
+            event->time_msec);
     }
 
     if (!point->captured && point->delivered && point->surface != NULL) {
@@ -1404,9 +1445,9 @@ static void lumo_input_touch_motion(
         lumo_input_touch_sample_append(point, LUMO_TOUCH_SAMPLE_MOTION,
             event->time_msec, lx, ly, target.sx, target.sy);
         if (!point->gesture_triggered &&
-                lumo_touch_point_is_launcher_capture(point) &&
-                lumo_input_touch_point_dist_exceeded(point, lx, ly, threshold)) {
-            lumo_input_touch_point_trigger_gesture(compositor, point,
+                point->capture_edge != LUMO_EDGE_NONE &&
+                lumo_input_touch_point_edge_progress(point, lx, ly) >= threshold) {
+            lumo_input_touch_point_trigger_edge_action(compositor, point,
                 event->time_msec);
         }
 
@@ -1443,7 +1484,7 @@ static void lumo_input_touch_down(
     struct lumo_touch_point *point;
     struct lumo_surface_target target = {0};
     struct lumo_output *output = NULL;
-    bool edge_zone;
+    enum lumo_edge_zone edge_zone = LUMO_EDGE_NONE;
 
     if (compositor == NULL || event == NULL || compositor->seat == NULL) {
         return;
@@ -1464,6 +1505,7 @@ static void lumo_input_touch_down(
     point->touch_id = event->touch_id;
     point->owner = compositor;
     point->kind = LUMO_TOUCH_TARGET_NONE;
+    point->capture_edge = LUMO_EDGE_NONE;
     wl_list_init(&point->surface_destroy.link);
     wl_list_init(&point->samples);
     wl_list_insert(&compositor->touch_points, &point->link);
@@ -1480,6 +1522,14 @@ static void lumo_input_touch_down(
 
     lumo_input_touch_audit_log(compositor, point, output, &target,
         event->x, event->y);
+    lumo_touch_audit_note_touch(compositor, output, &event->touch->base, point,
+        event->x, event->y);
+
+    if (compositor->touch_audit_active && lumo_input_target_is_shell(&target)) {
+        memset(&target, 0, sizeof(target));
+        point->sx = 0.0;
+        point->sy = 0.0;
+    }
 
     lumo_input_touch_sample_append(point, LUMO_TOUCH_SAMPLE_DOWN,
         event->time_msec, point->lx, point->ly, point->sx, point->sy);
@@ -1502,8 +1552,10 @@ static void lumo_input_touch_down(
         return;
     }
 
-    if (point->hitbox != NULL &&
+    if (!compositor->touch_audit_active &&
+            point->hitbox != NULL &&
             point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE) {
+        point->capture_edge = lumo_hitbox_edge_zone(point->hitbox);
         lumo_input_touch_point_begin_capture(compositor, point, &target,
             event->time_msec);
         lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
@@ -1511,9 +1563,11 @@ static void lumo_input_touch_down(
         return;
     }
 
-    edge_zone = lumo_input_in_launcher_edge_zone(compositor, output,
-        point->lx, point->ly);
-    if (edge_zone) {
+    edge_zone = !compositor->touch_audit_active
+        ? lumo_input_system_edge_zone(compositor, output, point->lx, point->ly)
+        : LUMO_EDGE_NONE;
+    if (edge_zone != LUMO_EDGE_NONE) {
+        point->capture_edge = edge_zone;
         lumo_input_touch_point_begin_capture(compositor, point, &target,
             event->time_msec);
         lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
@@ -1557,25 +1611,24 @@ static void lumo_input_touch_up(
 
     if (point->captured && !point->delivered) {
         if (!point->gesture_triggered &&
-                lumo_touch_point_is_launcher_capture(point) &&
-                !lumo_input_touch_point_dist_exceeded(point, point->lx,
-                    point->ly, compositor->gesture_threshold > 0.0
+                point->capture_edge != LUMO_EDGE_NONE &&
+                lumo_input_touch_point_edge_progress(point, point->lx,
+                    point->ly) < (compositor->gesture_threshold > 0.0
                         ? compositor->gesture_threshold
                         : 24.0)) {
-            lumo_input_touch_point_trigger_gesture(compositor, point,
+            lumo_input_touch_point_trigger_edge_action(compositor, point,
                 event->time_msec);
             if (lumo_hitbox_is_shell_gesture(point->hitbox)) {
                 wlr_log(WLR_INFO, "input: touch %d tapped gesture handle",
                     point->touch_id);
             } else {
-                wlr_log(WLR_INFO, "input: touch %d tapped launcher edge",
-                    point->touch_id);
+                wlr_log(WLR_INFO, "input: touch %d tapped %s edge",
+                    point->touch_id, lumo_edge_zone_name(point->capture_edge));
             }
         }
 
         if (!point->gesture_triggered && point->surface != NULL &&
-                point->hitbox != NULL &&
-                point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE) {
+                point->capture_edge != LUMO_EDGE_NONE) {
             lumo_input_replay_touch_point(compositor, point);
         }
 

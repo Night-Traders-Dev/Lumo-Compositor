@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.34] - 2026-03-27
+- Added explicit top, left, right, and bottom compositor-owned system edge zones so Lumo now has a fuller mobile gesture map instead of only the bottom launcher path.
+- Taught the shell to use tighter input regions that match the visible launcher drawer panel and the gesture pill, which keeps transparent shell surfaces from swallowing unrelated touches.
+- Added an in-session touch audit flow with a full-screen overlay, ordered eight-point edge targets, and saved per-device JSON profiles under the user's Lumo config directory.
+- Added shared shell geometry helpers and regression coverage for launcher panel layout, audit target layout, edge-zone naming, and the new touch-audit compositor state.
+
 ## [0.0.33] - 2026-03-27
 - Added explicit touch-audit helpers and live compositor logging for touch-down events so OrangePi debugging now reports raw percentages, logical percentages, output name, edge or corner region, and hitbox or surface classification in one line.
 - Added regression coverage for edge and corner region naming so full-screen touch audits stay stable as the gesture and shell hitbox model evolves.

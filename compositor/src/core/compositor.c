@@ -40,6 +40,14 @@ struct lumo_compositor *lumo_compositor_create(
     compositor->keyboard_resize_serial = 0;
     compositor->keyboard_resize_pending = false;
     compositor->keyboard_resize_acked = true;
+    compositor->touch_audit_active = false;
+    compositor->touch_audit_saved = false;
+    compositor->touch_audit_step = 0;
+    compositor->touch_audit_completed_mask = 0;
+    compositor->touch_audit_profile_name[0] = '\0';
+    compositor->touch_audit_device_name[0] = '\0';
+    compositor->touch_audit_device_vendor = 0;
+    compositor->touch_audit_device_product = 0;
     compositor->touch_debug_active = false;
     compositor->touch_debug_id = -1;
     compositor->touch_debug_lx = 0.0;

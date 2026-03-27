@@ -20,6 +20,26 @@ static const char *const lumo_shell_launcher_labels[] = {
     "FILES",
     "SETTINGS",
 };
+static const char *const lumo_shell_touch_audit_names[] = {
+    "top-left",
+    "top-center",
+    "top-right",
+    "left-center",
+    "right-center",
+    "bottom-left",
+    "bottom-center",
+    "bottom-right",
+};
+static const char *const lumo_shell_touch_audit_labels[] = {
+    "TOP LEFT",
+    "TOP",
+    "TOP RIGHT",
+    "LEFT",
+    "RIGHT",
+    "BOTTOM LEFT",
+    "BOTTOM",
+    "BOTTOM RIGHT",
+};
 
 static uint32_t lumo_shell_max_u32(uint32_t lhs, uint32_t rhs) {
     return lhs > rhs ? lhs : rhs;
@@ -37,6 +57,34 @@ static uint32_t lumo_shell_clamp_u32(
         return maximum;
     }
     return value;
+}
+
+static bool lumo_shell_launcher_panel_geometry(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+) {
+    uint32_t inset_x;
+    uint32_t inset_bottom;
+    uint32_t top_y;
+
+    if (rect == NULL || output_width == 0 || output_height == 0) {
+        return false;
+    }
+
+    inset_x = lumo_shell_clamp_u32(output_width / 24, 24, 64);
+    inset_bottom = lumo_shell_clamp_u32(output_height / 28, 18, 40);
+    top_y = lumo_shell_clamp_u32(output_height / 18, 36, 84);
+
+    if (output_width <= inset_x * 2 || output_height <= top_y + inset_bottom) {
+        return false;
+    }
+
+    rect->x = (int)inset_x;
+    rect->y = (int)top_y;
+    rect->width = (int)(output_width - inset_x * 2);
+    rect->height = (int)(output_height - top_y - inset_bottom);
+    return rect->width > 0 && rect->height > 0;
 }
 
 static bool lumo_shell_launcher_geometry(
@@ -224,6 +272,45 @@ size_t lumo_shell_launcher_tile_count(void) {
     return lumo_shell_launcher_columns * lumo_shell_launcher_rows;
 }
 
+size_t lumo_shell_touch_audit_point_count(void) {
+    return sizeof(lumo_shell_touch_audit_names) /
+        sizeof(lumo_shell_touch_audit_names[0]);
+}
+
+const char *lumo_shell_touch_audit_point_name(uint32_t point_index) {
+    if (point_index >= lumo_shell_touch_audit_point_count()) {
+        return NULL;
+    }
+
+    return lumo_shell_touch_audit_names[point_index];
+}
+
+const char *lumo_shell_touch_audit_point_label(uint32_t point_index) {
+    if (point_index >= lumo_shell_touch_audit_point_count()) {
+        return NULL;
+    }
+
+    return lumo_shell_touch_audit_labels[point_index];
+}
+
+bool lumo_shell_touch_audit_point_for_region(
+    const char *region,
+    uint32_t *point_index
+) {
+    if (region == NULL || point_index == NULL) {
+        return false;
+    }
+
+    for (uint32_t i = 0; i < lumo_shell_touch_audit_point_count(); i++) {
+        if (strcmp(region, lumo_shell_touch_audit_names[i]) == 0) {
+            *point_index = i;
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool lumo_shell_launcher_tile_rect(
     uint32_t output_width,
     uint32_t output_height,
@@ -232,6 +319,15 @@ bool lumo_shell_launcher_tile_rect(
 ) {
     return lumo_shell_launcher_geometry(output_width, output_height,
         tile_index, rect);
+}
+
+bool lumo_shell_launcher_panel_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+) {
+    return lumo_shell_launcher_panel_geometry(output_width, output_height,
+        rect);
 }
 
 bool lumo_shell_gesture_handle_rect(
@@ -253,6 +349,73 @@ bool lumo_shell_gesture_handle_rect(
     rect->height = (int)handle_height;
     rect->x = (int)((output_width - handle_width) / 2);
     rect->y = (int)((output_height - handle_height) / 2);
+    return true;
+}
+
+bool lumo_shell_touch_audit_point_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    uint32_t point_index,
+    struct lumo_rect *rect
+) {
+    uint32_t marker_width;
+    uint32_t marker_height;
+    uint32_t inset_x;
+    uint32_t inset_y;
+    int center_x;
+    int center_y;
+
+    if (rect == NULL || output_width == 0 || output_height == 0 ||
+            point_index >= lumo_shell_touch_audit_point_count()) {
+        return false;
+    }
+
+    marker_width = lumo_shell_clamp_u32(output_width / 8, 96, 160);
+    marker_height = lumo_shell_clamp_u32(output_height / 12, 54, 92);
+    inset_x = lumo_shell_clamp_u32(output_width / 12, 68, 132);
+    inset_y = lumo_shell_clamp_u32(output_height / 10, 54, 116);
+
+    switch ((enum lumo_shell_touch_audit_point)point_index) {
+    case LUMO_SHELL_TOUCH_AUDIT_TOP_LEFT:
+        center_x = (int)inset_x;
+        center_y = (int)inset_y;
+        break;
+    case LUMO_SHELL_TOUCH_AUDIT_TOP_CENTER:
+        center_x = (int)(output_width / 2);
+        center_y = (int)inset_y;
+        break;
+    case LUMO_SHELL_TOUCH_AUDIT_TOP_RIGHT:
+        center_x = (int)(output_width - inset_x);
+        center_y = (int)inset_y;
+        break;
+    case LUMO_SHELL_TOUCH_AUDIT_LEFT_CENTER:
+        center_x = (int)inset_x;
+        center_y = (int)(output_height / 2);
+        break;
+    case LUMO_SHELL_TOUCH_AUDIT_RIGHT_CENTER:
+        center_x = (int)(output_width - inset_x);
+        center_y = (int)(output_height / 2);
+        break;
+    case LUMO_SHELL_TOUCH_AUDIT_BOTTOM_LEFT:
+        center_x = (int)inset_x;
+        center_y = (int)(output_height - inset_y);
+        break;
+    case LUMO_SHELL_TOUCH_AUDIT_BOTTOM_CENTER:
+        center_x = (int)(output_width / 2);
+        center_y = (int)(output_height - inset_y);
+        break;
+    case LUMO_SHELL_TOUCH_AUDIT_BOTTOM_RIGHT:
+        center_x = (int)(output_width - inset_x);
+        center_y = (int)(output_height - inset_y);
+        break;
+    default:
+        return false;
+    }
+
+    rect->width = (int)marker_width;
+    rect->height = (int)marker_height;
+    rect->x = center_x - rect->width / 2;
+    rect->y = center_y - rect->height / 2;
     return true;
 }
 

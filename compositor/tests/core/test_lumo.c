@@ -90,6 +90,35 @@ static void test_touch_region_helpers(void) {
         "outside") == 0);
 }
 
+static void test_edge_zone_helpers(void) {
+    struct wlr_box box = {
+        .x = 10,
+        .y = 20,
+        .width = 100,
+        .height = 200,
+    };
+    struct lumo_hitbox top_hitbox = {
+        .name = "shell-edge-top",
+        .kind = LUMO_HITBOX_EDGE_GESTURE,
+    };
+    struct lumo_hitbox bottom_hitbox = {
+        .name = "shell-gesture",
+        .kind = LUMO_HITBOX_EDGE_GESTURE,
+    };
+
+    assert(strcmp(lumo_edge_zone_name(LUMO_EDGE_TOP), "top") == 0);
+    assert(strcmp(lumo_edge_zone_name(LUMO_EDGE_LEFT), "left") == 0);
+    assert(strcmp(lumo_edge_zone_name(LUMO_EDGE_RIGHT), "right") == 0);
+    assert(strcmp(lumo_edge_zone_name(LUMO_EDGE_BOTTOM), "bottom") == 0);
+    assert(lumo_edge_zone_in_box(&box, 60.0, 22.0, 20.0) == LUMO_EDGE_TOP);
+    assert(lumo_edge_zone_in_box(&box, 12.0, 120.0, 20.0) == LUMO_EDGE_LEFT);
+    assert(lumo_edge_zone_in_box(&box, 108.0, 120.0, 20.0) == LUMO_EDGE_RIGHT);
+    assert(lumo_edge_zone_in_box(&box, 60.0, 218.0, 20.0) == LUMO_EDGE_BOTTOM);
+    assert(lumo_edge_zone_in_box(&box, 60.0, 120.0, 20.0) == LUMO_EDGE_NONE);
+    assert(lumo_hitbox_edge_zone(&top_hitbox) == LUMO_EDGE_TOP);
+    assert(lumo_hitbox_edge_zone(&bottom_hitbox) == LUMO_EDGE_BOTTOM);
+}
+
 static void test_backend_helpers(void) {
     enum lumo_backend_mode mode = LUMO_BACKEND_AUTO;
 
@@ -284,6 +313,10 @@ static void test_compositor_defaults(void) {
     assert(compositor->gesture_threshold == 32.0);
     assert(compositor->gesture_timeout_ms == 180);
     assert(compositor->scrim_state == LUMO_SCRIM_HIDDEN);
+    assert(!compositor->touch_audit_active);
+    assert(!compositor->touch_audit_saved);
+    assert(compositor->touch_audit_step == 0);
+    assert(compositor->touch_audit_completed_mask == 0);
     assert(compositor->layer_config_dirty);
     assert(!compositor->launcher_visible);
     assert(compositor->xwayland == NULL);
@@ -361,11 +394,13 @@ static void test_touch_debug_helpers(void) {
         .captured = true,
         .delivered = false,
         .hitbox = &gesture_hitbox,
+        .capture_edge = LUMO_EDGE_BOTTOM,
     };
     struct lumo_touch_point generic_edge_capture = {
         .captured = true,
         .delivered = false,
         .hitbox = NULL,
+        .capture_edge = LUMO_EDGE_BOTTOM,
     };
     struct lumo_touch_point scrim_capture = {
         .captured = true,
@@ -445,9 +480,11 @@ static void test_shell_hitbox_refresh(void) {
     wl_list_insert(&compositor->outputs, &output.link);
 
     lumo_protocol_set_launcher_visible(compositor, true);
-    hitbox = lumo_protocol_hitbox_at(compositor, 64, 64);
+    hitbox = lumo_protocol_hitbox_at(compositor, 128, 128);
     assert(hitbox != NULL);
     assert(hitbox->kind == LUMO_HITBOX_SCRIM);
+    assert(hitbox->rect.width < workarea.width);
+    assert(hitbox->rect.height < workarea.height);
 
     wl_list_remove(&output.link);
     lumo_compositor_destroy(compositor);
@@ -585,6 +622,12 @@ static void test_state_setters(void) {
     lumo_input_set_rotation(compositor, LUMO_ROTATION_90);
     assert(compositor->active_rotation == LUMO_ROTATION_90);
 
+    lumo_touch_audit_set_active(compositor, true);
+    assert(compositor->touch_audit_active);
+    assert(compositor->scrim_state == LUMO_SCRIM_DIMMED);
+    lumo_touch_audit_set_active(compositor, false);
+    assert(!compositor->touch_audit_active);
+
     lumo_compositor_destroy(compositor);
 }
 
@@ -659,6 +702,7 @@ int main(void) {
     test_rotation_helpers();
     test_touch_rotation_mapping();
     test_touch_region_helpers();
+    test_edge_zone_helpers();
     test_compositor_defaults();
     test_layer_configuration_dirty_without_outputs();
     test_hitbox_state();

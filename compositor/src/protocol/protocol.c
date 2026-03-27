@@ -291,14 +291,14 @@ void lumo_protocol_refresh_shell_hitboxes(struct lumo_compositor *compositor) {
             LUMO_HITBOX_OSK_KEY, true, true);
     }
 
-    if (compositor->launcher_visible &&
+    if (compositor->launcher_visible && !compositor->touch_audit_active &&
             lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_LAUNCHER,
                 (uint32_t)workarea.width, (uint32_t)workarea.height,
-                &shell_config)) {
-        rect.x = workarea.x;
-        rect.y = workarea.y;
-        rect.width = workarea.width;
-        rect.height = workarea.height;
+                &shell_config) &&
+            lumo_shell_launcher_panel_rect((uint32_t)workarea.width,
+                (uint32_t)workarea.height, &rect)) {
+        rect.x += workarea.x;
+        rect.y += workarea.y;
         lumo_protocol_register_hitbox(compositor, "shell-launcher", &rect,
             LUMO_HITBOX_SCRIM, true, true);
     }

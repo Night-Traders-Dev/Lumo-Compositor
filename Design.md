@@ -73,6 +73,25 @@ Design goals:
 - webOS-style handle instead of a full-width debug strip
 - visually lightweight when idle
 - compositor-owned gesture logic, shell-owned presentation
+- multi-edge system behavior rather than a single bottom-only trigger
+
+Current system-edge roles:
+
+- bottom edge: open the launcher drawer
+- right edge: open the launcher drawer from the side reserve zone
+- left edge: dismiss launcher, audit, or keyboard state like a mobile back gesture
+- top edge: toggle the touch audit overlay used for panel verification and calibration review
+
+### Touch Audit
+
+Lumo now includes a built-in touch audit mode for device bring-up.
+
+Design goals:
+
+- no external calibration script required during normal shell testing
+- visible 8-point walk through for corners and edge centers
+- saved per-device profile data after a successful pass
+- geometry shared between compositor hit-testing and shell rendering so the audit UI and the compositor agree on what counts as a correct tap
 
 ## Motion
 
@@ -96,10 +115,12 @@ Animation principles:
 - touch hit targets should remain large even when the visuals are compact
 - transparent outer surfaces are preferred when only a sheet or panel needs to be visible
 - launcher and OSK visuals should reserve visual breathing room around the edge of the panel
+- launcher input capture should follow the visible drawer panel, not the entire transparent fullscreen shell surface
 - touch rotation should follow the compositor's active output transform dynamically, so display rotation stays the source of truth instead of legacy system-wide touchscreen flip rules
 
 ## Architecture Notes
 
 - compositor state remains the source of truth for launcher visibility, keyboard visibility, scrim state, rotation, and gesture thresholds
+- compositor state also owns touch-audit progress and per-device profile persistence
 - shell clients consume that state over the shell bridge protocol
 - the OSK is modularized into its own source file now so it can continue to evolve toward a dedicated client or binary without dragging unrelated shell code with it

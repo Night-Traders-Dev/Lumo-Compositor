@@ -21,6 +21,7 @@ When the implementation lands, this compositor should:
 - manage output rotation and touch mapping
 - expose shell state to launcher, OSK, bar, and gesture surfaces
 - forward OSK text into focused text-input-v3 clients before falling back to lower-level keyboard handling
+- keep shared touch-audit geometry and saved device profiles close to the input pipeline so OrangePi bring-up stays debuggable
 
 ## Build Toggles
 
@@ -82,6 +83,13 @@ to isolate backend problems.
 Lumo maps explicit DRM mode to wlroots `libinput,drm` so touchscreen and
 keyboard devices stay available in the direct-display session instead of
 starting a scanout-only backend.
+The current mobile edge behavior reserves:
+
+- top edge for the touch audit overlay
+- left edge for dismiss or back-style shell actions
+- right edge for launcher open
+- bottom edge for launcher open
+
 Touch coordinates are corrected from the active output transform inside the
 compositor, which keeps rotated outputs and gesture hitboxes aligned without
 depending on a global 180-degree touchscreen flip rule.
@@ -127,3 +135,6 @@ For broader OrangePi touch audits, Lumo now also logs touch-down audit lines
 with raw percentages, logical percentages, and edge or corner region names, so
 we can compare the physical panel input against compositor hitboxes without a
 separate calibration tool.
+Once the in-session touch audit overlay completes its 8-point walk, Lumo also
+saves a per-device JSON profile under the user's `lumo/touch-profiles`
+directory for later review.

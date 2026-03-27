@@ -74,6 +74,17 @@ enum lumo_shell_touch_debug_target {
     LUMO_SHELL_TOUCH_DEBUG_TARGET_SURFACE,
 };
 
+enum lumo_shell_touch_audit_point {
+    LUMO_SHELL_TOUCH_AUDIT_TOP_LEFT = 0,
+    LUMO_SHELL_TOUCH_AUDIT_TOP_CENTER,
+    LUMO_SHELL_TOUCH_AUDIT_TOP_RIGHT,
+    LUMO_SHELL_TOUCH_AUDIT_LEFT_CENTER,
+    LUMO_SHELL_TOUCH_AUDIT_RIGHT_CENTER,
+    LUMO_SHELL_TOUCH_AUDIT_BOTTOM_LEFT,
+    LUMO_SHELL_TOUCH_AUDIT_BOTTOM_CENTER,
+    LUMO_SHELL_TOUCH_AUDIT_BOTTOM_RIGHT,
+};
+
 struct lumo_shell_target {
     enum lumo_shell_target_kind kind;
     uint32_t index;
@@ -99,6 +110,13 @@ bool lumo_shell_touch_debug_target_parse(
 const char *lumo_shell_launcher_tile_label(uint32_t tile_index);
 const char *lumo_shell_osk_key_label(uint32_t key_index);
 const char *lumo_shell_osk_key_text(uint32_t key_index);
+size_t lumo_shell_touch_audit_point_count(void);
+const char *lumo_shell_touch_audit_point_name(uint32_t point_index);
+const char *lumo_shell_touch_audit_point_label(uint32_t point_index);
+bool lumo_shell_touch_audit_point_for_region(
+    const char *region,
+    uint32_t *point_index
+);
 static inline bool lumo_shell_target_kind_parse(
     const char *value,
     enum lumo_shell_target_kind *kind
@@ -144,6 +162,11 @@ bool lumo_shell_launcher_tile_rect(
     uint32_t tile_index,
     struct lumo_rect *rect
 );
+bool lumo_shell_launcher_panel_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+);
 bool lumo_shell_osk_key_rect(
     uint32_t output_width,
     uint32_t output_height,
@@ -153,6 +176,12 @@ bool lumo_shell_osk_key_rect(
 bool lumo_shell_gesture_handle_rect(
     uint32_t output_width,
     uint32_t output_height,
+    struct lumo_rect *rect
+);
+bool lumo_shell_touch_audit_point_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    uint32_t point_index,
     struct lumo_rect *rect
 );
 bool lumo_shell_target_for_mode(

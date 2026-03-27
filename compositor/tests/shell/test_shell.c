@@ -48,11 +48,19 @@ static void test_shell_labels(void) {
     assert(strcmp(lumo_shell_osk_key_label(28), "SPACE") == 0);
     assert(strcmp(lumo_shell_osk_key_label(30), "RETURN") == 0);
     assert(lumo_shell_osk_key_label(31) == NULL);
+
+    assert(strcmp(lumo_shell_touch_audit_point_name(0), "top-left") == 0);
+    assert(strcmp(lumo_shell_touch_audit_point_name(7), "bottom-right") == 0);
+    assert(lumo_shell_touch_audit_point_name(8) == NULL);
+    assert(strcmp(lumo_shell_touch_audit_point_label(1), "TOP") == 0);
+    assert(strcmp(lumo_shell_touch_audit_point_label(6), "BOTTOM") == 0);
+    assert(lumo_shell_touch_audit_point_label(8) == NULL);
 }
 
 static void test_layout_counts(void) {
     assert(lumo_shell_launcher_tile_count() == 12);
     assert(lumo_shell_osk_key_count() == 31);
+    assert(lumo_shell_touch_audit_point_count() == 8);
 }
 
 static void test_launcher_config(void) {
@@ -138,7 +146,14 @@ static void test_invalid_config(void) {
 
 static void test_launcher_hitboxes(void) {
     struct lumo_rect rect = {0};
+    struct lumo_rect panel = {0};
     struct lumo_shell_target target = {0};
+
+    assert(lumo_shell_launcher_panel_rect(1024, 600, &panel));
+    assert(panel.x > 0);
+    assert(panel.y > 0);
+    assert(panel.width < 1024);
+    assert(panel.height < 600);
 
     assert(lumo_shell_launcher_tile_rect(1024, 600, 0, &rect));
     assert(rect.x >= 0);
@@ -200,6 +215,27 @@ static void test_gesture_hitbox(void) {
         &target));
     assert(target.kind == LUMO_SHELL_TARGET_GESTURE_HANDLE);
     assert(target.index == 0);
+}
+
+static void test_touch_audit_layout(void) {
+    struct lumo_rect rect = {0};
+    uint32_t point_index = UINT32_MAX;
+
+    assert(lumo_shell_touch_audit_point_for_region("top-left", &point_index));
+    assert(point_index == 0);
+    assert(lumo_shell_touch_audit_point_for_region("right-center", &point_index));
+    assert(point_index == 4);
+    assert(!lumo_shell_touch_audit_point_for_region("center", &point_index));
+
+    assert(lumo_shell_touch_audit_point_rect(1280, 800, 0, &rect));
+    assert(rect.x >= 0);
+    assert(rect.y >= 0);
+    assert(rect.width > 0);
+    assert(rect.height > 0);
+
+    assert(lumo_shell_touch_audit_point_rect(1280, 800, 7, &rect));
+    assert(rect.x + rect.width <= 1280);
+    assert(rect.y + rect.height <= 800);
 }
 
 static void test_touch_debug_names(void) {
@@ -265,6 +301,7 @@ int main(void) {
     test_launcher_hitboxes();
     test_osk_hitboxes();
     test_gesture_hitbox();
+    test_touch_audit_layout();
     test_surface_local_coords();
     puts("lumo shell tests passed");
     return 0;

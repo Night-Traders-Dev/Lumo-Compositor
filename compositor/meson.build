@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.33',
+  version: '0.0.34',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -102,6 +102,7 @@ lumo_sources = files(
   'src/core/compositor.c',
   'src/core/input.c',
   'src/core/output.c',
+  'src/core/touch_audit.c',
   'src/protocol/protocol.c',
   'src/shell/shell_launch.c',
   'src/shell/shell_osk.c',

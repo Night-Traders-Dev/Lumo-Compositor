@@ -81,6 +81,11 @@ struct lumo_shell_client {
     bool compositor_keyboard_resize_pending;
     bool compositor_keyboard_resize_acked;
     uint32_t compositor_keyboard_resize_serial;
+    bool compositor_touch_audit_active;
+    bool compositor_touch_audit_saved;
+    uint32_t compositor_touch_audit_step;
+    uint32_t compositor_touch_audit_completed_mask;
+    char compositor_touch_audit_profile[128];
     bool touch_debug_seen;
     bool touch_debug_active;
     double touch_debug_x;
@@ -539,6 +544,130 @@ static double lumo_shell_client_animation_value(
     return lumo_clamp_unit(value);
 }
 
+static void lumo_draw_touch_audit(
+    uint32_t *pixels,
+    uint32_t width,
+    uint32_t height,
+    const struct lumo_shell_client *client
+) {
+    const uint32_t shell_top = lumo_argb(0xF4, 0x12, 0x18, 0x24);
+    const uint32_t shell_bottom = lumo_argb(0xF8, 0x07, 0x0B, 0x12);
+    const uint32_t title_color = lumo_argb(0xFF, 0xF3, 0xF7, 0xFB);
+    const uint32_t subtitle_color = lumo_argb(0xFF, 0x95, 0xAA, 0xBC);
+    const uint32_t pending_fill = lumo_argb(0xD8, 0x12, 0x18, 0x24);
+    const uint32_t pending_stroke = lumo_argb(0xFF, 0x2F, 0x43, 0x56);
+    const uint32_t current_fill = lumo_argb(0xFF, 0x0E, 0x31, 0x3A);
+    const uint32_t current_stroke = lumo_argb(0xFF, 0x6A, 0xD4, 0xFF);
+    const uint32_t done_fill = lumo_argb(0xFF, 0x12, 0x34, 0x2A);
+    const uint32_t done_stroke = lumo_argb(0xFF, 0x70, 0xE3, 0x97);
+    const uint32_t debug_dot = lumo_argb(0xE0, 0xFF, 0xB8, 0x4D);
+    struct lumo_rect full_rect = {
+        .x = 0,
+        .y = 0,
+        .width = (int)width,
+        .height = (int)height,
+    };
+    struct lumo_rect badge_rect = {
+        .x = 28,
+        .y = 22,
+        .width = 176,
+        .height = 28,
+    };
+    struct lumo_rect status_rect = {
+        .x = 28,
+        .y = 58,
+        .width = (int)width - 56,
+        .height = 28,
+    };
+    struct lumo_rect footer_rect = {
+        .x = 28,
+        .y = (int)height - 52,
+        .width = (int)width - 56,
+        .height = 22,
+    };
+    const char *expected_label = NULL;
+    char progress_text[64];
+    size_t count;
+
+    if (client == NULL) {
+        return;
+    }
+
+    lumo_fill_vertical_gradient(pixels, width, height, &full_rect,
+        shell_top, shell_bottom);
+    lumo_fill_rounded_rect(pixels, width, height, &badge_rect, 14,
+        lumo_argb(0xFF, 0x0C, 0x12, 0x1D));
+    lumo_draw_text(pixels, width, height, badge_rect.x + 16,
+        badge_rect.y + 8, 2, subtitle_color, "TOUCH AUDIT");
+    lumo_draw_text(pixels, width, height, 28, 96, 4, title_color,
+        "Calibrate The Edges");
+
+    count = lumo_shell_touch_audit_point_count();
+    if (client->compositor_touch_audit_step < count) {
+        expected_label = lumo_shell_touch_audit_point_label(
+            client->compositor_touch_audit_step);
+    }
+    snprintf(progress_text, sizeof(progress_text), "STEP %u / %zu  %s",
+        client->compositor_touch_audit_step + 1u,
+        count,
+        expected_label != NULL ? expected_label : "COMPLETE");
+    lumo_draw_text(pixels, width, height, status_rect.x, status_rect.y, 2,
+        subtitle_color, progress_text);
+
+    for (uint32_t point_index = 0; point_index < count; point_index++) {
+        struct lumo_rect point_rect = {0};
+        struct lumo_rect label_rect;
+        bool completed =
+            (client->compositor_touch_audit_completed_mask & (1u << point_index)) != 0;
+        bool current = point_index == client->compositor_touch_audit_step;
+        uint32_t fill = pending_fill;
+        uint32_t stroke = pending_stroke;
+        const char *label = lumo_shell_touch_audit_point_label(point_index);
+
+        if (!lumo_shell_touch_audit_point_rect(width, height, point_index,
+                &point_rect)) {
+            continue;
+        }
+
+        if (completed) {
+            fill = done_fill;
+            stroke = done_stroke;
+        } else if (current) {
+            fill = current_fill;
+            stroke = current_stroke;
+        }
+
+        lumo_fill_rounded_rect(pixels, width, height, &point_rect, 18, fill);
+        lumo_draw_outline(pixels, width, height, &point_rect, 2, stroke);
+
+        label_rect = point_rect;
+        lumo_draw_text_centered(pixels, width, height, &label_rect,
+            label != NULL && strlen(label) > 8 ? 2 : 3,
+            title_color, label != NULL ? label : "POINT");
+    }
+
+    if (client->touch_debug_seen) {
+        struct lumo_rect dot_rect = {
+            .x = (int)client->touch_debug_x - 14,
+            .y = (int)client->touch_debug_y - 14,
+            .width = 28,
+            .height = 28,
+        };
+
+        lumo_fill_rounded_rect(pixels, width, height, &dot_rect, 14, debug_dot);
+    }
+
+    if (client->compositor_touch_audit_saved &&
+            client->compositor_touch_audit_profile[0] != '\0' &&
+            strcmp(client->compositor_touch_audit_profile, "none") != 0) {
+        lumo_draw_text(pixels, width, height, footer_rect.x, footer_rect.y, 2,
+            subtitle_color, client->compositor_touch_audit_profile);
+    } else {
+        lumo_draw_text(pixels, width, height, footer_rect.x, footer_rect.y, 2,
+            subtitle_color, "Tap the glowing target and move clockwise.");
+    }
+}
+
 static void lumo_draw_launcher(
     uint32_t *pixels,
     uint32_t width,
@@ -567,8 +696,12 @@ static void lumo_draw_launcher(
     size_t tile_count = lumo_shell_launcher_tile_count();
     int slide_y;
 
-    (void)client;
     if (visibility <= 0.0) {
+        return;
+    }
+
+    if (client != NULL && client->compositor_touch_audit_active) {
+        lumo_draw_touch_audit(pixels, width, height, client);
         return;
     }
 
@@ -919,7 +1052,8 @@ static bool lumo_shell_client_should_be_visible(
 
     switch (client->mode) {
     case LUMO_SHELL_MODE_LAUNCHER:
-        return client->compositor_launcher_visible;
+        return client->compositor_launcher_visible ||
+            client->compositor_touch_audit_active;
     case LUMO_SHELL_MODE_OSK:
         return client->compositor_keyboard_visible;
     case LUMO_SHELL_MODE_GESTURE:
@@ -1022,6 +1156,48 @@ static bool lumo_shell_client_apply_config(
         keyboard_interactive);
     wl_surface_commit(client->surface);
     return true;
+}
+
+static void lumo_shell_client_update_input_region(
+    struct lumo_shell_client *client,
+    uint32_t width,
+    uint32_t height
+) {
+    struct wl_region *region;
+    struct lumo_rect rect = {0};
+
+    if (client == NULL || client->surface == NULL || client->compositor == NULL ||
+            width == 0 || height == 0) {
+        return;
+    }
+
+    region = wl_compositor_create_region(client->compositor);
+    if (region == NULL) {
+        return;
+    }
+
+    switch (client->mode) {
+    case LUMO_SHELL_MODE_LAUNCHER:
+        if (!client->compositor_touch_audit_active &&
+                client->compositor_launcher_visible &&
+                lumo_shell_launcher_panel_rect(width, height, &rect)) {
+            wl_region_add(region, rect.x, rect.y, rect.width, rect.height);
+        }
+        break;
+    case LUMO_SHELL_MODE_OSK:
+        wl_region_add(region, 0, 0, (int)width, (int)height);
+        break;
+    case LUMO_SHELL_MODE_GESTURE:
+        if (lumo_shell_gesture_handle_rect(width, height, &rect)) {
+            wl_region_add(region, rect.x, rect.y, rect.width, rect.height);
+        }
+        break;
+    default:
+        break;
+    }
+
+    wl_surface_set_input_region(client->surface, region);
+    wl_region_destroy(region);
 }
 
 static void lumo_shell_client_finish_hide_if_needed(
@@ -1221,6 +1397,7 @@ static bool lumo_shell_draw_buffer(
 
     active_target = client->active_target_valid ? &client->active_target : NULL;
     lumo_render_surface(client, buffer->data, width, height, active_target);
+    lumo_shell_client_update_input_region(client, width, height);
     wl_surface_attach(client->surface, buffer->buffer, 0, 0);
     wl_surface_damage_buffer(client->surface, 0, 0, (int)width, (int)height);
     wl_surface_commit(client->surface);
@@ -1501,6 +1678,43 @@ static void lumo_shell_client_apply_state_frame(
         client->compositor_keyboard_resize_serial = timeout_value;
         fprintf(stderr, "lumo-shell: keyboard resize serial=%u\n",
             timeout_value);
+        changed = true;
+    }
+
+    if (lumo_shell_protocol_frame_get_bool(frame, "touch_audit_active",
+            &bool_value) &&
+            client->compositor_touch_audit_active != bool_value) {
+        client->compositor_touch_audit_active = bool_value;
+        fprintf(stderr, "lumo-shell: touch audit active=%s\n",
+            bool_value ? "true" : "false");
+        changed = true;
+    }
+
+    if (lumo_shell_protocol_frame_get_bool(frame, "touch_audit_saved",
+            &bool_value) &&
+            client->compositor_touch_audit_saved != bool_value) {
+        client->compositor_touch_audit_saved = bool_value;
+        changed = true;
+    }
+
+    if (lumo_shell_protocol_frame_get_u32(frame, "touch_audit_step",
+            &timeout_value) &&
+            client->compositor_touch_audit_step != timeout_value) {
+        client->compositor_touch_audit_step = timeout_value;
+        changed = true;
+    }
+
+    if (lumo_shell_protocol_frame_get_u32(frame, "touch_audit_completed_mask",
+            &timeout_value) &&
+            client->compositor_touch_audit_completed_mask != timeout_value) {
+        client->compositor_touch_audit_completed_mask = timeout_value;
+        changed = true;
+    }
+
+    if (lumo_shell_protocol_frame_get(frame, "touch_audit_profile", &value) &&
+            strcmp(client->compositor_touch_audit_profile, value) != 0) {
+        snprintf(client->compositor_touch_audit_profile,
+            sizeof(client->compositor_touch_audit_profile), "%s", value);
         changed = true;
     }
 

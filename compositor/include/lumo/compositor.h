@@ -56,6 +56,14 @@ enum lumo_backend_mode {
     LUMO_BACKEND_X11,
 };
 
+enum lumo_edge_zone {
+    LUMO_EDGE_NONE = 0,
+    LUMO_EDGE_TOP,
+    LUMO_EDGE_LEFT,
+    LUMO_EDGE_RIGHT,
+    LUMO_EDGE_BOTTOM,
+};
+
 enum lumo_hitbox_kind {
     LUMO_HITBOX_CUSTOM = 0,
     LUMO_HITBOX_LAUNCHER_TILE,
@@ -242,6 +250,71 @@ static inline const char *lumo_backend_mode_name(
     default:
         return "auto";
     }
+}
+
+static inline const char *lumo_edge_zone_name(enum lumo_edge_zone zone) {
+    switch (zone) {
+    case LUMO_EDGE_TOP:
+        return "top";
+    case LUMO_EDGE_LEFT:
+        return "left";
+    case LUMO_EDGE_RIGHT:
+        return "right";
+    case LUMO_EDGE_BOTTOM:
+        return "bottom";
+    case LUMO_EDGE_NONE:
+    default:
+        return "none";
+    }
+}
+
+static inline enum lumo_edge_zone lumo_edge_zone_in_box(
+    const struct wlr_box *box,
+    double lx,
+    double ly,
+    double threshold
+) {
+    double top_dist;
+    double left_dist;
+    double right_dist;
+    double bottom_dist;
+    double best;
+    enum lumo_edge_zone zone = LUMO_EDGE_NONE;
+
+    if (box == NULL || box->width <= 0 || box->height <= 0) {
+        return LUMO_EDGE_NONE;
+    }
+    if (lx < box->x || ly < box->y ||
+            lx >= box->x + box->width ||
+            ly >= box->y + box->height) {
+        return LUMO_EDGE_NONE;
+    }
+
+    best = threshold > 0.0 ? threshold : 24.0;
+    top_dist = ly - box->y;
+    if (top_dist >= 0.0 && top_dist <= best) {
+        best = top_dist;
+        zone = LUMO_EDGE_TOP;
+    }
+
+    left_dist = lx - box->x;
+    if (left_dist >= 0.0 && left_dist < best) {
+        best = left_dist;
+        zone = LUMO_EDGE_LEFT;
+    }
+
+    right_dist = box->x + box->width - lx;
+    if (right_dist >= 0.0 && right_dist < best) {
+        best = right_dist;
+        zone = LUMO_EDGE_RIGHT;
+    }
+
+    bottom_dist = box->y + box->height - ly;
+    if (bottom_dist >= 0.0 && bottom_dist < best) {
+        zone = LUMO_EDGE_BOTTOM;
+    }
+
+    return zone;
 }
 
 static inline bool lumo_backend_mode_parse(
@@ -481,6 +554,31 @@ static inline bool lumo_hitbox_is_shell_gesture(
         strcmp(hitbox->name, "shell-gesture") == 0;
 }
 
+static inline enum lumo_edge_zone lumo_hitbox_edge_zone(
+    const struct lumo_hitbox *hitbox
+) {
+    if (hitbox == NULL || hitbox->kind != LUMO_HITBOX_EDGE_GESTURE ||
+            hitbox->name == NULL) {
+        return LUMO_EDGE_NONE;
+    }
+
+    if (strcmp(hitbox->name, "shell-gesture") == 0 ||
+            strcmp(hitbox->name, "shell-edge-bottom") == 0) {
+        return LUMO_EDGE_BOTTOM;
+    }
+    if (strcmp(hitbox->name, "shell-edge-top") == 0) {
+        return LUMO_EDGE_TOP;
+    }
+    if (strcmp(hitbox->name, "shell-edge-left") == 0) {
+        return LUMO_EDGE_LEFT;
+    }
+    if (strcmp(hitbox->name, "shell-edge-right") == 0) {
+        return LUMO_EDGE_RIGHT;
+    }
+
+    return LUMO_EDGE_NONE;
+}
+
 enum lumo_touch_target_kind {
     LUMO_TOUCH_TARGET_NONE = 0,
     LUMO_TOUCH_TARGET_HITBOX,
@@ -621,6 +719,7 @@ struct lumo_touch_point {
     bool delivered;
     bool captured;
     bool gesture_triggered;
+    enum lumo_edge_zone capture_edge;
     struct wl_list samples;
 };
 
@@ -630,9 +729,17 @@ static inline bool lumo_touch_point_is_launcher_capture(
     return point != NULL &&
         point->captured &&
         !point->delivered &&
-        (point->hitbox == NULL ||
-            point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE);
+        (point->capture_edge == LUMO_EDGE_BOTTOM ||
+            point->capture_edge == LUMO_EDGE_RIGHT);
 }
+
+struct lumo_touch_audit_sample {
+    bool captured;
+    double raw_x_pct;
+    double raw_y_pct;
+    double logical_x_pct;
+    double logical_y_pct;
+};
 
 struct lumo_compositor {
     const struct lumo_compositor_config *config;
@@ -674,6 +781,15 @@ struct lumo_compositor {
     uint32_t keyboard_resize_serial;
     bool keyboard_resize_pending;
     bool keyboard_resize_acked;
+    bool touch_audit_active;
+    bool touch_audit_saved;
+    uint32_t touch_audit_step;
+    uint32_t touch_audit_completed_mask;
+    char touch_audit_profile_name[128];
+    char touch_audit_device_name[128];
+    uint32_t touch_audit_device_vendor;
+    uint32_t touch_audit_device_product;
+    struct lumo_touch_audit_sample touch_audit_samples[8];
     bool touch_debug_active;
     int32_t touch_debug_id;
     double touch_debug_lx;
@@ -741,6 +857,18 @@ void lumo_input_stop(struct lumo_compositor *compositor);
 void lumo_input_set_rotation(
     struct lumo_compositor *compositor,
     enum lumo_rotation rotation
+);
+void lumo_touch_audit_set_active(
+    struct lumo_compositor *compositor,
+    bool active
+);
+void lumo_touch_audit_note_touch(
+    struct lumo_compositor *compositor,
+    const struct lumo_output *output,
+    const struct wlr_input_device *device,
+    const struct lumo_touch_point *point,
+    double raw_x,
+    double raw_y
 );
 
 int lumo_output_start(struct lumo_compositor *compositor);
@@ -869,6 +997,7 @@ void lumo_shell_state_broadcast_rotation(
     enum lumo_rotation rotation
 );
 void lumo_shell_state_broadcast_touch_debug(struct lumo_compositor *compositor);
+void lumo_shell_state_broadcast_touch_audit(struct lumo_compositor *compositor);
 
 int lumo_xwayland_start(struct lumo_compositor *compositor);
 void lumo_xwayland_stop(struct lumo_compositor *compositor);
