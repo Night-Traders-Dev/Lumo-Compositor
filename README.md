@@ -74,6 +74,13 @@ On the OrangePi RV2 running Ubuntu 24.04 riscv64, `--backend drm` is the
 normal direct-to-display path. Use `--backend headless`, `--backend wayland`,
 or `--backend x11` when you want to debug nested sessions or isolate backend
 bring-up issues.
+`--backend drm` expects a local VT or other seat-managed session. SSH and other
+non-seat shells are fine for `headless`, but they will not bring up a DRM seat.
+When you leave the compositor in `--backend auto` and launch it from SSH or
+another non-VT shell, Lumo now picks the safest available nested backend
+instead of waiting on DRM to time out.
+SSH sessions fall back to `headless` first; local GUI shells can still steer
+`auto` toward nested `wayland` or `x11` when those are available.
 Avoid launching `lumo-shell` directly with `sudo`; the compositor owns shell
 startup and the shell expects a normal Wayland runtime.
 
@@ -87,6 +94,7 @@ Lumo is being built around a few core ideas:
 - xWayland support is optional at build time so minimal images can omit it when needed
 - the repo-root `build.sh` script keeps the common Meson options in one place
 - the runtime backend mode can be forced for OrangePi RV2 bring-up and nested debugging
+- auto backend selection now falls back to nested or headless modes when no local VT is available
 - touch hitboxes and OSK behavior need to work well on a compact display, not a desktop monitor
 - the shared shell geometry helper keeps compositor hitboxes and shell surfaces aligned
 

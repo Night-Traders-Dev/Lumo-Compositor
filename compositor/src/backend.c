@@ -2,9 +2,44 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <wlr/backend/session.h>
 
+static const char *lumo_backend_controlling_tty(void) {
+    const char *tty_name = ttyname(STDIN_FILENO);
+
+    if (tty_name != NULL) {
+        return tty_name;
+    }
+
+    tty_name = ttyname(STDERR_FILENO);
+    if (tty_name != NULL) {
+        return tty_name;
+    }
+
+    tty_name = ttyname(STDOUT_FILENO);
+    if (tty_name != NULL) {
+        return tty_name;
+    }
+
+    return NULL;
+}
+
+static enum lumo_backend_mode lumo_backend_auto_selection(void) {
+    const char *tty_name = lumo_backend_controlling_tty();
+
+    return lumo_backend_auto_mode_for_session(
+        tty_name,
+        getenv("SSH_CONNECTION"),
+        getenv("SSH_TTY"),
+        getenv("WAYLAND_DISPLAY"),
+        getenv("DISPLAY")
+    );
+}
+
 int lumo_backend_start(struct lumo_compositor *compositor) {
+    enum lumo_backend_mode selected_mode = LUMO_BACKEND_AUTO;
+
     if (compositor == NULL || compositor->display == NULL) {
         return -1;
     }
@@ -13,6 +48,15 @@ int lumo_backend_start(struct lumo_compositor *compositor) {
         if (compositor->config->backend_mode != LUMO_BACKEND_AUTO) {
             const char *backend_name =
                 lumo_backend_mode_name(compositor->config->backend_mode);
+            const char *tty_name = lumo_backend_controlling_tty();
+
+            if (compositor->config->backend_mode == LUMO_BACKEND_DRM &&
+                    !lumo_tty_name_looks_like_vt(tty_name)) {
+                wlr_log(WLR_ERROR,
+                    "backend: DRM mode requires a local VT (current tty=%s); use --backend headless, --backend wayland, or --backend x11 for remote debugging",
+                    tty_name != NULL ? tty_name : "none");
+                return -1;
+            }
 
             if (setenv("WLR_BACKENDS", backend_name, 1) != 0) {
                 wlr_log_errno(WLR_ERROR,
@@ -26,7 +70,23 @@ int lumo_backend_start(struct lumo_compositor *compositor) {
             if (override != NULL && override[0] != '\0') {
                 wlr_log(WLR_INFO, "backend: honoring WLR_BACKENDS=%s", override);
             } else {
-                wlr_log(WLR_INFO, "backend: using wlroots backend autocreate");
+                selected_mode = lumo_backend_auto_selection();
+                if (selected_mode != LUMO_BACKEND_AUTO) {
+                    const char *backend_name =
+                        lumo_backend_mode_name(selected_mode);
+
+                    if (setenv("WLR_BACKENDS", backend_name, 1) != 0) {
+                        wlr_log_errno(WLR_ERROR,
+                            "backend: failed to set auto-selected WLR_BACKENDS=%s",
+                            backend_name);
+                        return -1;
+                    }
+                    wlr_log(WLR_INFO,
+                        "backend: auto-selected WLR_BACKENDS=%s for this session",
+                        backend_name);
+                } else {
+                    wlr_log(WLR_INFO, "backend: using wlroots backend autocreate");
+                }
             }
         }
     }
@@ -40,11 +100,11 @@ int lumo_backend_start(struct lumo_compositor *compositor) {
         if (compositor->config != NULL &&
                 compositor->config->backend_mode == LUMO_BACKEND_DRM) {
             wlr_log(WLR_ERROR,
-                "backend: DRM mode failed; verify wlroots DRM support and /dev/dri access");
+                "backend: DRM mode failed; verify wlroots DRM support, /dev/dri access, and that you are running from a local VT or seat-managed session");
         } else if (compositor->config != NULL &&
                 compositor->config->backend_mode == LUMO_BACKEND_AUTO) {
             wlr_log(WLR_ERROR,
-                "backend: try --backend drm, --backend wayland, --backend x11, or --backend headless for a clearer failure mode");
+                "backend: try --backend drm from a local VT, or --backend wayland, --backend x11, or --backend headless for nested or remote debugging");
         }
         return -1;
     }

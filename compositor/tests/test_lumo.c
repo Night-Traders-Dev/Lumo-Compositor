@@ -45,6 +45,40 @@ static void test_backend_helpers(void) {
     assert(lumo_backend_mode_parse("x11", &mode));
     assert(mode == LUMO_BACKEND_X11);
     assert(!lumo_backend_mode_parse("bogus", &mode));
+    assert(lumo_tty_name_looks_like_vt("/dev/tty1"));
+    assert(lumo_tty_name_looks_like_vt("/dev/tty12"));
+    assert(!lumo_tty_name_looks_like_vt("/dev/pts/0"));
+    assert(!lumo_tty_name_looks_like_vt("/dev/ttyS0"));
+    assert(lumo_backend_auto_mode_for_session(
+        "/dev/tty1",
+        NULL,
+        NULL,
+        NULL,
+        NULL) == LUMO_BACKEND_AUTO);
+    assert(lumo_backend_auto_mode_for_session(
+        "/dev/pts/0",
+        "localhost",
+        "/dev/pts/0",
+        "wayland-1",
+        NULL) == LUMO_BACKEND_HEADLESS);
+    assert(lumo_backend_auto_mode_for_session(
+        "/dev/pts/0",
+        NULL,
+        NULL,
+        "wayland-1",
+        NULL) == LUMO_BACKEND_WAYLAND);
+    assert(lumo_backend_auto_mode_for_session(
+        "/dev/pts/0",
+        NULL,
+        NULL,
+        NULL,
+        NULL) == LUMO_BACKEND_HEADLESS);
+    assert(lumo_backend_auto_mode_for_session(
+        "/dev/pts/0",
+        NULL,
+        NULL,
+        NULL,
+        ":1") == LUMO_BACKEND_X11);
 }
 
 struct lumo_shell_protocol_capture {

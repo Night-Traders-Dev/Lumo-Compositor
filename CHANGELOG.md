@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.18] - 2026-03-27
+- Added a runtime preflight for DRM startup so explicit `--backend drm` now fails fast when the compositor is not on a local VT.
+- Taught `--backend auto` to prefer nested or headless backends when the session is clearly not a local VT, which makes SSH debugging on the OrangePi RV2 much easier.
+- Added unit coverage for the VT-detection and auto-backend selection helpers.
+- Updated the README and compositor notes to document the new session-aware backend behavior.
+
+## [0.0.17] - 2026-03-27
+- Clarified DRM startup failures so the compositor now points at local VT and seat requirements as well as wlroots access.
+- Updated the README and compositor notes to explain why SSH sessions should use nested or headless backends instead of DRM.
+- Kept the OrangePi RV2 bring-up flow and backend selector documented together.
+
 ## [0.0.16] - 2026-03-27
 - Added a runtime `--backend` mode so the compositor can be forced into DRM, nested Wayland, X11, or headless debug paths.
 - Added backend helper parsing tests and clearer failure logs for backend bring-up issues.

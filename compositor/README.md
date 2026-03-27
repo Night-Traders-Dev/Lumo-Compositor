@@ -47,3 +47,11 @@ Lumo can be launched with an explicit backend mode:
 The OrangePi RV2 on Ubuntu 24.04 riscv64 should normally use `drm` for the
 physical touchscreen. `headless`, `wayland`, and `x11` are there to make
 debugging and nested bring-up easier when we want to isolate backend problems.
+`drm` needs a local VT or seat-managed login. SSH is fine for inspecting logs,
+but it is only a good fit when you are intentionally using `headless` or another
+nested backend.
+If you leave the backend in `auto` from SSH or any other non-VT shell, Lumo
+now prefers the safest available nested or headless backend instead of waiting
+for the DRM path to time out.
+SSH shells fall back to `headless` first; a local GUI session can still steer
+`auto` toward nested `wayland` or `x11` when that makes more sense.

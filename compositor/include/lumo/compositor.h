@@ -1,6 +1,7 @@
 #ifndef LUMO_COMPOSITOR_H
 #define LUMO_COMPOSITOR_H
 
+#include <ctype.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
@@ -218,6 +219,55 @@ static inline bool lumo_backend_mode_parse(
     }
 
     return false;
+}
+
+static inline bool lumo_tty_name_looks_like_vt(const char *tty_name) {
+    const char *suffix = NULL;
+
+    if (tty_name == NULL) {
+        return false;
+    }
+    if (strncmp(tty_name, "/dev/tty", 8) != 0) {
+        return false;
+    }
+
+    suffix = tty_name + 8;
+    if (*suffix == '\0') {
+        return false;
+    }
+
+    for (; *suffix != '\0'; ++suffix) {
+        if (!isdigit((unsigned char)*suffix)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static inline enum lumo_backend_mode lumo_backend_auto_mode_for_session(
+    const char *tty_name,
+    const char *ssh_connection,
+    const char *ssh_tty,
+    const char *wayland_display,
+    const char *display
+) {
+    if (lumo_tty_name_looks_like_vt(tty_name)) {
+        return LUMO_BACKEND_AUTO;
+    }
+
+    if ((ssh_connection != NULL && ssh_connection[0] != '\0') ||
+            (ssh_tty != NULL && ssh_tty[0] != '\0')) {
+        return LUMO_BACKEND_HEADLESS;
+    }
+    if (wayland_display != NULL && wayland_display[0] != '\0') {
+        return LUMO_BACKEND_WAYLAND;
+    }
+    if (display != NULL && display[0] != '\0') {
+        return LUMO_BACKEND_X11;
+    }
+
+    return LUMO_BACKEND_HEADLESS;
 }
 
 static inline const char *lumo_scrim_state_name(enum lumo_scrim_state state) {
