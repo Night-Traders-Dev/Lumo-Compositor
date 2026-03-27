@@ -57,6 +57,10 @@ void lumo_app_render_notes(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels, uint32_t width, uint32_t height
 );
+void lumo_app_render_terminal(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
 void lumo_app_render_stub(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels, uint32_t width, uint32_t height

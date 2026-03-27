@@ -1567,8 +1567,7 @@ static void lumo_input_touch_down(
         return;
     }
 
-    wlr_log(WLR_ERROR, "TOUCH raw=%.3f,%.3f id=%d", event->x, event->y,
-        event->touch_id);
+    /* touch event received */
 
     point = calloc(1, sizeof(*point));
     if (point == NULL) {

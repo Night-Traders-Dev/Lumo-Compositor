@@ -8,7 +8,7 @@ static const uint32_t lumo_shell_launcher_columns = 3;
 static const uint32_t lumo_shell_launcher_rows = 4;
 static const char *const lumo_shell_launcher_labels[] = {
     "PHONE",
-    "MESSAGES",
+    "TERMINAL",
     "BROWSER",
     "CAMERA",
     "MAPS",

@@ -146,6 +146,7 @@ app_sources = files(
   'src/apps/app_files.c',
   'src/apps/app_settings.c',
   'src/apps/app_notes.c',
+  'src/apps/app_terminal.c',
   'src/apps/app_client.c',
 ) + xdg_client_protocol_files
 
@@ -248,6 +249,7 @@ app_test_exe = executable(
     'src/apps/app_files.c',
     'src/apps/app_settings.c',
     'src/apps/app_notes.c',
+    'src/apps/app_terminal.c',
     'tests/apps/test_app.c',
   ),
   include_directories: lumo_inc,

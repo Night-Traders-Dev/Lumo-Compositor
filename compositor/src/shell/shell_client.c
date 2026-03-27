@@ -2719,25 +2719,15 @@ static void lumo_shell_touch_handle_down(
     client->active_touch_id = id;
     client->pointer_x = wl_fixed_to_double(x);
     client->pointer_y = wl_fixed_to_double(y);
-    lumo_shell_client_note_target(client, client->pointer_x,
-        client->pointer_y);
-    {
-        FILE *tf = fopen("/home/orangepi/lumo-touch.log", "a");
-        if (tf != NULL) {
-            fprintf(tf,
-                "SHELL DOWN mode=%s x=%.1f y=%.1f target=%s "
-                "qs=%d tp=%d lv=%d size=%ux%u\n",
-                lumo_shell_mode_name(client->mode),
-                client->pointer_x, client->pointer_y,
-                client->active_target_valid
-                    ? lumo_shell_target_kind_name(client->active_target.kind)
-                    : "none",
-                client->compositor_quick_settings_visible,
-                client->compositor_time_panel_visible,
-                client->compositor_launcher_visible,
-                client->configured_width, client->configured_height);
-            fclose(tf);
-        }
+
+    if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
+            !client->compositor_launcher_visible &&
+            (client->compositor_quick_settings_visible ||
+                client->compositor_time_panel_visible)) {
+        lumo_shell_client_clear_active_target(client);
+    } else {
+        lumo_shell_client_note_target(client, client->pointer_x,
+            client->pointer_y);
     }
 }
 
@@ -2764,25 +2754,7 @@ static void lumo_shell_touch_handle_up(
     {
         int btn = lumo_shell_status_button_hit(client,
             client->pointer_x, client->pointer_y);
-        {
-            FILE *tf = fopen("/home/orangepi/lumo-touch.log", "a");
-            if (tf != NULL) {
-                fprintf(tf,
-                    "SHELL UP mode=%s x=%.1f y=%.1f btn=%d "
-                    "target=%s qs=%d tp=%d lv=%d\n",
-                    lumo_shell_mode_name(client->mode),
-                    client->pointer_x, client->pointer_y, btn,
-                    client->active_target_valid
-                        ? lumo_shell_target_kind_name(client->active_target.kind)
-                        : "none",
-                    client->compositor_quick_settings_visible,
-                    client->compositor_time_panel_visible,
-                    client->compositor_launcher_visible);
-                fclose(tf);
-            }
-        }
         if (btn == 1) {
-            fprintf(stderr, "lumo-shell: -> RELOAD\n");
             lumo_shell_client_send_reload(client);
             return;
         }
@@ -2793,9 +2765,16 @@ static void lumo_shell_touch_handle_up(
         }
     }
 
-    lumo_shell_client_activate_target(client);
-    if (!client->pointer_pressed) {
+    if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
+            !client->compositor_launcher_visible &&
+            (client->compositor_quick_settings_visible ||
+                client->compositor_time_panel_visible)) {
         lumo_shell_client_clear_active_target(client);
+    } else {
+        lumo_shell_client_activate_target(client);
+        if (!client->pointer_pressed) {
+            lumo_shell_client_clear_active_target(client);
+        }
     }
 }
 

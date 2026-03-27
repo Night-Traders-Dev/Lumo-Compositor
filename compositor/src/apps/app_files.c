@@ -6,8 +6,8 @@
 #include <sys/stat.h>
 #include <sys/statvfs.h>
 
-static const int files_row_height = 44;
-static const int files_header_height = 148;
+static const int files_row_height = 52;
+static const int files_header_height = 140;
 
 int lumo_app_files_entry_at(
     uint32_t width, uint32_t height, double x, double y
@@ -78,7 +78,7 @@ void lumo_app_render_files(
             if (count >= max_rows) { total_visible++; continue; }
 
             bool is_dir = entry->d_type == DT_DIR;
-            struct lumo_rect row_rect = {28, row_y, (int)width - 56, 40};
+            struct lumo_rect row_rect = {28, row_y, (int)width - 56, files_row_height - 4};
 
             if (selected == total_visible) {
                 lumo_app_fill_rounded_rect(pixels, width, height, &row_rect,
