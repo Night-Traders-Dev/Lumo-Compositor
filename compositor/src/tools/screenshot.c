@@ -194,8 +194,8 @@ static bool lumo_screenshot_write_png(const struct lumo_screenshot_client *clien
     for (uint32_t row_index = 0; row_index < client->capture.height; row_index++) {
         uint32_t source_row = lumo_screenshot_source_row(row_index,
             client->capture.height, client->y_invert);
-        const uint32_t *src = (const uint32_t *)((const uint8_t *)pixels +
-            (size_t)source_row * client->capture.stride);
+        const uint8_t *src = (const uint8_t *)pixels +
+            (size_t)source_row * client->capture.stride;
 
         lumo_screenshot_convert_shm_row(row,
             (size_t)client->capture.width * 3u, src, client->capture.width,

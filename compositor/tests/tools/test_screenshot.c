@@ -35,14 +35,15 @@ static void test_row_mapping(void) {
 static void test_format_support(void) {
     assert(lumo_screenshot_format_supported(WL_SHM_FORMAT_XRGB8888));
     assert(lumo_screenshot_format_supported(WL_SHM_FORMAT_XBGR8888));
+    assert(lumo_screenshot_format_supported(WL_SHM_FORMAT_BGR888));
     assert(lumo_screenshot_format_supported(WL_SHM_FORMAT_RGBA8888));
     assert(!lumo_screenshot_format_supported(0xDEADBEEFu));
 }
 
 static void test_xrgb_conversion(void) {
-    const uint32_t src[2] = {
-        0xFF112233u,
-        0xFF445566u,
+    const uint8_t src[8] = {
+        0x33, 0x22, 0x11, 0xFF,
+        0x66, 0x55, 0x44, 0xFF,
     };
     uint8_t dst[6] = {0};
 
@@ -57,14 +58,31 @@ static void test_xrgb_conversion(void) {
 }
 
 static void test_xbgr_conversion(void) {
-    const uint32_t src[2] = {
-        0xFF332211u,
-        0xFF665544u,
+    const uint8_t src[8] = {
+        0x11, 0x22, 0x33, 0xFF,
+        0x44, 0x55, 0x66, 0xFF,
     };
     uint8_t dst[6] = {0};
 
     lumo_screenshot_convert_shm_row(dst, sizeof(dst), src, 2,
         WL_SHM_FORMAT_XBGR8888);
+    assert(dst[0] == 0x11);
+    assert(dst[1] == 0x22);
+    assert(dst[2] == 0x33);
+    assert(dst[3] == 0x44);
+    assert(dst[4] == 0x55);
+    assert(dst[5] == 0x66);
+}
+
+static void test_bgr888_conversion(void) {
+    const uint8_t src[6] = {
+        0x33, 0x22, 0x11,
+        0x66, 0x55, 0x44,
+    };
+    uint8_t dst[6] = {0};
+
+    lumo_screenshot_convert_shm_row(dst, sizeof(dst), src, 2,
+        WL_SHM_FORMAT_BGR888);
     assert(dst[0] == 0x11);
     assert(dst[1] == 0x22);
     assert(dst[2] == 0x33);
@@ -80,6 +98,7 @@ int main(void) {
     test_format_support();
     test_xrgb_conversion();
     test_xbgr_conversion();
+    test_bgr888_conversion();
     puts("lumo screenshot tests passed");
     return 0;
 }

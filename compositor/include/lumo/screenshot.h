@@ -25,7 +25,7 @@ bool lumo_screenshot_format_supported(uint32_t format);
 void lumo_screenshot_convert_shm_row(
     uint8_t *dst,
     size_t dst_size,
-    const uint32_t *src,
+    const uint8_t *src,
     uint32_t width,
     uint32_t format
 );

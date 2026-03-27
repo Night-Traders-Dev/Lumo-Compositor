@@ -57,6 +57,8 @@ bool lumo_screenshot_format_supported(uint32_t format) {
     switch (format) {
     case WL_SHM_FORMAT_XRGB8888:
     case WL_SHM_FORMAT_ARGB8888:
+    case WL_SHM_FORMAT_RGB888:
+    case WL_SHM_FORMAT_BGR888:
     case WL_SHM_FORMAT_XBGR8888:
     case WL_SHM_FORMAT_ABGR8888:
     case WL_SHM_FORMAT_RGBX8888:
@@ -69,19 +71,41 @@ bool lumo_screenshot_format_supported(uint32_t format) {
     }
 }
 
+static size_t lumo_screenshot_format_stride_unit(uint32_t format) {
+    switch (format) {
+    case WL_SHM_FORMAT_RGB888:
+    case WL_SHM_FORMAT_BGR888:
+        return 3u;
+    case WL_SHM_FORMAT_XRGB8888:
+    case WL_SHM_FORMAT_ARGB8888:
+    case WL_SHM_FORMAT_XBGR8888:
+    case WL_SHM_FORMAT_ABGR8888:
+    case WL_SHM_FORMAT_RGBX8888:
+    case WL_SHM_FORMAT_RGBA8888:
+    case WL_SHM_FORMAT_BGRX8888:
+    case WL_SHM_FORMAT_BGRA8888:
+        return 4u;
+    default:
+        return 0u;
+    }
+}
+
 void lumo_screenshot_convert_shm_row(
     uint8_t *dst,
     size_t dst_size,
-    const uint32_t *src,
+    const uint8_t *src,
     uint32_t width,
     uint32_t format
 ) {
-    if (dst == NULL || src == NULL || dst_size < (size_t)width * 3u) {
+    size_t pixel_stride = lumo_screenshot_format_stride_unit(format);
+
+    if (dst == NULL || src == NULL || dst_size < (size_t)width * 3u ||
+            pixel_stride == 0u) {
         return;
     }
 
     for (uint32_t i = 0; i < width; i++) {
-        uint32_t pixel = src[i];
+        size_t offset = (size_t)i * pixel_stride;
         uint8_t red = 0;
         uint8_t green = 0;
         uint8_t blue = 0;
@@ -89,27 +113,37 @@ void lumo_screenshot_convert_shm_row(
         switch (format) {
         case WL_SHM_FORMAT_XRGB8888:
         case WL_SHM_FORMAT_ARGB8888:
-            red = (uint8_t)((pixel >> 16) & 0xFFu);
-            green = (uint8_t)((pixel >> 8) & 0xFFu);
-            blue = (uint8_t)(pixel & 0xFFu);
+            blue = src[offset + 0u];
+            green = src[offset + 1u];
+            red = src[offset + 2u];
+            break;
+        case WL_SHM_FORMAT_RGB888:
+            red = src[offset + 0u];
+            green = src[offset + 1u];
+            blue = src[offset + 2u];
+            break;
+        case WL_SHM_FORMAT_BGR888:
+            blue = src[offset + 0u];
+            green = src[offset + 1u];
+            red = src[offset + 2u];
             break;
         case WL_SHM_FORMAT_XBGR8888:
         case WL_SHM_FORMAT_ABGR8888:
-            red = (uint8_t)(pixel & 0xFFu);
-            green = (uint8_t)((pixel >> 8) & 0xFFu);
-            blue = (uint8_t)((pixel >> 16) & 0xFFu);
+            red = src[offset + 0u];
+            green = src[offset + 1u];
+            blue = src[offset + 2u];
             break;
         case WL_SHM_FORMAT_RGBX8888:
         case WL_SHM_FORMAT_RGBA8888:
-            red = (uint8_t)((pixel >> 24) & 0xFFu);
-            green = (uint8_t)((pixel >> 16) & 0xFFu);
-            blue = (uint8_t)((pixel >> 8) & 0xFFu);
+            blue = src[offset + 1u];
+            green = src[offset + 2u];
+            red = src[offset + 3u];
             break;
         case WL_SHM_FORMAT_BGRX8888:
         case WL_SHM_FORMAT_BGRA8888:
-            red = (uint8_t)((pixel >> 8) & 0xFFu);
-            green = (uint8_t)((pixel >> 16) & 0xFFu);
-            blue = (uint8_t)((pixel >> 24) & 0xFFu);
+            red = src[offset + 1u];
+            green = src[offset + 2u];
+            blue = src[offset + 3u];
             break;
         default:
             return;
