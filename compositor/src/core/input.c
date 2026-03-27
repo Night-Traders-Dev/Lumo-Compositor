@@ -838,21 +838,35 @@ static void lumo_input_touch_point_trigger_edge_action(
     point->gesture_triggered = true;
 
     switch (point->capture_edge) {
-    case LUMO_EDGE_TOP:
-        if (lumo_touch_audit_debug_gesture_enabled(compositor)) {
+    case LUMO_EDGE_TOP: {
+        struct lumo_output *top_output = lumo_input_first_output(compositor);
+        bool is_right_half = top_output != NULL &&
+            top_output->wlr_output != NULL &&
+            point->down_lx > (double)top_output->wlr_output->width / 2.0;
+
+        if (is_right_half) {
+            lumo_protocol_set_quick_settings_visible(compositor,
+                !compositor->quick_settings_visible);
+            wlr_log(WLR_INFO,
+                "input: touch %d toggled top-right quick settings at %u",
+                point->touch_id, time_msec);
+        } else if (lumo_touch_audit_debug_gesture_enabled(compositor)) {
             lumo_touch_audit_set_active(compositor,
                 !compositor->touch_audit_active);
             wlr_log(WLR_INFO, "input: touch %d toggled top-edge audit at %u",
                 point->touch_id, time_msec);
         } else {
             wlr_log(WLR_INFO,
-                "input: touch %d ignored top-edge audit gesture at %u (debug disabled)",
+                "input: touch %d ignored top-edge gesture at %u",
                 point->touch_id, time_msec);
         }
         return;
+    }
     case LUMO_EDGE_LEFT:
         if (compositor->touch_audit_active) {
             lumo_touch_audit_set_active(compositor, false);
+        } else if (compositor->quick_settings_visible) {
+            lumo_protocol_set_quick_settings_visible(compositor, false);
         } else if (compositor->launcher_visible) {
             lumo_protocol_set_launcher_visible(compositor, false);
         } else if (compositor->keyboard_visible) {
@@ -868,7 +882,9 @@ static void lumo_input_touch_point_trigger_edge_action(
         if (compositor->touch_audit_active) {
             lumo_touch_audit_set_active(compositor, false);
         }
-        if (lumo_touch_point_prefers_bottom_app_close(compositor, point)) {
+        if (lumo_touch_point_prefers_bottom_app_close(point,
+                compositor->launcher_visible,
+                compositor->touch_audit_active)) {
             closed_focused_app =
                 lumo_protocol_close_focused_app(compositor);
             if (closed_focused_app) {
@@ -1548,6 +1564,16 @@ static void lumo_input_touch_down(
         memset(&target, 0, sizeof(target));
         point->sx = 0.0;
         point->sy = 0.0;
+    }
+
+    if (compositor->quick_settings_visible &&
+            !lumo_input_target_is_shell(&target)) {
+        lumo_protocol_set_quick_settings_visible(compositor, false);
+        wlr_log(WLR_INFO,
+            "input: touch %d dismissed quick settings (outside tap)",
+            point->touch_id);
+        lumo_input_remove_touch_point(compositor, point);
+        return;
     }
 
     lumo_input_touch_sample_append(point, LUMO_TOUCH_SAMPLE_DOWN,

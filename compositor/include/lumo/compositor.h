@@ -824,6 +824,7 @@ struct lumo_compositor {
     bool running;
     bool keyboard_visible;
     bool launcher_visible;
+    bool quick_settings_visible;
     enum lumo_rotation active_rotation;
     enum lumo_scrim_state scrim_state;
     double gesture_threshold;
@@ -1001,6 +1002,10 @@ void lumo_protocol_refresh_keyboard_visibility(
     struct lumo_compositor *compositor
 );
 bool lumo_protocol_close_focused_app(struct lumo_compositor *compositor);
+void lumo_protocol_set_quick_settings_visible(
+    struct lumo_compositor *compositor,
+    bool visible
+);
 void lumo_protocol_mark_layers_dirty(struct lumo_compositor *compositor);
 bool lumo_protocol_layer_surface_commit_needs_reconfigure(
     const struct wlr_layer_surface_v1_state *previous,

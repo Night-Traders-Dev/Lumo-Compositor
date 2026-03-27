@@ -500,6 +500,10 @@ static bool lumo_shell_bridge_build_state_frame(
             compositor->keyboard_visible)) {
         return false;
     }
+    if (!lumo_shell_protocol_frame_add_bool(frame, "quick_settings_visible",
+            compositor->quick_settings_visible)) {
+        return false;
+    }
     if (!lumo_shell_protocol_frame_add_string(frame, "scrim_state",
             lumo_scrim_state_name(compositor->scrim_state))) {
         return false;

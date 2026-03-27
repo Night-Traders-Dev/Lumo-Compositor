@@ -124,6 +124,7 @@ struct lumo_compositor *lumo_compositor_create(
     compositor->running = false;
     compositor->keyboard_visible = false;
     compositor->launcher_visible = false;
+    compositor->quick_settings_visible = false;
     compositor->active_rotation = config != NULL
         ? config->initial_rotation
         : LUMO_ROTATION_NORMAL;

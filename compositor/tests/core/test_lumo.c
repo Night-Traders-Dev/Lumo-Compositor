@@ -449,7 +449,6 @@ static void test_touch_debug_helpers(void) {
 }
 
 static void test_bottom_edge_close_policy(void) {
-    struct lumo_compositor compositor = {0};
     struct lumo_hitbox gesture_hitbox = {
         .name = "shell-gesture",
         .kind = LUMO_HITBOX_EDGE_GESTURE,
@@ -467,21 +466,18 @@ static void test_bottom_edge_close_policy(void) {
         .hitbox = NULL,
     };
 
-    assert(lumo_touch_point_prefers_bottom_app_close(&compositor,
-        &bottom_system_point));
-    assert(!lumo_touch_point_prefers_bottom_app_close(&compositor,
-        &bottom_handle_point));
-    assert(!lumo_touch_point_prefers_bottom_app_close(&compositor,
-        &right_edge_point));
+    assert(lumo_touch_point_prefers_bottom_app_close(
+        &bottom_system_point, false, false));
+    assert(!lumo_touch_point_prefers_bottom_app_close(
+        &bottom_handle_point, false, false));
+    assert(!lumo_touch_point_prefers_bottom_app_close(
+        &right_edge_point, false, false));
 
-    compositor.launcher_visible = true;
-    assert(!lumo_touch_point_prefers_bottom_app_close(&compositor,
-        &bottom_system_point));
-    compositor.launcher_visible = false;
+    assert(!lumo_touch_point_prefers_bottom_app_close(
+        &bottom_system_point, true, false));
 
-    compositor.touch_audit_active = true;
-    assert(!lumo_touch_point_prefers_bottom_app_close(&compositor,
-        &bottom_system_point));
+    assert(!lumo_touch_point_prefers_bottom_app_close(
+        &bottom_system_point, false, true));
 }
 
 static void test_scene_surface_helper_ignores_rect_buffers(void) {

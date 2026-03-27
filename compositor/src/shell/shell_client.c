@@ -74,6 +74,7 @@ struct lumo_shell_client {
     double pointer_y;
     bool compositor_launcher_visible;
     bool compositor_keyboard_visible;
+    bool compositor_quick_settings_visible;
     enum lumo_shell_remote_scrim_state compositor_scrim_state;
     uint32_t compositor_rotation_degrees;
     double compositor_gesture_threshold;
@@ -957,6 +958,110 @@ static void lumo_draw_gesture(
     }
 }
 
+static void lumo_draw_wifi_bars(
+    uint32_t *pixels,
+    uint32_t width,
+    uint32_t height,
+    int x,
+    int y,
+    int bar_count,
+    uint32_t active_color,
+    uint32_t dim_color
+) {
+    int total_bars = 4;
+    int bar_gap = 3;
+    int bar_w = 4;
+
+    for (int i = 0; i < total_bars; i++) {
+        int bh = 4 + i * 4;
+        int bx = x + i * (bar_w + bar_gap);
+        int by = y + (total_bars * 4) - bh;
+        uint32_t color = i < bar_count ? active_color : dim_color;
+        lumo_fill_rect(pixels, width, height, bx, by, bar_w, bh, color);
+    }
+}
+
+static void lumo_draw_quick_settings_panel(
+    uint32_t *pixels,
+    uint32_t width,
+    uint32_t height,
+    int bar_height,
+    const struct lumo_shell_client *client
+) {
+    const uint32_t panel_bg = lumo_argb(0xF0, 0x10, 0x14, 0x1E);
+    const uint32_t panel_stroke = lumo_argb(0x60, 0x46, 0x6D, 0x89);
+    const uint32_t label_color = lumo_argb(0xFF, 0x8F, 0xA5, 0xBA);
+    const uint32_t value_color = lumo_argb(0xFF, 0xE0, 0xE8, 0xF0);
+    const uint32_t accent = lumo_argb(0xFF, 0x69, 0xD1, 0xFF);
+    const uint32_t dim = lumo_argb(0x40, 0x46, 0x6D, 0x89);
+    struct lumo_rect panel;
+    int panel_w = (int)(width * 3 / 5);
+    int panel_h = (int)(height - bar_height - 12);
+    int row_y;
+
+    (void)client;
+    if (panel_w < 200) {
+        panel_w = 200;
+    }
+    if (panel_h < 100) {
+        panel_h = 100;
+    }
+    if (panel_h > 280) {
+        panel_h = 280;
+    }
+
+    panel.x = (int)width - panel_w - 12;
+    panel.y = bar_height + 6;
+    panel.width = panel_w;
+    panel.height = panel_h;
+    lumo_fill_rounded_rect(pixels, width, height, &panel, 16, panel_bg);
+    lumo_draw_outline(pixels, width, height, &panel, 1, panel_stroke);
+
+    row_y = panel.y + 18;
+    lumo_draw_text(pixels, width, height, panel.x + 20, row_y, 2,
+        label_color, "QUICK SETTINGS");
+
+    row_y += 32;
+    lumo_fill_rect(pixels, width, height, panel.x + 16, row_y,
+        panel.width - 32, 1, dim);
+
+    {
+        int val_x = panel.x + panel.width / 3 + 10;
+
+        row_y += 14;
+        lumo_draw_text(pixels, width, height, panel.x + 20, row_y, 2,
+            label_color, "WI-FI");
+        lumo_draw_wifi_bars(pixels, width, height,
+            panel.x + panel.width - 60, row_y - 2, 3, accent, dim);
+        lumo_draw_text(pixels, width, height, val_x, row_y, 2,
+            value_color, "CONNECTED");
+
+        row_y += 30;
+        lumo_draw_text(pixels, width, height, panel.x + 20, row_y, 2,
+            label_color, "DISPLAY");
+        {
+            uint32_t rot = client != NULL ?
+                client->compositor_rotation_degrees : 0;
+            const char *rot_val = rot == 0 ? "NORMAL" :
+                rot == 90 ? "90 DEG" : rot == 180 ? "180 DEG" : "270 DEG";
+            lumo_draw_text(pixels, width, height, val_x, row_y, 2,
+                value_color, rot_val);
+        }
+
+        row_y += 30;
+        lumo_draw_text(pixels, width, height, panel.x + 20, row_y, 2,
+            label_color, "SESSION");
+        lumo_draw_text(pixels, width, height, val_x, row_y, 2,
+            value_color, "LUMO 0.0.48");
+
+        row_y += 30;
+        lumo_draw_text(pixels, width, height, panel.x + 20, row_y, 2,
+            label_color, "DEVICE");
+        lumo_draw_text(pixels, width, height, val_x, row_y, 2,
+            value_color, "ORANGEPI RV2");
+    }
+}
+
 static void lumo_draw_status(
     uint32_t *pixels,
     uint32_t width,
@@ -968,23 +1073,29 @@ static void lumo_draw_status(
     const uint32_t separator = lumo_argb(0x40, 0x46, 0x6D, 0x89);
     const uint32_t text_color = lumo_argb(0xFF, 0xC8, 0xD4, 0xE0);
     const uint32_t accent_color = lumo_argb(0xFF, 0x69, 0xD1, 0xFF);
+    const uint32_t wifi_dim = lumo_argb(0x30, 0x46, 0x6D, 0x89);
+    int bar_height;
     struct lumo_rect bar_rect;
     struct lumo_rect sep_rect;
     char time_buf[32];
     time_t now;
     struct tm tm_now;
+    bool qs_visible = client != NULL && client->compositor_quick_settings_visible;
 
-    (void)client;
+    bar_height = (int)lumo_u32_min(height, 48);
+    if (!qs_visible) {
+        bar_height = (int)height;
+    }
 
     bar_rect.x = 0;
     bar_rect.y = 0;
     bar_rect.width = (int)width;
-    bar_rect.height = (int)height;
+    bar_rect.height = bar_height;
     lumo_fill_vertical_gradient(pixels, width, height, &bar_rect,
         bar_top, bar_bottom);
 
     sep_rect.x = 0;
-    sep_rect.y = (int)height - 1;
+    sep_rect.y = bar_height - 1;
     sep_rect.width = (int)width;
     sep_rect.height = 1;
     lumo_fill_rect(pixels, width, height, sep_rect.x, sep_rect.y,
@@ -998,23 +1109,20 @@ static void lumo_draw_status(
     {
         int time_width = lumo_text_width(time_buf, 3);
         int time_x = (int)(width / 2) - time_width / 2;
-        int time_y = (int)(height / 2) - 10;
+        int time_y = bar_height / 2 - 10;
         lumo_draw_text(pixels, width, height, time_x, time_y, 3,
             text_color, time_buf);
     }
 
-    lumo_draw_text(pixels, width, height, 14, (int)(height / 2) - 7,
+    lumo_draw_text(pixels, width, height, 14, bar_height / 2 - 7,
         2, accent_color, "LUMO");
 
-    {
-        uint32_t rot = client != NULL ? client->compositor_rotation_degrees : 0;
-        const char *rot_label = rot == 0 ? "" :
-            rot == 90 ? "90" : rot == 180 ? "180" : "270";
-        if (rot_label[0] != '\0') {
-            int rx = (int)width - 60;
-            lumo_draw_text(pixels, width, height, rx, (int)(height / 2) - 5,
-                2, text_color, rot_label);
-        }
+    lumo_draw_wifi_bars(pixels, width, height,
+        (int)width - 42, bar_height / 2 - 8, 3, accent_color, wifi_dim);
+
+    if (qs_visible) {
+        lumo_draw_quick_settings_panel(pixels, width, height, bar_height,
+            client);
     }
 }
 
@@ -1201,6 +1309,25 @@ static bool lumo_shell_client_build_config(
         }
         config->width = 0;
         config->background_rgba = 0x00000000;
+        return true;
+    case LUMO_SHELL_MODE_STATUS:
+        if (!lumo_shell_surface_config_for_mode(client->mode, output_width,
+                output_height, config)) {
+            return lumo_shell_surface_bootstrap_config(client->mode, config);
+        }
+        config->width = 0;
+        config->background_rgba = 0x00000000;
+        if (client->compositor_quick_settings_visible) {
+            uint32_t qs_height = lumo_u32_min(output_height * 2 / 5, 340);
+            if (qs_height < 200) {
+                qs_height = 200;
+            }
+            config->height = qs_height;
+            config->exclusive_zone = 0;
+            config->anchor = LUMO_SHELL_ANCHOR_TOP |
+                LUMO_SHELL_ANCHOR_LEFT |
+                LUMO_SHELL_ANCHOR_RIGHT;
+        }
         return true;
     default:
         return false;
@@ -1713,6 +1840,19 @@ static void lumo_shell_client_apply_state_frame(
             fprintf(stderr, "lumo-shell: keyboard visible=%s\n",
                 bool_value ? "true" : "false");
             changed = true;
+        }
+    }
+
+    if (lumo_shell_protocol_frame_get_bool(frame, "quick_settings_visible",
+            &bool_value)) {
+        if (client->compositor_quick_settings_visible != bool_value) {
+            client->compositor_quick_settings_visible = bool_value;
+            fprintf(stderr, "lumo-shell: quick_settings visible=%s\n",
+                bool_value ? "true" : "false");
+            changed = true;
+            if (client->mode == LUMO_SHELL_MODE_STATUS) {
+                layout_changed = true;
+            }
         }
     }
 

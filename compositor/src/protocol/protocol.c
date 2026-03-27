@@ -1118,6 +1118,26 @@ void lumo_protocol_set_launcher_visible(
     lumo_protocol_mark_layers_dirty(compositor);
 }
 
+void lumo_protocol_set_quick_settings_visible(
+    struct lumo_compositor *compositor,
+    bool visible
+) {
+    if (compositor == NULL) {
+        return;
+    }
+
+    if (compositor->quick_settings_visible == visible) {
+        return;
+    }
+
+    compositor->quick_settings_visible = visible;
+    wlr_log(WLR_INFO, "protocol: quick_settings %s",
+        visible ? "visible" : "hidden");
+    lumo_shell_state_broadcast_launcher_visible(compositor,
+        compositor->launcher_visible);
+    lumo_protocol_mark_layers_dirty(compositor);
+}
+
 void lumo_protocol_set_scrim_state(
     struct lumo_compositor *compositor,
     enum lumo_scrim_state state

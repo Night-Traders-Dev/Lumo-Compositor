@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.48] - 2026-03-27
+- Added a visible clock to the status bar rendered at scale 3 in the center, with WiFi signal bars on the right side and LUMO branding on the left.
+- Added a quick settings panel triggered by dragging down from the top-right edge of the screen, showing WiFi status, display rotation, session info, and device name.
+- Wired the top-right edge zone to toggle quick settings while keeping the top-left debug audit gesture intact, and added left-edge dismiss support for closing the quick settings panel.
+
 ## [0.0.47] - 2026-03-27
 - Added a compositor-owned bottom-edge close gesture for focused applications, so an upward swipe from the bottom reserve zone now closes both native `lumo-app` clients and regular Wayland or XWayland app toplevels.
 - Kept the visible bottom gesture handle on its existing launcher-toggle path, which preserves the quick drawer open or close behavior while reserving full bottom-edge swipes for app dismissal.
