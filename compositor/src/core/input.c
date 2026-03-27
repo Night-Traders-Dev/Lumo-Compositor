@@ -126,14 +126,35 @@ static bool lumo_input_transform_touch_coords(
     }
 
     output = lumo_input_output_for_layout_coords(compositor, mapped_x, mapped_y);
-    if (output != NULL && output->wlr_output != NULL) {
+    if (output != NULL && output->wlr_output != NULL &&
+            output->wlr_output->transform != WL_OUTPUT_TRANSFORM_NORMAL) {
         wlr_output_layout_get_box(compositor->output_layout, output->wlr_output,
             &box);
-        if (!wlr_box_empty(&box) &&
-                lumo_transform_layout_coords_in_box(&box,
-                    wlr_output_transform_invert(output->wlr_output->transform),
-                    mapped_x, mapped_y, &mapped_x, &mapped_y)) {
-            /* Layout coordinates now match the compositor's logical rotation. */
+        if (!wlr_box_empty(&box)) {
+            double norm_x = (mapped_x - box.x) / box.width;
+            double norm_y = (mapped_y - box.y) / box.height;
+            double out_x = norm_x;
+            double out_y = norm_y;
+
+            switch (output->wlr_output->transform) {
+            case WL_OUTPUT_TRANSFORM_90:
+                out_x = norm_y;
+                out_y = 1.0 - norm_x;
+                break;
+            case WL_OUTPUT_TRANSFORM_180:
+                out_x = 1.0 - norm_x;
+                out_y = 1.0 - norm_y;
+                break;
+            case WL_OUTPUT_TRANSFORM_270:
+                out_x = 1.0 - norm_y;
+                out_y = norm_x;
+                break;
+            default:
+                break;
+            }
+
+            mapped_x = box.x + out_x * box.width;
+            mapped_y = box.y + out_y * box.height;
         }
     }
 
@@ -1552,6 +1573,19 @@ static void lumo_input_touch_down(
 
     lumo_input_transform_touch_coords(compositor, &event->touch->base, event->x,
         event->y, &point->lx, &point->ly, &output);
+
+    if (compositor->touch_indicator != NULL) {
+        wlr_scene_node_set_position(&compositor->touch_indicator->node,
+            (int)point->lx - 10, (int)point->ly - 10);
+        wlr_scene_node_raise_to_top(&compositor->touch_indicator->node);
+    }
+
+    wlr_log(WLR_INFO,
+        "input: touch DEBUG raw=%.3f,%.3f mapped=%.1f,%.1f transform=%d",
+        event->x, event->y, point->lx, point->ly,
+        output != NULL && output->wlr_output != NULL ?
+            (int)output->wlr_output->transform : -1);
+
     lumo_input_surface_target_at(compositor, point->lx, point->ly, &target);
     point->down_lx = point->lx;
     point->down_ly = point->ly;
@@ -1571,19 +1605,47 @@ static void lumo_input_touch_down(
         point->sy = 0.0;
     }
 
-    if ((compositor->quick_settings_visible || compositor->time_panel_visible) &&
-            !lumo_input_target_is_shell(&target)) {
+    if (compositor->quick_settings_visible || compositor->time_panel_visible) {
+        bool in_panel = false;
+
         if (compositor->quick_settings_visible) {
-            lumo_protocol_set_quick_settings_visible(compositor, false);
+            struct lumo_output *o = lumo_input_first_output(compositor);
+            if (o != NULL && o->wlr_output != NULL) {
+                int ow = 0, oh = 0;
+                wlr_output_effective_resolution(o->wlr_output, &ow, &oh);
+                int pw = ow / 2;
+                if (point->lx >= ow - pw - 8 && point->ly >= 48 &&
+                        point->ly < oh) {
+                    in_panel = true;
+                }
+            }
         }
         if (compositor->time_panel_visible) {
-            lumo_protocol_set_time_panel_visible(compositor, false);
+            struct lumo_output *o = lumo_input_first_output(compositor);
+            if (o != NULL && o->wlr_output != NULL) {
+                int ow = 0, oh = 0;
+                wlr_output_effective_resolution(o->wlr_output, &ow, &oh);
+                int pw = ow / 2;
+                if (point->lx >= 0 && point->lx <= pw + 16 &&
+                        point->ly >= 48 && point->ly < 250) {
+                    in_panel = true;
+                }
+            }
         }
-        wlr_log(WLR_INFO,
-            "input: touch %d dismissed panel (outside tap)",
-            point->touch_id);
-        lumo_input_remove_touch_point(compositor, point);
-        return;
+
+        if (!in_panel && !lumo_input_target_is_shell(&target)) {
+            if (compositor->quick_settings_visible) {
+                lumo_protocol_set_quick_settings_visible(compositor, false);
+            }
+            if (compositor->time_panel_visible) {
+                lumo_protocol_set_time_panel_visible(compositor, false);
+            }
+            wlr_log(WLR_INFO,
+                "input: touch %d dismissed panel (outside tap)",
+                point->touch_id);
+            lumo_input_remove_touch_point(compositor, point);
+            return;
+        }
     }
 
     lumo_input_touch_sample_append(point, LUMO_TOUCH_SAMPLE_DOWN,
