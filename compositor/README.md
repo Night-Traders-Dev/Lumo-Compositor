@@ -33,6 +33,17 @@ the repository root, the same flag is available through `build.sh`:
 Leave the option enabled for normal desktop-app compatibility. Disable it for
 smaller builds or environments where xWayland is not available.
 
+The build also installs a Wayland session file when you run `meson install`:
+
+```sh
+meson install -C build
+```
+
+That session entry launches `lumo-compositor --backend drm --shell lumo-shell`
+so the compositor and bundled shell clients start together after login.
+Use `sudo` for `meson install` if the install prefix points at a system
+directory.
+
 ## Runtime Backends
 
 Lumo can be launched with an explicit backend mode:

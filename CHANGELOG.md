@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.19] - 2026-03-27
+- Added an installable Wayland session entry so the login screen can start Lumo directly as a selectable session.
+- Installed the compositor and shell binaries side by side and pointed the session entry at `lumo-compositor --backend drm --shell lumo-shell`.
+- Updated the README and compositor notes to document the login-screen flow and the bundled shell startup path.
+
 ## [0.0.18] - 2026-03-27
 - Added a runtime preflight for DRM startup so explicit `--backend drm` now fails fast when the compositor is not on a local VT.
 - Taught `--backend auto` to prefer nested or headless backends when the session is clearly not a local VT, which makes SSH debugging on the OrangePi RV2 much easier.

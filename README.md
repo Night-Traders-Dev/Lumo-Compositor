@@ -55,6 +55,22 @@ meson compile -C build
 meson test -C build --print-errorlogs
 ```
 
+## Install
+
+The compositor build installs the Wayland session entry plus the compositor and
+shell binaries side by side:
+
+```sh
+meson install -C compositor/build
+```
+
+That installs `lumo.desktop` into the Wayland session directory and points the
+login screen at `lumo-compositor --backend drm --shell lumo-shell`.
+The compositor still owns shell startup, so the bundled launcher, OSK, and
+gesture surfaces come up automatically after login.
+Use `sudo` for the install step if your prefix points at a system directory
+like `/usr` or `/usr/local`.
+
 ## Run
 
 The compositor binaries land in `compositor/build/` by default:
@@ -95,6 +111,7 @@ Lumo is being built around a few core ideas:
 - the repo-root `build.sh` script keeps the common Meson options in one place
 - the runtime backend mode can be forced for OrangePi RV2 bring-up and nested debugging
 - auto backend selection now falls back to nested or headless modes when no local VT is available
+- the installed Wayland session launches the compositor, and the compositor autostarts the bundled shell clients
 - touch hitboxes and OSK behavior need to work well on a compact display, not a desktop monitor
 - the shared shell geometry helper keeps compositor hitboxes and shell surfaces aligned
 

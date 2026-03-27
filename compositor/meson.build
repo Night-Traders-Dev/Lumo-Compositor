@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.18',
+  version: '0.0.19',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -91,12 +91,20 @@ shell_sources = files(
   'src/shell_protocol.c',
 ) + shell_protocol_files
 
+session_conf = configuration_data()
+session_conf.set('lumo_bindir', join_paths(get_option('prefix'), get_option('bindir')))
+session_desktop = configure_file(
+  input: 'data/lumo.desktop.in',
+  output: 'lumo.desktop',
+  configuration: session_conf,
+)
+
 executable(
   'lumo-compositor',
   lumo_sources + files('src/main.c'),
   include_directories: lumo_inc,
   dependencies: lumo_deps,
-  install: false,
+  install: true,
 )
 
 executable(
@@ -104,7 +112,12 @@ executable(
   shell_sources,
   include_directories: lumo_inc,
   dependencies: shell_deps,
-  install: false,
+  install: true,
+)
+
+install_data(
+  session_desktop,
+  install_dir: join_paths(get_option('datadir'), 'wayland-sessions'),
 )
 
 test_sources = lumo_sources + files('tests/test_lumo.c')
