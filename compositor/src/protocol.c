@@ -527,6 +527,8 @@ int lumo_protocol_start(struct lumo_compositor *compositor) {
         return -1;
     }
 
+    lumo_xwayland_start(compositor);
+
     state->xdg_new_toplevel.notify = lumo_protocol_new_toplevel;
     wl_signal_add(&compositor->xdg_shell->events.new_toplevel,
         &state->xdg_new_toplevel);
@@ -552,6 +554,8 @@ void lumo_protocol_stop(struct lumo_compositor *compositor) {
     if (compositor == NULL || !compositor->protocol_started) {
         return;
     }
+
+    lumo_xwayland_stop(compositor);
 
     wl_list_for_each_safe(hitbox, hitbox_tmp, &compositor->hitboxes, link) {
         lumo_protocol_remove_hitbox(hitbox);

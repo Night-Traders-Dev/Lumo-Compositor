@@ -24,6 +24,7 @@
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/xwayland.h>
 #include <wlr/util/log.h>
 
 enum lumo_rotation {
@@ -299,6 +300,7 @@ struct lumo_compositor {
     struct wlr_input_method_manager_v2 *input_method_manager;
     struct wlr_virtual_keyboard_manager_v1 *virtual_keyboard_manager;
     struct wlr_pointer_gestures_v1 *pointer_gestures;
+    struct wlr_xwayland *xwayland;
     bool running;
     bool keyboard_visible;
     bool launcher_visible;
@@ -417,5 +419,8 @@ void lumo_protocol_set_keyboard_visible(
     struct lumo_compositor *compositor,
     bool visible
 );
+
+int lumo_xwayland_start(struct lumo_compositor *compositor);
+void lumo_xwayland_stop(struct lumo_compositor *compositor);
 
 #endif

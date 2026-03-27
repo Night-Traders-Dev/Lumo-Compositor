@@ -38,6 +38,7 @@ static void test_compositor_defaults(void) {
     assert(compositor->gesture_timeout_ms == 180);
     assert(compositor->scrim_state == LUMO_SCRIM_HIDDEN);
     assert(!compositor->launcher_visible);
+    assert(compositor->xwayland == NULL);
     lumo_compositor_destroy(compositor);
 }
 

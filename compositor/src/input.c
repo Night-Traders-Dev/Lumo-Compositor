@@ -1517,6 +1517,10 @@ int lumo_input_start(struct lumo_compositor *compositor) {
         return -1;
     }
 
+    if (compositor->xwayland != NULL) {
+        wlr_xwayland_set_seat(compositor->xwayland, compositor->seat);
+    }
+
     compositor->xkb_context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
     if (compositor->xkb_context == NULL) {
         wlr_log(WLR_ERROR, "input: failed to create xkb context");

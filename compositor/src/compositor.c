@@ -42,6 +42,7 @@ struct lumo_compositor *lumo_compositor_create(
     compositor->keyboard_resize_acked = true;
     compositor->input_state = NULL;
     compositor->protocol_state = NULL;
+    compositor->xwayland = NULL;
 
     wl_list_init(&compositor->outputs);
     wl_list_init(&compositor->keyboards);
