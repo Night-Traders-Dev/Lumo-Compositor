@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.42] - 2026-03-27
+- Added compositor-side shell client supervision so launcher, OSK, gesture, and status processes are reaped and respawned if they exit unexpectedly during a live session.
+- Fixed a layer-shell configure loop by only marking layer layout dirty when a commit changes actual layer-shell arrangement state, instead of on every redraw buffer commit.
+- Added regression coverage for shell mode slot mapping and the new layer-surface reconfigure policy, and removed the noisy temporary launcher apply log from the shell client.
+
 ## [0.0.41] - 2026-03-27
 - Fixed the launcher shell bootstrap so the app drawer is created as a full-screen overlay from the start instead of a hidden `1x1` layer surface.
 - Fixed the layer arrangement path so newly created layer surfaces are configured immediately instead of being skipped until after initialization.

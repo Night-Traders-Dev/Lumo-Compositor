@@ -78,6 +78,9 @@ The debug session launches `lumo-compositor --backend headless --debug --session
 lumo-headless --socket lumo-shell-headless --shell lumo-shell`.
 In both cases, the compositor still owns shell startup, so the bundled launcher,
 OSK, and gesture surfaces come up automatically after login or launch.
+If one of those bundled shell clients exits unexpectedly at runtime, the
+compositor now reaps and respawns it so the session can recover without
+throwing away the whole login.
 When the OrangePi touch-quirk install is enabled, Lumo also installs a narrow
 udev override that resets the known `hotlotus wcidtest` panel to an identity
 libinput calibration matrix. That keeps old panel-rotation scripts from

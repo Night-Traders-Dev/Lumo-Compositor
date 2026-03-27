@@ -718,6 +718,21 @@ static void test_shell_binary_resolution(void) {
     assert(strcmp(buffer, "lumo-shell") == 0);
 }
 
+static void test_shell_mode_helpers(void) {
+    size_t index = SIZE_MAX;
+
+    assert(lumo_shell_mode_count() == 4);
+    assert(lumo_shell_mode_index(LUMO_SHELL_MODE_LAUNCHER, &index));
+    assert(index == 0);
+    assert(lumo_shell_mode_index(LUMO_SHELL_MODE_OSK, &index));
+    assert(index == 1);
+    assert(lumo_shell_mode_index(LUMO_SHELL_MODE_GESTURE, &index));
+    assert(index == 2);
+    assert(lumo_shell_mode_index(LUMO_SHELL_MODE_STATUS, &index));
+    assert(index == 3);
+    assert(!lumo_shell_mode_index((enum lumo_shell_mode)99, &index));
+}
+
 static void test_shell_argv_builder(void) {
     const char *argv[4] = {0};
     size_t argc;
@@ -756,6 +771,15 @@ static void test_shell_state_helpers(void) {
     assert(strcmp(buffer, "gesture threshold=32.00\n") == 0);
 }
 
+static void test_layer_surface_commit_reconfigure_policy(void) {
+    assert(lumo_protocol_layer_surface_commit_needs_reconfigure(0, false));
+    assert(!lumo_protocol_layer_surface_commit_needs_reconfigure(0, true));
+    assert(lumo_protocol_layer_surface_commit_needs_reconfigure(
+        WLR_LAYER_SURFACE_V1_STATE_MARGIN, true));
+    assert(lumo_protocol_layer_surface_commit_needs_reconfigure(
+        WLR_LAYER_SURFACE_V1_STATE_EXCLUSIVE_ZONE, true));
+}
+
 int main(void) {
     test_backend_helpers();
     test_rotation_helpers();
@@ -776,8 +800,10 @@ int main(void) {
     test_shell_protocol_roundtrip();
     test_protocol_listener_owner();
     test_shell_binary_resolution();
+    test_shell_mode_helpers();
     test_shell_argv_builder();
     test_shell_state_helpers();
+    test_layer_surface_commit_reconfigure_policy();
     puts("lumo compositor tests passed");
     return 0;
 }

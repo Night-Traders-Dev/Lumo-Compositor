@@ -58,6 +58,9 @@ The normal session launches `lumo-compositor --backend drm --shell lumo-shell`
 so the compositor and bundled shell clients start together after login.
 When GDM launches the session, the compositor can still use DRM even if the
 process has no controlling tty.
+If one of the bundled shell clients exits unexpectedly, the compositor now
+reaps it and respawns that specific mode instead of leaving the session
+without a launcher or keyboard.
 The debug session launches `lumo-compositor --backend headless --debug --session
 lumo-headless --socket lumo-shell-headless --shell lumo-shell` for remote or
 headless bring-up.

@@ -93,6 +93,11 @@ struct lumo_shell_target {
 };
 
 const char *lumo_shell_mode_name(enum lumo_shell_mode mode);
+size_t lumo_shell_mode_count(void);
+bool lumo_shell_mode_index(
+    enum lumo_shell_mode mode,
+    size_t *index
+);
 const char *lumo_shell_target_kind_name(enum lumo_shell_target_kind kind);
 const char *lumo_shell_touch_debug_phase_name(
     enum lumo_shell_touch_debug_phase phase

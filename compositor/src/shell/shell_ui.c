@@ -182,6 +182,39 @@ const char *lumo_shell_mode_name(enum lumo_shell_mode mode) {
     }
 }
 
+size_t lumo_shell_mode_count(void) {
+    return 4;
+}
+
+bool lumo_shell_mode_index(
+    enum lumo_shell_mode mode,
+    size_t *index
+) {
+    size_t resolved_index;
+
+    switch (mode) {
+    case LUMO_SHELL_MODE_LAUNCHER:
+        resolved_index = 0;
+        break;
+    case LUMO_SHELL_MODE_OSK:
+        resolved_index = 1;
+        break;
+    case LUMO_SHELL_MODE_GESTURE:
+        resolved_index = 2;
+        break;
+    case LUMO_SHELL_MODE_STATUS:
+        resolved_index = 3;
+        break;
+    default:
+        return false;
+    }
+
+    if (index != NULL) {
+        *index = resolved_index;
+    }
+    return true;
+}
+
 const char *lumo_shell_target_kind_name(enum lumo_shell_target_kind kind) {
     switch (kind) {
     case LUMO_SHELL_TARGET_LAUNCHER_TILE:

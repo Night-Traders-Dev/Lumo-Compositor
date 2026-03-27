@@ -971,6 +971,10 @@ void lumo_protocol_refresh_keyboard_visibility(
     struct lumo_compositor *compositor
 );
 void lumo_protocol_mark_layers_dirty(struct lumo_compositor *compositor);
+bool lumo_protocol_layer_surface_commit_needs_reconfigure(
+    uint32_t committed,
+    bool initialized
+);
 
 bool lumo_shell_resolve_binary_path(
     const struct lumo_compositor_config *config,

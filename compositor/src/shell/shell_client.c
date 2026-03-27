@@ -1205,15 +1205,6 @@ static bool lumo_shell_client_apply_config(
     }
 
     client->config = *config;
-    if (client->mode == LUMO_SHELL_MODE_LAUNCHER) {
-        fprintf(stderr,
-            "lumo-shell: launcher apply size=%ux%u anchor=%u exclusive=%d keyboard=%s\n",
-            config->width,
-            config->height,
-            config->anchor,
-            config->exclusive_zone,
-            config->keyboard_interactive ? "true" : "false");
-    }
     zwlr_layer_surface_v1_set_size(client->layer_surface,
         config->width, config->height);
     zwlr_layer_surface_v1_set_anchor(client->layer_surface, config->anchor);

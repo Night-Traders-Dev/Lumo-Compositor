@@ -269,6 +269,25 @@ static void lumo_protocol_clear_shell_hitboxes(struct lumo_compositor *composito
     }
 }
 
+bool lumo_protocol_layer_surface_commit_needs_reconfigure(
+    uint32_t committed,
+    bool initialized
+) {
+    const uint32_t layout_fields =
+        WLR_LAYER_SURFACE_V1_STATE_DESIRED_SIZE |
+        WLR_LAYER_SURFACE_V1_STATE_ANCHOR |
+        WLR_LAYER_SURFACE_V1_STATE_EXCLUSIVE_ZONE |
+        WLR_LAYER_SURFACE_V1_STATE_MARGIN |
+        WLR_LAYER_SURFACE_V1_STATE_KEYBOARD_INTERACTIVITY |
+        WLR_LAYER_SURFACE_V1_STATE_LAYER;
+
+    if (!initialized) {
+        return true;
+    }
+
+    return (committed & layout_fields) != 0;
+}
+
 void lumo_protocol_refresh_shell_hitboxes(struct lumo_compositor *compositor) {
     struct wlr_box workarea = {0};
     struct lumo_shell_surface_config shell_config = {0};
@@ -536,10 +555,19 @@ static void lumo_protocol_layer_surface_commit(
 ) {
     struct lumo_layer_surface *layer_surface =
         wl_container_of(listener, layer_surface, commit);
+    struct wlr_layer_surface_v1 *wlr_layer_surface;
 
     (void)data;
     if (layer_surface == NULL || layer_surface->compositor == NULL ||
             !layer_surface->compositor->protocol_started) {
+        return;
+    }
+
+    wlr_layer_surface = layer_surface->layer_surface;
+    if (wlr_layer_surface == NULL ||
+            !lumo_protocol_layer_surface_commit_needs_reconfigure(
+                wlr_layer_surface->current.committed,
+                wlr_layer_surface->initialized)) {
         return;
     }
 

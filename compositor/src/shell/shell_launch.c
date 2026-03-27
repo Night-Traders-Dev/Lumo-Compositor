@@ -37,6 +37,10 @@ struct lumo_shell_bridge {
 };
 
 struct lumo_shell_state {
+    struct lumo_compositor *compositor;
+    struct wl_event_source *child_signal_source;
+    bool stopping;
+    char binary_path[PATH_MAX];
     size_t count;
     struct lumo_shell_process processes[4];
     struct lumo_shell_bridge bridge;
@@ -46,24 +50,24 @@ static void lumo_shell_bridge_remove_client(
     struct lumo_shell_bridge *bridge,
     struct lumo_shell_bridge_client *client
 );
+static void lumo_shell_bridge_broadcast_state(
+    struct lumo_compositor *compositor
+);
+static int lumo_shell_spawn_process(
+    struct lumo_compositor *compositor,
+    enum lumo_shell_mode mode,
+    const char *binary_path,
+    struct lumo_shell_process *process
+);
 
 static const char *lumo_shell_default_binary_name(void) {
     return "lumo-shell";
 }
 
 static const char *lumo_shell_mode_argument(enum lumo_shell_mode mode) {
-    switch (mode) {
-    case LUMO_SHELL_MODE_LAUNCHER:
-        return "launcher";
-    case LUMO_SHELL_MODE_OSK:
-        return "osk";
-    case LUMO_SHELL_MODE_GESTURE:
-        return "gesture";
-    case LUMO_SHELL_MODE_STATUS:
-        return "status";
-    default:
-        return NULL;
-    }
+    const char *mode_name = lumo_shell_mode_name(mode);
+
+    return strcmp(mode_name, "unknown") == 0 ? NULL : mode_name;
 }
 
 static bool lumo_shell_has_path_separator(const char *path) {
@@ -240,6 +244,114 @@ static void lumo_shell_log_child_status(
         mode_name,
         (int)process->pid,
         status);
+}
+
+static struct lumo_shell_process *lumo_shell_process_for_pid(
+    struct lumo_shell_state *state,
+    pid_t pid
+) {
+    if (state == NULL || pid <= 0) {
+        return NULL;
+    }
+
+    for (size_t i = 0; i < state->count; i++) {
+        if (state->processes[i].pid == pid) {
+            return &state->processes[i];
+        }
+    }
+
+    return NULL;
+}
+
+static bool lumo_shell_spawn_tracked_process(
+    struct lumo_compositor *compositor,
+    struct lumo_shell_state *state,
+    enum lumo_shell_mode mode
+) {
+    size_t index = 0;
+    struct lumo_shell_process *process;
+
+    if (compositor == NULL || state == NULL ||
+            !lumo_shell_mode_index(mode, &index) ||
+            index >= sizeof(state->processes) / sizeof(state->processes[0])) {
+        return false;
+    }
+
+    process = &state->processes[index];
+    process->mode = mode;
+    process->pid = -1;
+    if (lumo_shell_spawn_process(compositor, mode, state->binary_path,
+            process) != 0) {
+        return false;
+    }
+
+    if (index + 1 > state->count) {
+        state->count = index + 1;
+    }
+    return true;
+}
+
+static int lumo_shell_handle_child_signal(
+    int signal_number,
+    void *data
+) {
+    struct lumo_compositor *compositor = data;
+    struct lumo_shell_state *state;
+    int status = 0;
+    pid_t pid;
+
+    (void)signal_number;
+    if (compositor == NULL) {
+        return 0;
+    }
+
+    state = compositor->shell_state;
+    if (state == NULL) {
+        return 0;
+    }
+
+    for (;;) {
+        pid = waitpid(-1, &status, WNOHANG);
+        if (pid == 0) {
+            break;
+        }
+        if (pid < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno != ECHILD) {
+                wlr_log_errno(WLR_ERROR, "shell: failed to reap child");
+            }
+            break;
+        }
+
+        struct lumo_shell_process *process = lumo_shell_process_for_pid(state,
+            pid);
+        if (process == NULL) {
+            wlr_log(WLR_DEBUG, "shell: reaped untracked child pid=%d",
+                (int)pid);
+            continue;
+        }
+
+        lumo_shell_log_child_status(process, status);
+        process->pid = -1;
+        if (state->stopping) {
+            continue;
+        }
+
+        if (!lumo_shell_spawn_tracked_process(compositor, state,
+                process->mode)) {
+            wlr_log(WLR_ERROR, "shell: failed to respawn %s client",
+                lumo_shell_mode_argument(process->mode));
+            continue;
+        }
+
+        wlr_log(WLR_INFO, "shell: respawned %s client pid=%d",
+            lumo_shell_mode_argument(process->mode), (int)process->pid);
+        lumo_shell_bridge_broadcast_state(compositor);
+    }
+
+    return 0;
 }
 
 static bool lumo_shell_wait_for_exec_result(int fd) {
@@ -1245,7 +1357,6 @@ size_t lumo_shell_build_argv(
 
 int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
     struct lumo_shell_state *state;
-    char binary_path[PATH_MAX];
     const enum lumo_shell_mode modes[] = {
         LUMO_SHELL_MODE_LAUNCHER,
         LUMO_SHELL_MODE_OSK,
@@ -1267,12 +1378,6 @@ int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
         return -1;
     }
 
-    if (!lumo_shell_resolve_binary_path(compositor->config, binary_path,
-            sizeof(binary_path))) {
-        wlr_log(WLR_ERROR, "shell: failed to resolve shell binary path");
-        return -1;
-    }
-
     state = calloc(1, sizeof(*state));
     if (state == NULL) {
         wlr_log_errno(WLR_ERROR, "shell: failed to allocate shell state");
@@ -1280,25 +1385,48 @@ int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
     }
 
     compositor->shell_state = state;
+    state->compositor = compositor;
     state->bridge.listen_fd = -1;
     state->bridge.listen_source = NULL;
     state->bridge.socket_path[0] = '\0';
+    state->child_signal_source = NULL;
+    state->stopping = false;
     wl_list_init(&state->bridge.clients);
+    for (size_t i = 0; i < sizeof(state->processes) / sizeof(state->processes[0]); i++) {
+        state->processes[i].pid = -1;
+    }
+
+    if (!lumo_shell_resolve_binary_path(compositor->config, state->binary_path,
+            sizeof(state->binary_path))) {
+        wlr_log(WLR_ERROR, "shell: failed to resolve shell binary path");
+        lumo_shell_autostart_stop(compositor);
+        return -1;
+    }
+
+    state->child_signal_source = wl_event_loop_add_signal(
+        compositor->event_loop,
+        SIGCHLD,
+        lumo_shell_handle_child_signal,
+        compositor
+    );
+    if (state->child_signal_source == NULL) {
+        wlr_log(WLR_ERROR, "shell: failed to watch child process exits");
+        lumo_shell_autostart_stop(compositor);
+        return -1;
+    }
 
     if (!lumo_shell_bridge_start(compositor)) {
         lumo_shell_autostart_stop(compositor);
         return -1;
     }
 
-    wlr_log(WLR_INFO, "shell: launching clients from %s", binary_path);
+    wlr_log(WLR_INFO, "shell: launching clients from %s", state->binary_path);
 
     for (size_t i = 0; i < sizeof(modes) / sizeof(modes[0]); i++) {
-        if (lumo_shell_spawn_process(compositor, modes[i], binary_path,
-                &state->processes[state->count]) != 0) {
+        if (!lumo_shell_spawn_tracked_process(compositor, state, modes[i])) {
             lumo_shell_autostart_stop(compositor);
             return -1;
         }
-        state->count++;
     }
 
     return 0;
@@ -1314,6 +1442,12 @@ void lumo_shell_autostart_stop(struct lumo_compositor *compositor) {
     state = compositor->shell_state;
     if (state == NULL) {
         return;
+    }
+
+    state->stopping = true;
+    if (state->child_signal_source != NULL) {
+        wl_event_source_remove(state->child_signal_source);
+        state->child_signal_source = NULL;
     }
 
     lumo_shell_bridge_stop(state);
