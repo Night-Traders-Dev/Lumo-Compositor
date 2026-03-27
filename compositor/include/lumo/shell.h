@@ -11,6 +11,7 @@ enum lumo_shell_mode {
     LUMO_SHELL_MODE_OSK,
     LUMO_SHELL_MODE_GESTURE,
     LUMO_SHELL_MODE_STATUS,
+    LUMO_SHELL_MODE_BACKGROUND,
 };
 
 enum lumo_shell_anchor {

@@ -199,13 +199,15 @@ const char *lumo_shell_mode_name(enum lumo_shell_mode mode) {
         return "gesture";
     case LUMO_SHELL_MODE_STATUS:
         return "status";
+    case LUMO_SHELL_MODE_BACKGROUND:
+        return "background";
     default:
         return "unknown";
     }
 }
 
 size_t lumo_shell_mode_count(void) {
-    return 4;
+    return 5;
 }
 
 bool lumo_shell_mode_index(
@@ -226,6 +228,9 @@ bool lumo_shell_mode_index(
         break;
     case LUMO_SHELL_MODE_STATUS:
         resolved_index = 3;
+        break;
+    case LUMO_SHELL_MODE_BACKGROUND:
+        resolved_index = 4;
         break;
     default:
         return false;
@@ -454,6 +459,7 @@ uint32_t lumo_shell_transition_duration_ms(
         return visible ? 130u : 100u;
     case LUMO_SHELL_MODE_GESTURE:
     case LUMO_SHELL_MODE_STATUS:
+    case LUMO_SHELL_MODE_BACKGROUND:
     default:
         return 0u;
     }
@@ -596,6 +602,7 @@ bool lumo_shell_target_for_mode(
         target->rect = rect;
         return true;
     case LUMO_SHELL_MODE_STATUS:
+    case LUMO_SHELL_MODE_BACKGROUND:
         return false;
     default:
         return false;
@@ -634,6 +641,7 @@ bool lumo_shell_surface_local_coords(
         origin_y = (double)output_height - (double)surface_height;
         break;
     case LUMO_SHELL_MODE_STATUS:
+    case LUMO_SHELL_MODE_BACKGROUND:
         origin_x = 0.0;
         origin_y = 0.0;
         break;
@@ -718,6 +726,18 @@ bool lumo_shell_surface_config_for_mode(
         config->background_rgba = 0x00000000;
         break;
     }
+    case LUMO_SHELL_MODE_BACKGROUND:
+        config->name = "background";
+        config->width = output_width;
+        config->height = output_height;
+        config->anchor = LUMO_SHELL_ANCHOR_TOP |
+            LUMO_SHELL_ANCHOR_BOTTOM |
+            LUMO_SHELL_ANCHOR_LEFT |
+            LUMO_SHELL_ANCHOR_RIGHT;
+        config->exclusive_zone = -1;
+        config->keyboard_interactive = false;
+        config->background_rgba = 0x00000000;
+        break;
     default:
         return false;
     }
@@ -781,6 +801,18 @@ bool lumo_shell_surface_bootstrap_config(
         config->exclusive_zone = 36;
         config->keyboard_interactive = false;
         config->background_rgba = 0x00000000;
+        return true;
+    case LUMO_SHELL_MODE_BACKGROUND:
+        config->name = "background";
+        config->width = 0;
+        config->height = 0;
+        config->anchor = LUMO_SHELL_ANCHOR_TOP |
+            LUMO_SHELL_ANCHOR_BOTTOM |
+            LUMO_SHELL_ANCHOR_LEFT |
+            LUMO_SHELL_ANCHOR_RIGHT;
+        config->exclusive_zone = -1;
+        config->keyboard_interactive = false;
+        config->background_rgba = 0xFF2C001E;
         return true;
     default:
         return false;

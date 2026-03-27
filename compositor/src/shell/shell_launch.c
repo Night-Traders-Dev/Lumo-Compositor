@@ -42,7 +42,7 @@ struct lumo_shell_state {
     bool stopping;
     char binary_path[PATH_MAX];
     size_t count;
-    struct lumo_shell_process processes[4];
+    struct lumo_shell_process processes[5];
     struct lumo_shell_bridge bridge;
 };
 
@@ -1405,6 +1405,7 @@ size_t lumo_shell_build_argv(
 int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
     struct lumo_shell_state *state;
     const enum lumo_shell_mode modes[] = {
+        LUMO_SHELL_MODE_BACKGROUND,
         LUMO_SHELL_MODE_LAUNCHER,
         LUMO_SHELL_MODE_OSK,
         LUMO_SHELL_MODE_GESTURE,
