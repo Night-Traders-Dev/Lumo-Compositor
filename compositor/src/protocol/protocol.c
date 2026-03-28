@@ -293,10 +293,25 @@ static void lumo_protocol_new_text_input(
     wl_signal_add(&text_input->events.disable, &binding->disable);
     wl_signal_add(&text_input->events.destroy, &binding->destroy);
     wl_list_insert(&state->text_input_bindings, &binding->link);
-    /* Do not refresh keyboard visibility here.  The new text-input has
-     * not been enabled yet, so refresh would see current_enabled=false
-     * and hide the keyboard even if it was just shown for a toplevel.
-     * Visibility will be refreshed when the client calls enable(). */
+
+    /* if a surface already has keyboard focus AND belongs to the same
+     * Wayland client that created this text-input, send enter so it
+     * can enable itself — the original enter was sent before this
+     * text-input object existed */
+    {
+        struct wlr_surface *focused =
+            state->compositor->seat != NULL
+                ? state->compositor->seat->keyboard_state.focused_surface
+                : NULL;
+        if (focused != NULL &&
+                wl_resource_get_client(text_input->resource) ==
+                    wl_resource_get_client(focused->resource)) {
+            wlr_text_input_v3_send_enter(text_input, focused);
+            wlr_text_input_v3_send_done(text_input);
+            wlr_log(WLR_INFO,
+                "protocol: sent enter to new text-input for focused surface");
+        }
+    }
 }
 
 static struct lumo_output *lumo_protocol_output_for_wlr(
@@ -884,6 +899,17 @@ static void lumo_protocol_new_layer_surface(
         surface->scene_surface->tree->node.data = surface;
     }
 
+    /* disable the OSK scene node at creation so its bootstrap 1px
+     * surface does not intercept wlr_scene_node_at; it will be
+     * enabled when keyboard_visible becomes true */
+    if (layer_surface->namespace != NULL &&
+            strcmp(layer_surface->namespace, "osk") == 0 &&
+            surface->scene_surface->tree != NULL) {
+        wlr_scene_node_set_enabled(
+            &surface->scene_surface->tree->node, false);
+        wlr_log(WLR_INFO, "protocol: osk scene node disabled at creation");
+    }
+
     surface->commit.notify = lumo_protocol_layer_surface_commit;
     wl_signal_add(&layer_surface->surface->events.commit, &surface->commit);
     surface->destroy.notify = lumo_protocol_layer_surface_destroy;
@@ -891,7 +917,8 @@ static void lumo_protocol_new_layer_surface(
 
     wl_list_insert(&compositor->layer_surfaces, &surface->link);
     lumo_protocol_mark_layers_dirty(compositor);
-    wlr_log(WLR_INFO, "protocol: new layer surface");
+    wlr_log(WLR_INFO, "protocol: new layer surface '%s'",
+        layer_surface->namespace != NULL ? layer_surface->namespace : "");
 }
 
 static void lumo_protocol_configure_layer_surface_for_output(
@@ -1256,21 +1283,29 @@ void lumo_protocol_set_keyboard_visible(
     compositor->keyboard_resize_pending = visible;
     compositor->keyboard_resize_acked = !visible;
 
-    if (visible) {
-        compositor->scrim_state = LUMO_SCRIM_DIMMED;
-
-        /* raise overlay-layer surfaces (OSK, launcher) above all other
-         * scene nodes so they render on top of fullscreen toplevels */
+    /* toggle the OSK scene node visibility so the bootstrap 1px surface
+     * doesn't intercept wlr_scene_node_at when the keyboard is hidden */
+    {
         struct lumo_layer_surface *ls;
         wl_list_for_each(ls, &compositor->layer_surfaces, link) {
-            if (ls->layer_surface != NULL && ls->scene_surface != NULL &&
-                    ls->scene_surface->tree != NULL &&
-                    (ls->layer_surface->current.layer ==
-                        ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY)) {
-                wlr_scene_node_raise_to_top(
-                    &ls->scene_surface->tree->node);
+            if (ls->layer_surface == NULL || ls->scene_surface == NULL ||
+                    ls->scene_surface->tree == NULL) {
+                continue;
+            }
+            const char *ns = ls->layer_surface->namespace;
+            if (ns != NULL && strcmp(ns, "osk") == 0) {
+                wlr_scene_node_set_enabled(
+                    &ls->scene_surface->tree->node, visible);
+                if (visible) {
+                    wlr_scene_node_raise_to_top(
+                        &ls->scene_surface->tree->node);
+                }
             }
         }
+    }
+
+    if (visible) {
+        compositor->scrim_state = LUMO_SCRIM_DIMMED;
     } else if (!compositor->launcher_visible) {
         compositor->scrim_state = LUMO_SCRIM_HIDDEN;
     }

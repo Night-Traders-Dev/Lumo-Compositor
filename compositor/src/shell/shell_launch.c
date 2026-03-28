@@ -584,6 +584,16 @@ static bool lumo_shell_bridge_build_state_frame(
         return false;
     }
 
+    if (!lumo_shell_protocol_frame_add_string(frame, "weather_condition",
+                compositor->weather_condition[0] != '\0'
+                    ? compositor->weather_condition : "unknown") ||
+            !lumo_shell_protocol_frame_add_u32(frame, "weather_code",
+                (uint32_t)compositor->weather_code) ||
+            !lumo_shell_protocol_frame_add_u32(frame, "weather_temp",
+                (uint32_t)(compositor->weather_temp_c + 100))) {
+        return false;
+    }
+
     return true;
 }
 
@@ -1469,6 +1479,8 @@ size_t lumo_shell_build_argv(
     return 3;
 }
 
+static int lumo_weather_timer_cb(void *data);
+
 int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
     struct lumo_shell_state *state;
     const enum lumo_shell_mode modes[] = {
@@ -1544,6 +1556,131 @@ int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
         }
     }
 
+    /* start weather timer — first fetch after 2s, then every 5 min */
+    if (compositor->event_loop != NULL) {
+        compositor->weather_timer = wl_event_loop_add_timer(
+            compositor->event_loop, lumo_weather_timer_cb, compositor);
+        if (compositor->weather_timer != NULL) {
+            wl_event_source_timer_update(compositor->weather_timer, 2000);
+        }
+    }
+
+    return 0;
+}
+
+/* --- weather fetcher --- */
+
+static void lumo_weather_parse(struct lumo_compositor *compositor,
+    const char *data)
+{
+    /* expects format like "+5°C Sunny" or "-2°C Partly cloudy" from
+     * curl 'https://wttr.in/41101?format=%t+%C' */
+    int temp = 0;
+    char condition[32] = "";
+
+    if (data == NULL || compositor == NULL) return;
+
+    /* parse temperature: skip leading whitespace, handle +/- */
+    const char *p = data;
+    while (*p == ' ') p++;
+    if (sscanf(p, "%d", &temp) < 1) temp = 0;
+
+    /* find condition after °C or °F */
+    const char *deg = strstr(p, "\xC2\xB0"); /* UTF-8 degree sign */
+    if (deg != NULL) {
+        deg += 2; /* skip ° */
+        if (*deg == 'C' || *deg == 'F') deg++;
+        while (*deg == ' ') deg++;
+        strncpy(condition, deg, sizeof(condition) - 1);
+        condition[sizeof(condition) - 1] = '\0';
+        /* trim trailing newline */
+        char *nl = strchr(condition, '\n');
+        if (nl) *nl = '\0';
+    }
+
+    /* map condition text to a weather code for the theme engine:
+     * 0=clear 1=partly_cloudy 2=cloudy 3=rain 4=storm 5=snow 6=fog */
+    int code = 0;
+    char lower[32];
+    for (int i = 0; i < (int)sizeof(lower) - 1 && condition[i]; i++) {
+        lower[i] = (condition[i] >= 'A' && condition[i] <= 'Z')
+            ? condition[i] + 32 : condition[i];
+        lower[i + 1] = '\0';
+    }
+    if (strstr(lower, "snow") || strstr(lower, "sleet") ||
+            strstr(lower, "ice") || strstr(lower, "blizzard"))
+        code = 5;
+    else if (strstr(lower, "thunder") || strstr(lower, "storm"))
+        code = 4;
+    else if (strstr(lower, "rain") || strstr(lower, "drizzle") ||
+            strstr(lower, "shower"))
+        code = 3;
+    else if (strstr(lower, "fog") || strstr(lower, "mist") ||
+            strstr(lower, "haze"))
+        code = 6;
+    else if (strstr(lower, "overcast") || strstr(lower, "cloudy"))
+        code = 2;
+    else if (strstr(lower, "partly"))
+        code = 1;
+
+    if (strcmp(compositor->weather_condition, condition) != 0 ||
+            compositor->weather_temp_c != temp ||
+            compositor->weather_code != code) {
+        strncpy(compositor->weather_condition, condition,
+            sizeof(compositor->weather_condition) - 1);
+        compositor->weather_temp_c = temp;
+        compositor->weather_code = code;
+        wlr_log(WLR_INFO, "weather: %d°C %s (code=%d)", temp, condition,
+            code);
+        lumo_shell_mark_state_dirty(compositor);
+    }
+}
+
+static void lumo_weather_fetch(struct lumo_compositor *compositor) {
+    int pipefd[2];
+    pid_t pid;
+
+    if (compositor == NULL) return;
+    if (pipe(pipefd) < 0) return;
+
+    pid = fork();
+    if (pid < 0) {
+        close(pipefd[0]);
+        close(pipefd[1]);
+        return;
+    }
+
+    if (pid == 0) {
+        close(pipefd[0]);
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]);
+        close(STDERR_FILENO);
+        execlp("curl", "curl", "-s", "--max-time", "10",
+            "https://wttr.in/41101?format=%t+%C", (char *)NULL);
+        _exit(127);
+    }
+
+    close(pipefd[1]);
+
+    /* read result (blocking is OK since curl has --max-time 10) */
+    char buf[128] = "";
+    ssize_t n = read(pipefd[0], buf, sizeof(buf) - 1);
+    close(pipefd[0]);
+    waitpid(pid, NULL, 0);
+
+    if (n > 0) {
+        buf[n] = '\0';
+        lumo_weather_parse(compositor, buf);
+    }
+}
+
+static int lumo_weather_timer_cb(void *data) {
+    struct lumo_compositor *compositor = data;
+    lumo_weather_fetch(compositor);
+    /* re-arm for 5 minutes */
+    if (compositor != NULL && compositor->weather_timer != NULL) {
+        wl_event_source_timer_update(compositor->weather_timer, 300000);
+    }
     return 0;
 }
 

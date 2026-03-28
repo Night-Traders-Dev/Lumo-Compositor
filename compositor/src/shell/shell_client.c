@@ -105,6 +105,9 @@ struct lumo_shell_client {
     uint64_t animation_started_msec;
     uint32_t animation_duration_msec;
     struct lumo_shell_target active_target;
+    char weather_condition[32];
+    int weather_code;
+    int weather_temp_c;
 };
 
 static bool lumo_shell_client_redraw(struct lumo_shell_client *client);
@@ -1376,10 +1379,13 @@ static uint32_t bg_row_cache[2048];
 static uint32_t bg_cache_height;
 static uint32_t bg_cache_hour = 0xFF;
 
+static int bg_cache_weather_code = -1;
+
 static void lumo_draw_animated_bg(
     uint32_t *pixels,
     uint32_t width,
-    uint32_t height
+    uint32_t height,
+    int weather_code
 ) {
     struct timespec mono_ts;
     time_t wall_now;
@@ -1394,17 +1400,53 @@ static void lumo_draw_animated_bg(
     localtime_r(&wall_now, &tm_now);
     hour = (uint32_t)tm_now.tm_hour;
 
-    if (hour != bg_cache_hour || height != bg_cache_height) {
+    if (hour != bg_cache_hour || height != bg_cache_height ||
+            weather_code != bg_cache_weather_code) {
         uint32_t base_r, base_g, base_b;
+
+        /* time-of-day base colors (Ubuntu palette) */
         if (hour >= 6 && hour < 10) {
-            base_r = 0x3A; base_g = 0x08; base_b = 0x20;
+            base_r = 0x3A; base_g = 0x08; base_b = 0x20; /* morning */
         } else if (hour >= 10 && hour < 17) {
-            base_r = 0x2C; base_g = 0x00; base_b = 0x1E;
+            base_r = 0x2C; base_g = 0x00; base_b = 0x1E; /* midday */
         } else if (hour >= 17 && hour < 20) {
-            base_r = 0x40; base_g = 0x0A; base_b = 0x1A;
+            base_r = 0x40; base_g = 0x0A; base_b = 0x1A; /* sunset */
         } else {
-            base_r = 0x18; base_g = 0x00; base_b = 0x14;
+            base_r = 0x18; base_g = 0x00; base_b = 0x14; /* night */
         }
+
+        /* weather hue shift:
+         * 0=clear 1=partly_cloudy 2=cloudy 3=rain 4=storm 5=snow 6=fog */
+        switch (weather_code) {
+        case 1: /* partly cloudy — slightly cooler */
+            base_g += 0x04; base_b += 0x06;
+            break;
+        case 2: /* cloudy — grey-purple */
+            base_r = base_r * 3 / 4;
+            base_g += 0x08; base_b += 0x0C;
+            break;
+        case 3: /* rain — blue-grey, darker */
+            base_r = base_r * 2 / 3;
+            base_g += 0x06; base_b += 0x18;
+            break;
+        case 4: /* storm — dark blue-purple */
+            base_r = base_r / 2;
+            base_b += 0x20;
+            break;
+        case 5: /* snow — cool blue-white lift */
+            base_r += 0x10; base_g += 0x14; base_b += 0x20;
+            break;
+        case 6: /* fog — washed grey */
+            base_r = (base_r + 0x20) / 2;
+            base_g = (base_g + 0x20) / 2;
+            base_b = (base_b + 0x20) / 2;
+            break;
+        default: /* clear / unknown — warm Ubuntu tones, no shift */
+            break;
+        }
+        if (base_r > 0xFF) base_r = 0xFF;
+        if (base_g > 0xFF) base_g = 0xFF;
+        if (base_b > 0xFF) base_b = 0xFF;
 
         uint32_t max_h = height < 2048 ? height : 2048;
         for (uint32_t y = 0; y < max_h; y++) {
@@ -1416,6 +1458,7 @@ static void lumo_draw_animated_bg(
         }
         bg_cache_height = height;
         bg_cache_hour = hour;
+        bg_cache_weather_code = weather_code;
     }
 
     for (uint32_t y = 0; y < height; y++) {
@@ -1500,7 +1543,7 @@ static void lumo_render_surface(
         lumo_draw_status(pixels, width, height, client);
         return;
     case LUMO_SHELL_MODE_BACKGROUND:
-        lumo_draw_animated_bg(pixels, width, height);
+        lumo_draw_animated_bg(pixels, width, height, client->weather_code);
         return;
     default:
         break;
@@ -2095,10 +2138,20 @@ static void lumo_shell_client_note_target(
 
     if (lumo_shell_target_for_mode(client->mode, client->configured_width,
             client->configured_height, x, y, &target)) {
+        fprintf(stderr, "lumo-shell: note_target %s %s idx=%u at %.0f,%.0f "
+            "in %ux%u\n",
+            lumo_shell_mode_name(client->mode),
+            lumo_shell_target_kind_name(target.kind),
+            target.index, x, y,
+            client->configured_width, client->configured_height);
         lumo_shell_client_set_active_target(client, &target);
         return;
     }
 
+    fprintf(stderr, "lumo-shell: note_target %s MISS at %.0f,%.0f "
+        "in %ux%u\n",
+        lumo_shell_mode_name(client->mode), x, y,
+        client->configured_width, client->configured_height);
     lumo_shell_client_clear_active_target(client);
 }
 
@@ -2523,6 +2576,29 @@ static void lumo_shell_client_apply_state_frame(
             if (client->layer_surface != NULL && client->surface != NULL) {
                 wl_surface_commit(client->surface);
             }
+        }
+    }
+
+    if (lumo_shell_protocol_frame_get(frame, "weather_condition", &value)) {
+        if (strcmp(client->weather_condition, value) != 0) {
+            strncpy(client->weather_condition, value,
+                sizeof(client->weather_condition) - 1);
+            changed = true;
+        }
+    }
+    if (lumo_shell_protocol_frame_get_u32(frame, "weather_code",
+            &timeout_value)) {
+        if (client->weather_code != (int)timeout_value) {
+            client->weather_code = (int)timeout_value;
+            changed = true;
+        }
+    }
+    if (lumo_shell_protocol_frame_get_u32(frame, "weather_temp",
+            &timeout_value)) {
+        int temp = (int)timeout_value - 100;
+        if (client->weather_temp_c != temp) {
+            client->weather_temp_c = temp;
+            changed = true;
         }
     }
 

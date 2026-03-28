@@ -86,7 +86,8 @@ static void test_app_render(void) {
         }
         assert(lumo_test_any_nonzero(inactive, pixel_count));
         assert(lumo_test_any_nonzero(active, pixel_count));
-        assert(memcmp(inactive, active, pixel_count * sizeof(*inactive)) != 0);
+        /* close button removed — active/inactive may now be identical */
+        (void)active;
     }
 
     free(active);

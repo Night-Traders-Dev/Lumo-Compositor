@@ -893,6 +893,10 @@ struct lumo_compositor {
     bool output_started;
     bool protocol_started;
     bool input_started;
+    struct wl_event_source *weather_timer;
+    char weather_condition[32];
+    int weather_temp_c;
+    int weather_code;
 };
 
 static inline bool lumo_touch_audit_debug_gesture_enabled(

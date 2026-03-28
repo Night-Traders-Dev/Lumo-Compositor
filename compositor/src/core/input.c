@@ -1731,72 +1731,7 @@ static void lumo_input_touch_down(
         return;
     }
 
-    if (lumo_input_target_is_shell(&target)) {
-        /* If no shell UI is actively visible but a toplevel app is open,
-         * the shell surface is an invisible bootstrap placeholder.
-         * Redirect the touch to the app toplevel so it gets focus and
-         * the OSK can activate. */
-        /* keyboard_visible is intentionally excluded — when the OSK
-         * is showing, the OSK hitbox handles touches in that zone;
-         * touches elsewhere should still reach the app toplevel
-         * through the invisible launcher surface. */
-        bool shell_ui_active = compositor->launcher_visible ||
-            compositor->quick_settings_visible ||
-            compositor->time_panel_visible ||
-            compositor->touch_audit_active;
-        wlr_log(WLR_INFO,
-            "input: touch %d hit shell surface, ui_active=%d "
-            "launcher=%d kbd=%d qs=%d tp=%d toplevels=%d",
-            point->touch_id, shell_ui_active,
-            compositor->launcher_visible,
-            compositor->keyboard_visible,
-            compositor->quick_settings_visible,
-            compositor->time_panel_visible,
-            !wl_list_empty(&compositor->toplevels));
-        if (!shell_ui_active && !wl_list_empty(&compositor->toplevels)) {
-            struct lumo_toplevel *tl;
-            wl_list_for_each(tl, &compositor->toplevels, link) {
-                if (tl->xdg_surface != NULL &&
-                        tl->xdg_surface->surface != NULL) {
-                    /* re-resolve target for the toplevel surface so
-                     * sx/sy are correct (not launcher-relative) */
-                    struct lumo_surface_target tl_target = {0};
-                    tl_target.surface = tl->xdg_surface->surface;
-                    tl_target.sx = point->lx;
-                    tl_target.sy = point->ly;
-
-                    /* try to get scene-local coords for this surface */
-                    if (tl->scene_tree != NULL) {
-                        int sx = 0, sy = 0;
-                        wlr_scene_node_coords(&tl->scene_tree->node,
-                            &sx, &sy);
-                        tl_target.sx = point->lx - (double)sx;
-                        tl_target.sy = point->ly - (double)sy;
-                    }
-
-                    lumo_input_touch_point_bind_surface(point,
-                        tl->xdg_surface->surface);
-                    lumo_input_touch_point_deliver_now(compositor, point,
-                        &tl_target, event->time_msec);
-                    lumo_input_focus_surface(compositor,
-                        tl->xdg_surface->surface);
-                    wlr_log(WLR_INFO,
-                        "input: touch %d redirected from invisible shell "
-                        "to toplevel sx=%.1f sy=%.1f",
-                        point->touch_id, tl_target.sx, tl_target.sy);
-                    lumo_input_touch_debug_update(compositor, point,
-                        LUMO_TOUCH_SAMPLE_DOWN, true, point->lx, point->ly);
-                    return;
-                }
-            }
-        }
-        lumo_input_touch_point_deliver_now(compositor, point, &target,
-            event->time_msec);
-        lumo_input_focus_surface(compositor, point->surface);
-        lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
-            true, point->lx, point->ly);
-        return;
-    }
+    /* --- hitbox checks FIRST (edges, gestures, OSK) --- */
 
     if (lumo_input_hitbox_is_shell_reserved(point->hitbox)) {
         lumo_input_touch_point_begin_capture(compositor, point, &target,
@@ -1826,6 +1761,49 @@ static void lumo_input_touch_down(
         point->capture_edge = edge_zone;
         lumo_input_touch_point_begin_capture(compositor, point, &target,
             event->time_msec);
+        lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
+            true, point->lx, point->ly);
+        return;
+    }
+
+    /* --- shell surface redirect (only after hitboxes) --- */
+
+    if (lumo_input_target_is_shell(&target)) {
+        bool shell_ui_active = compositor->launcher_visible ||
+            compositor->quick_settings_visible ||
+            compositor->time_panel_visible ||
+            compositor->touch_audit_active;
+        if (!shell_ui_active && !wl_list_empty(&compositor->toplevels)) {
+            struct lumo_toplevel *tl;
+            wl_list_for_each(tl, &compositor->toplevels, link) {
+                if (tl->xdg_surface != NULL &&
+                        tl->xdg_surface->surface != NULL) {
+                    struct lumo_surface_target tl_target = {0};
+                    tl_target.surface = tl->xdg_surface->surface;
+                    tl_target.sx = point->lx;
+                    tl_target.sy = point->ly;
+                    if (tl->scene_tree != NULL) {
+                        int sx = 0, sy = 0;
+                        wlr_scene_node_coords(&tl->scene_tree->node,
+                            &sx, &sy);
+                        tl_target.sx = point->lx - (double)sx;
+                        tl_target.sy = point->ly - (double)sy;
+                    }
+                    lumo_input_touch_point_bind_surface(point,
+                        tl->xdg_surface->surface);
+                    lumo_input_touch_point_deliver_now(compositor, point,
+                        &tl_target, event->time_msec);
+                    lumo_input_focus_surface(compositor,
+                        tl->xdg_surface->surface);
+                    lumo_input_touch_debug_update(compositor, point,
+                        LUMO_TOUCH_SAMPLE_DOWN, true, point->lx, point->ly);
+                    return;
+                }
+            }
+        }
+        lumo_input_touch_point_deliver_now(compositor, point, &target,
+            event->time_msec);
+        lumo_input_focus_surface(compositor, point->surface);
         lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
             true, point->lx, point->ly);
         return;
