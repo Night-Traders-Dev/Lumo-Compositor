@@ -490,6 +490,7 @@ static void lumo_app_xdg_toplevel_handle_close(
 
     (void)xdg_toplevel;
     if (client != NULL) {
+        fprintf(stderr, "lumo-app: xdg_toplevel close received\n");
         client->running = false;
     }
 }
@@ -594,14 +595,10 @@ static void lumo_app_pointer_handle_button(
         return;
     }
 
-    should_close = client->pointer_pressed && client->close_active &&
-        lumo_app_client_close_contains(client, client->pointer_x,
-            client->pointer_y);
+    /* close button disabled — apps are dismissed via compositor gesture */
+    (void)should_close;
     client->pointer_pressed = false;
     lumo_app_client_set_close_active(client, false);
-    if (should_close) {
-        client->running = false;
-    }
 }
 
 static void lumo_app_pointer_handle_axis(
@@ -686,10 +683,9 @@ static void lumo_app_touch_handle_up(
     client->touch_pressed = false;
     client->active_touch_id = -1;
     lumo_app_client_set_close_active(client, false);
-    if (should_close) {
-        client->running = false;
-        return;
-    }
+    /* close button disabled — apps are dismissed via bottom-edge
+     * swipe gesture in the compositor, not via a touch target */
+    (void)should_close;
 
     if (client->app_id == LUMO_APP_CLOCK && client->width > 0 &&
             client->height > 0) {
@@ -1526,9 +1522,12 @@ int main(int argc, char **argv) {
             }
 
             if (wl_display_dispatch_pending(client.display) == -1) {
+                fprintf(stderr, "lumo-app: dispatch_pending failed\n");
                 break;
             }
             if (wl_display_flush(client.display) < 0 && errno != EAGAIN) {
+                fprintf(stderr, "lumo-app: display flush failed: %s\n",
+                    strerror(errno));
                 break;
             }
 
@@ -1537,6 +1536,8 @@ int main(int argc, char **argv) {
                 if (errno == EINTR) {
                     continue;
                 }
+                fprintf(stderr, "lumo-app: poll failed: %s\n",
+                    strerror(errno));
                 break;
             }
 
@@ -1551,10 +1552,13 @@ int main(int argc, char **argv) {
 
             if (pfds[0].revents & POLLIN) {
                 if (wl_display_dispatch(client.display) == -1) {
+                    fprintf(stderr, "lumo-app: display dispatch failed\n");
                     break;
                 }
             }
             if (pfds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                fprintf(stderr, "lumo-app: display fd error (revents=0x%x)\n",
+                    pfds[0].revents);
                 break;
             }
             if (is_terminal && (pfds[1].revents & POLLIN)) {

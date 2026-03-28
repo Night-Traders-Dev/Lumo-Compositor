@@ -3275,17 +3275,24 @@ static bool lumo_shell_create_surface(struct lumo_shell_client *client) {
         return false;
     }
 
-    client->layer_surface = zwlr_layer_shell_v1_get_layer_surface(
-        client->layer_shell,
-        client->surface,
-        NULL,
-        client->mode == LUMO_SHELL_MODE_LAUNCHER
-            ? ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY
-            : client->mode == LUMO_SHELL_MODE_BACKGROUND
-                ? ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND
-                : ZWLR_LAYER_SHELL_V1_LAYER_TOP,
-        client->config.name != NULL ? client->config.name : "lumo-shell"
-    );
+    {
+        uint32_t layer;
+        if (client->mode == LUMO_SHELL_MODE_LAUNCHER ||
+                client->mode == LUMO_SHELL_MODE_OSK) {
+            layer = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
+        } else if (client->mode == LUMO_SHELL_MODE_BACKGROUND) {
+            layer = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
+        } else {
+            layer = ZWLR_LAYER_SHELL_V1_LAYER_TOP;
+        }
+        client->layer_surface = zwlr_layer_shell_v1_get_layer_surface(
+            client->layer_shell,
+            client->surface,
+            NULL,
+            layer,
+            client->config.name != NULL ? client->config.name : "lumo-shell"
+        );
+    }
     if (client->layer_surface == NULL) {
         return false;
     }

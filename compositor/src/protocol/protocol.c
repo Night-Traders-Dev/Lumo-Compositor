@@ -165,6 +165,13 @@ void lumo_protocol_refresh_keyboard_visibility(
         }
     }
 
+    if (compositor->keyboard_visible && !visible) {
+        wlr_log(WLR_INFO,
+            "protocol: refresh_keyboard hiding kbd "
+            "(text_enabled=%d focused=%p toplevels_empty=%d)",
+            0, (void *)compositor->seat->keyboard_state.focused_surface,
+            wl_list_empty(&compositor->toplevels));
+    }
     lumo_protocol_set_keyboard_visible(compositor, visible);
 }
 

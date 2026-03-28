@@ -556,6 +556,8 @@ static void lumo_input_focus_surface(
     } else {
         wlr_seat_keyboard_notify_clear_focus(compositor->seat);
         if (compositor->keyboard_visible) {
+            wlr_log(WLR_INFO,
+                "input: focus_surface(NULL) hiding keyboard");
             lumo_protocol_set_keyboard_visible(compositor, false);
         }
     }
@@ -942,6 +944,8 @@ static void lumo_input_touch_point_trigger_edge_action(
         } else if (compositor->launcher_visible) {
             lumo_protocol_set_launcher_visible(compositor, false);
         } else if (compositor->keyboard_visible) {
+            wlr_log(WLR_INFO,
+                "input: left-edge dismiss hiding keyboard");
             lumo_protocol_set_keyboard_visible(compositor, false);
         } else {
             lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_HIDDEN);
@@ -1754,15 +1758,32 @@ static void lumo_input_touch_down(
             wl_list_for_each(tl, &compositor->toplevels, link) {
                 if (tl->xdg_surface != NULL &&
                         tl->xdg_surface->surface != NULL) {
+                    /* re-resolve target for the toplevel surface so
+                     * sx/sy are correct (not launcher-relative) */
+                    struct lumo_surface_target tl_target = {0};
+                    tl_target.surface = tl->xdg_surface->surface;
+                    tl_target.sx = point->lx;
+                    tl_target.sy = point->ly;
+
+                    /* try to get scene-local coords for this surface */
+                    if (tl->scene_tree != NULL) {
+                        int sx = 0, sy = 0;
+                        wlr_scene_node_coords(&tl->scene_tree->node,
+                            &sx, &sy);
+                        tl_target.sx = point->lx - (double)sx;
+                        tl_target.sy = point->ly - (double)sy;
+                    }
+
                     lumo_input_touch_point_bind_surface(point,
                         tl->xdg_surface->surface);
                     lumo_input_touch_point_deliver_now(compositor, point,
-                        &target, event->time_msec);
+                        &tl_target, event->time_msec);
                     lumo_input_focus_surface(compositor,
                         tl->xdg_surface->surface);
                     wlr_log(WLR_INFO,
                         "input: touch %d redirected from invisible shell "
-                        "to toplevel", point->touch_id);
+                        "to toplevel sx=%.1f sy=%.1f",
+                        point->touch_id, tl_target.sx, tl_target.sy);
                     lumo_input_touch_debug_update(compositor, point,
                         LUMO_TOUCH_SAMPLE_DOWN, true, point->lx, point->ly);
                     return;
