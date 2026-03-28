@@ -895,8 +895,12 @@ struct lumo_compositor {
     bool input_started;
     struct wl_event_source *weather_timer;
     char weather_condition[32];
+    char weather_humidity[16];
+    char weather_wind[24];
     int weather_temp_c;
     int weather_code;
+    uint32_t volume_pct;
+    uint32_t brightness_pct;
 };
 
 static inline bool lumo_touch_audit_debug_gesture_enabled(

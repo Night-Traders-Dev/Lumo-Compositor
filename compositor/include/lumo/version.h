@@ -1,0 +1,9 @@
+#ifndef LUMO_VERSION_H
+#define LUMO_VERSION_H
+
+#define LUMO_VERSION_MAJOR 0
+#define LUMO_VERSION_MINOR 0
+#define LUMO_VERSION_PATCH 53
+#define LUMO_VERSION_STRING "0.0.53"
+
+#endif

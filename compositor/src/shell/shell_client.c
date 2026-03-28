@@ -1,5 +1,6 @@
 #include "lumo/shell.h"
 #include "lumo/shell_protocol.h"
+#include "lumo/version.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -106,8 +107,12 @@ struct lumo_shell_client {
     uint32_t animation_duration_msec;
     struct lumo_shell_target active_target;
     char weather_condition[32];
+    char weather_humidity[16];
+    char weather_wind[24];
     int weather_code;
     int weather_temp_c;
+    uint32_t volume_pct;
+    uint32_t brightness_pct;
 };
 
 static bool lumo_shell_client_redraw(struct lumo_shell_client *client);
@@ -820,51 +825,88 @@ static void lumo_draw_launcher(
             snprintf(wbuf, sizeof(wbuf), "WEEK %d",
                 (tm_now.tm_yday / 7) + 1);
 
-            if (pw < 200) pw = 200;
+            if (pw < 240) pw = 240;
             tp.x = 8;
             tp.y = bar_h + 4;
             tp.width = pw;
-            tp.height = 160;
-            lumo_fill_rounded_rect(pixels, width, height, &tp, 14, tp_bg);
+            tp.height = 220;
+            lumo_fill_rounded_rect(pixels, width, height, &tp, 18, tp_bg);
             lumo_draw_outline(pixels, width, height, &tp, 1, tp_stroke);
 
+            /* large time */
             {
-                int tw = lumo_text_width(tbuf, 5);
+                int tw = lumo_text_width(tbuf, 6);
                 lumo_draw_text(pixels, width, height,
-                    tp.x + tp.width / 2 - tw / 2, tp.y + 16,
-                    5, tp_accent, tbuf);
-            }
-            {
-                int dw = lumo_text_width(dbuf, 2);
-                lumo_draw_text(pixels, width, height,
-                    tp.x + tp.width / 2 - dw / 2, tp.y + 64,
-                    2, tp_text, dbuf);
-            }
-            {
-                int ww = lumo_text_width(wbuf, 2);
-                lumo_draw_text(pixels, width, height,
-                    tp.x + tp.width / 2 - ww / 2, tp.y + 90,
-                    2, tp_label, wbuf);
+                    tp.x + tp.width / 2 - tw / 2, tp.y + 12,
+                    6, tp_accent, tbuf);
             }
 
+            /* date and day */
             {
                 char day_name[16];
                 strftime(day_name, sizeof(day_name), "%A", &tm_now);
-                int dnw = lumo_text_width(day_name, 3);
+                char full_date[48];
+                snprintf(full_date, sizeof(full_date), "%s %s",
+                    day_name, dbuf);
+                int dw = lumo_text_width(full_date, 2);
                 lumo_draw_text(pixels, width, height,
-                    tp.x + tp.width / 2 - dnw / 2, tp.y + 110,
-                    3, tp_text, day_name);
+                    tp.x + tp.width / 2 - dw / 2, tp.y + 62,
+                    2, tp_text, full_date);
             }
 
-            /* weather info */
-            if (client->weather_condition[0] != '\0') {
-                char weath[64];
-                snprintf(weath, sizeof(weath), "%dF %s",
-                    client->weather_temp_c, client->weather_condition);
-                int wew = lumo_text_width(weath, 2);
+            /* week number */
+            {
+                int ww = lumo_text_width(wbuf, 2);
                 lumo_draw_text(pixels, width, height,
-                    tp.x + tp.width / 2 - wew / 2, tp.y + 140,
-                    2, tp_accent, weath);
+                    tp.x + tp.width / 2 - ww / 2, tp.y + 82,
+                    2, tp_label, wbuf);
+            }
+
+            /* weather section — separator line */
+            {
+                struct lumo_rect sep = {
+                    tp.x + 16, tp.y + 100, tp.width - 32, 1};
+                lumo_fill_rounded_rect(pixels, width, height,
+                    &sep, 0, tp_stroke);
+            }
+
+            /* weather: temp + condition */
+            if (client->weather_condition[0] != '\0' &&
+                    strcmp(client->weather_condition, "unknown") != 0) {
+                char temp_str[16];
+                snprintf(temp_str, sizeof(temp_str), "%dF",
+                    client->weather_temp_c);
+                lumo_draw_text(pixels, width, height,
+                    tp.x + 16, tp.y + 110, 4, tp_accent, temp_str);
+
+                int tx = tp.x + 16 + lumo_text_width(temp_str, 4) + 12;
+                lumo_draw_text(pixels, width, height,
+                    tx, tp.y + 116, 2, tp_text,
+                    client->weather_condition);
+
+                /* humidity + wind on next line */
+                int wy = tp.y + 148;
+                if (client->weather_humidity[0] != '\0' &&
+                        strcmp(client->weather_humidity, "--") != 0) {
+                    char hum[24];
+                    snprintf(hum, sizeof(hum), "HUM %s",
+                        client->weather_humidity);
+                    lumo_draw_text(pixels, width, height,
+                        tp.x + 16, wy, 2, tp_label, hum);
+                }
+                if (client->weather_wind[0] != '\0' &&
+                        strcmp(client->weather_wind, "--") != 0) {
+                    char wnd[32];
+                    snprintf(wnd, sizeof(wnd), "WIND %s",
+                        client->weather_wind);
+                    lumo_draw_text(pixels, width, height,
+                        tp.x + tp.width / 2 + 4, wy, 2,
+                        tp_label, wnd);
+                }
+            } else {
+                lumo_draw_text(pixels, width, height,
+                    tp.x + 16, tp.y + 116, 2, tp_label,
+                    "WEATHER LOADING...");
             }
         }
         return;
@@ -1290,13 +1332,70 @@ static void lumo_draw_quick_settings_panel(
         lumo_draw_text(pixels, width, height, panel.x + 16, row_y, 2,
             label_color, "SESSION");
         lumo_draw_text(pixels, width, height, val_x, row_y, 2,
-            value_color, "LUMO 0.0.50");
+            value_color, "LUMO " LUMO_VERSION_STRING);
 
         row_y += 22;
         lumo_draw_text(pixels, width, height, panel.x + 16, row_y, 2,
             label_color, "DEVICE");
         lumo_draw_text(pixels, width, height, val_x, row_y, 2,
             value_color, "ORANGEPI RV2");
+
+        row_y += 28;
+        lumo_fill_rect(pixels, width, height, panel.x + 12, row_y,
+            panel.width - 24, 1, dim);
+
+        /* volume slider */
+        row_y += 12;
+        {
+            char vol_str[16];
+            int track_x = panel.x + 16;
+            int track_w = panel.width - 32;
+            int track_h = 8;
+            uint32_t vol = client != NULL ? client->volume_pct : 50;
+            int fill_w = (int)(vol * (uint32_t)track_w / 100);
+            struct lumo_rect track_bg = {track_x, row_y + 6,
+                track_w, track_h};
+            struct lumo_rect track_fill = {track_x, row_y + 6,
+                fill_w, track_h};
+            struct lumo_rect knob = {track_x + fill_w - 6, row_y + 2,
+                12, 16};
+            snprintf(vol_str, sizeof(vol_str), "VOL %u%%", vol);
+            lumo_draw_text(pixels, width, height, track_x, row_y - 6,
+                2, label_color, vol_str);
+            lumo_fill_rounded_rect(pixels, width, height, &track_bg,
+                4, dim);
+            lumo_fill_rounded_rect(pixels, width, height, &track_fill,
+                4, accent);
+            lumo_fill_rounded_rect(pixels, width, height, &knob,
+                6, value_color);
+        }
+
+        /* brightness slider */
+        row_y += 32;
+        {
+            char bri_str[16];
+            int track_x = panel.x + 16;
+            int track_w = panel.width - 32;
+            int track_h = 8;
+            uint32_t bri = client != NULL ? client->brightness_pct : 50;
+            int fill_w = (int)(bri * (uint32_t)track_w / 100);
+            struct lumo_rect track_bg = {track_x, row_y + 6,
+                track_w, track_h};
+            struct lumo_rect track_fill = {track_x, row_y + 6,
+                fill_w, track_h};
+            struct lumo_rect knob = {track_x + fill_w - 6, row_y + 2,
+                12, 16};
+            uint32_t bri_color = lumo_argb(0xFF, 0xFF, 0xD1, 0x66);
+            snprintf(bri_str, sizeof(bri_str), "BRT %u%%", bri);
+            lumo_draw_text(pixels, width, height, track_x, row_y - 6,
+                2, label_color, bri_str);
+            lumo_fill_rounded_rect(pixels, width, height, &track_bg,
+                4, dim);
+            lumo_fill_rounded_rect(pixels, width, height, &track_fill,
+                4, bri_color);
+            lumo_fill_rounded_rect(pixels, width, height, &knob,
+                6, value_color);
+        }
 
         row_y += 28;
         lumo_fill_rect(pixels, width, height, panel.x + 12, row_y,
@@ -2263,36 +2362,90 @@ static void lumo_shell_client_send_reload(struct lumo_shell_client *client) {
     fprintf(stderr, "lumo-shell: sent reload_session request\n");
 }
 
+/* returns: 1=reload, 2=rotate, 3=vol_slider, 4=bri_slider */
 static int lumo_shell_status_button_hit(
     const struct lumo_shell_client *client,
     double x,
     double y
 ) {
-    int panel_w, bar_h, panel_x, btn_y, btn_h, btn_w;
+    int panel_w, bar_h, panel_x, btn_w;
 
     if (client == NULL || !client->compositor_quick_settings_visible) {
         return 0;
     }
 
     panel_w = (int)client->configured_width / 2;
+    if (panel_w < 200) panel_w = 200;
     bar_h = 40;
     panel_x = (int)client->configured_width - panel_w - 8;
-    btn_y = bar_h + 4 + 12 + 24 + 10 + 22 + 22 + 22 + 28 + 10;
-    btn_h = 28;
+
+    /* layout offsets — must match the drawing code above:
+     * title(12) + sep(24) + wifi(10+22) + display(22) + session(22) +
+     * device(22) + sep(28) + vol_label(12) + vol_track(20) +
+     * bri_label(32) + bri_track(28) + sep(28) + buttons(10) */
+    int base_y = bar_h + 4;
+    int track_x = panel_x + 16;
+    int track_w = panel_w - 32;
+
+    /* volume slider zone: row starts at base + 12+24+10+22+22+22+28+12 */
+    int vol_y = base_y + 12 + 24 + 10 + 22 + 22 + 22 + 28 + 6;
+    if (y >= vol_y && y <= vol_y + 20 &&
+            x >= track_x && x <= track_x + track_w) {
+        return 3;
+    }
+
+    /* brightness slider zone: vol + 32 */
+    int bri_y = vol_y + 32;
+    if (y >= bri_y && y <= bri_y + 20 &&
+            x >= track_x && x <= track_x + track_w) {
+        return 4;
+    }
+
+    /* buttons: bri + 28 + 28 + 10 */
+    int btn_y = bri_y + 28 + 28 + 10;
+    int btn_h = 28;
     btn_w = (panel_w - 36) / 2;
-
-    if (panel_w < 200) panel_w = 200;
-
     if (y >= btn_y && y <= btn_y + btn_h) {
         if (x >= panel_x + 12 && x <= panel_x + 12 + btn_w) {
-            return 1;
+            return 1; /* reload */
         }
         if (x >= panel_x + 12 + btn_w + 12 &&
                 x <= panel_x + 12 + btn_w + 12 + btn_w) {
-            return 2;
+            return 2; /* rotate */
         }
     }
     return 0;
+}
+
+static uint32_t lumo_shell_slider_pct_from_touch(
+    const struct lumo_shell_client *client,
+    double x
+) {
+    int panel_w = (int)client->configured_width / 2;
+    if (panel_w < 200) panel_w = 200;
+    int panel_x = (int)client->configured_width - panel_w - 8;
+    int track_x = panel_x + 16;
+    int track_w = panel_w - 32;
+    int rel = (int)x - track_x;
+    if (rel < 0) rel = 0;
+    if (rel > track_w) rel = track_w;
+    return (uint32_t)(rel * 100 / track_w);
+}
+
+static void lumo_shell_send_set_u32(
+    struct lumo_shell_client *client,
+    const char *name,
+    const char *key,
+    uint32_t value
+) {
+    struct lumo_shell_protocol_frame frame;
+    if (!lumo_shell_protocol_frame_init(&frame,
+            LUMO_SHELL_PROTOCOL_FRAME_REQUEST, name,
+            client->next_request_id++)) {
+        return;
+    }
+    lumo_shell_protocol_frame_add_u32(&frame, key, value);
+    (void)lumo_shell_client_send_frame(client, &frame);
 }
 
 static void lumo_shell_client_activate_target(struct lumo_shell_client *client) {
@@ -2667,6 +2820,22 @@ static void lumo_shell_client_apply_state_frame(
             client->weather_temp_c = temp;
             changed = true;
         }
+    }
+    if (lumo_shell_protocol_frame_get(frame, "weather_humidity", &value)) {
+        strncpy(client->weather_humidity, value,
+            sizeof(client->weather_humidity) - 1);
+    }
+    if (lumo_shell_protocol_frame_get(frame, "weather_wind", &value)) {
+        strncpy(client->weather_wind, value,
+            sizeof(client->weather_wind) - 1);
+    }
+    if (lumo_shell_protocol_frame_get_u32(frame, "volume_pct",
+            &timeout_value)) {
+        client->volume_pct = timeout_value;
+    }
+    if (lumo_shell_protocol_frame_get_u32(frame, "brightness_pct",
+            &timeout_value)) {
+        client->brightness_pct = timeout_value;
     }
 
     if (lumo_shell_protocol_frame_get(frame, "status", &value) &&
@@ -3079,8 +3248,19 @@ static void lumo_shell_touch_handle_up(
             return;
         }
         if (btn == 2) {
-            fprintf(stderr, "lumo-shell: -> ROTATE\n");
             lumo_shell_client_send_cycle_rotation(client);
+            return;
+        }
+        if (btn == 3) {
+            uint32_t pct = lumo_shell_slider_pct_from_touch(client,
+                client->pointer_x);
+            lumo_shell_send_set_u32(client, "set_volume", "pct", pct);
+            return;
+        }
+        if (btn == 4) {
+            uint32_t pct = lumo_shell_slider_pct_from_touch(client,
+                client->pointer_x);
+            lumo_shell_send_set_u32(client, "set_brightness", "pct", pct);
             return;
         }
     }

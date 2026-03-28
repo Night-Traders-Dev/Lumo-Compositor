@@ -21,6 +21,9 @@ struct lumo_shell_process {
     pid_t pid;
 };
 
+static void lumo_write_volume_pct(uint32_t pct);
+static void lumo_write_brightness_pct(uint32_t pct);
+
 struct lumo_shell_bridge_client {
     struct wl_list link;
     struct wl_event_source *source;
@@ -593,7 +596,17 @@ static bool lumo_shell_bridge_build_state_frame(
             !lumo_shell_protocol_frame_add_u32(frame, "weather_code",
                 (uint32_t)compositor->weather_code) ||
             !lumo_shell_protocol_frame_add_u32(frame, "weather_temp",
-                (uint32_t)(compositor->weather_temp_c + 100))) {
+                (uint32_t)(compositor->weather_temp_c + 100)) ||
+            !lumo_shell_protocol_frame_add_string(frame, "weather_humidity",
+                compositor->weather_humidity[0] != '\0'
+                    ? compositor->weather_humidity : "--") ||
+            !lumo_shell_protocol_frame_add_string(frame, "weather_wind",
+                compositor->weather_wind[0] != '\0'
+                    ? compositor->weather_wind : "--") ||
+            !lumo_shell_protocol_frame_add_u32(frame, "volume_pct",
+                compositor->volume_pct) ||
+            !lumo_shell_protocol_frame_add_u32(frame, "brightness_pct",
+                compositor->brightness_pct)) {
         return false;
     }
 
@@ -1020,6 +1033,30 @@ static void lumo_shell_bridge_handle_request_frame(
         }
 
         lumo_touch_audit_set_active(client->compositor, active);
+        (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
+        return;
+    }
+
+    if (strcmp(frame->name, "set_volume") == 0) {
+        uint32_t pct = 0;
+        if (lumo_shell_protocol_frame_get_u32(frame, "pct", &pct)) {
+            lumo_write_volume_pct(pct);
+            client->compositor->volume_pct = pct;
+            lumo_shell_mark_state_dirty(client->compositor);
+            wlr_log(WLR_INFO, "shell: volume set to %u%%", pct);
+        }
+        (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
+        return;
+    }
+
+    if (strcmp(frame->name, "set_brightness") == 0) {
+        uint32_t pct = 0;
+        if (lumo_shell_protocol_frame_get_u32(frame, "pct", &pct)) {
+            lumo_write_brightness_pct(pct);
+            client->compositor->brightness_pct = pct;
+            lumo_shell_mark_state_dirty(client->compositor);
+            wlr_log(WLR_INFO, "shell: brightness set to %u%%", pct);
+        }
         (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
         return;
     }
@@ -1484,6 +1521,67 @@ size_t lumo_shell_build_argv(
 
 static int lumo_weather_timer_cb(void *data);
 
+/* --- volume / brightness helpers --- */
+
+static uint32_t lumo_read_brightness_pct(void) {
+    FILE *fp;
+    int cur = 0, max = 255;
+    fp = fopen("/sys/class/backlight/soc:lcd_backlight/brightness", "r");
+    if (fp) { if (fscanf(fp, "%d", &cur) < 1) cur = 0; fclose(fp); }
+    fp = fopen("/sys/class/backlight/soc:lcd_backlight/max_brightness", "r");
+    if (fp) { if (fscanf(fp, "%d", &max) < 1) max = 255; fclose(fp); }
+    if (max <= 0) max = 255;
+    return (uint32_t)(cur * 100 / max);
+}
+
+static void lumo_write_brightness_pct(uint32_t pct) {
+    int max = 255;
+    FILE *mfp = fopen("/sys/class/backlight/soc:lcd_backlight/max_brightness", "r");
+    if (mfp) { if (fscanf(mfp, "%d", &max) < 1) max = 255; fclose(mfp); }
+    if (pct > 100) pct = 100;
+    int val = (int)(pct * (uint32_t)max / 100);
+    if (val < 1) val = 1;
+    FILE *fp = fopen("/sys/class/backlight/soc:lcd_backlight/brightness", "w");
+    if (fp) { fprintf(fp, "%d", val); fclose(fp); }
+}
+
+static uint32_t lumo_read_volume_pct(void) {
+    FILE *fp;
+    char buf[256] = "";
+    int pct = 50;
+    fp = popen("amixer -c 1 get PCM 2>/dev/null", "r");
+    if (fp) {
+        while (fgets(buf, sizeof(buf), fp)) {
+            char *bracket = strstr(buf, "[");
+            if (bracket && strstr(bracket, "%]")) {
+                sscanf(bracket, "[%d%%]", &pct);
+                break;
+            }
+        }
+        pclose(fp);
+    }
+    return (uint32_t)pct;
+}
+
+static void lumo_write_volume_pct(uint32_t pct) {
+    char cmd[64];
+    if (pct > 100) pct = 100;
+    snprintf(cmd, sizeof(cmd), "amixer -c 1 set PCM %u%% >/dev/null 2>&1",
+        pct);
+    (void)system(cmd);
+}
+
+static void lumo_refresh_vol_bright(struct lumo_compositor *compositor) {
+    if (compositor == NULL) return;
+    uint32_t vol = lumo_read_volume_pct();
+    uint32_t bri = lumo_read_brightness_pct();
+    if (vol != compositor->volume_pct || bri != compositor->brightness_pct) {
+        compositor->volume_pct = vol;
+        compositor->brightness_pct = bri;
+        lumo_shell_mark_state_dirty(compositor);
+    }
+}
+
 static void lumo_shell_play_boot_sound(void) {
     /* generate a short two-tone chime WAV in /tmp and play it async */
     pid_t pid = fork();
@@ -1616,6 +1714,10 @@ int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
         }
     }
 
+    /* read initial volume and brightness */
+    compositor->volume_pct = lumo_read_volume_pct();
+    compositor->brightness_pct = lumo_read_brightness_pct();
+
     /* play boot chime */
     lumo_shell_play_boot_sound();
 
@@ -1654,11 +1756,59 @@ static void lumo_weather_parse(struct lumo_compositor *compositor,
         deg += 2; /* skip ° */
         if (*deg == 'C' || *deg == 'F') deg++;
         while (*deg == ' ') deg++;
+        /* parse: "Sunny 45% →10mph\n" or similar */
         strncpy(condition, deg, sizeof(condition) - 1);
         condition[sizeof(condition) - 1] = '\0';
-        /* trim trailing newline */
         char *nl = strchr(condition, '\n');
         if (nl) *nl = '\0';
+
+        /* extract humidity (look for XX%) */
+        char humidity[16] = "";
+        char wind[24] = "";
+        {
+            const char *hp = strstr(deg, "%");
+            if (hp != NULL) {
+                /* scan backwards from % to find digits */
+                const char *hs = hp;
+                while (hs > deg && (*(hs - 1) >= '0' && *(hs - 1) <= '9'))
+                    hs--;
+                if (hs < hp) {
+                    size_t hlen = (size_t)(hp - hs + 1);
+                    if (hlen < sizeof(humidity)) {
+                        memcpy(humidity, hs, hlen);
+                        humidity[hlen] = '\0';
+                    }
+                }
+            }
+            /* extract wind (everything after % and space) */
+            if (hp != NULL) {
+                const char *wp = hp + 1;
+                while (*wp == ' ') wp++;
+                strncpy(wind, wp, sizeof(wind) - 1);
+                wind[sizeof(wind) - 1] = '\0';
+                nl = strchr(wind, '\n');
+                if (nl) *nl = '\0';
+            }
+            /* truncate condition to just the weather name */
+            if (hp != NULL) {
+                /* find the space before humidity */
+                char *sp = condition;
+                char *pct = strstr(sp, "%");
+                if (pct != NULL) {
+                    char *cut = pct;
+                    while (cut > sp && *(cut - 1) != ' ') cut--;
+                    if (cut > sp) {
+                        cut--;
+                        while (cut > sp && *(cut - 1) == ' ') cut--;
+                        *cut = '\0';
+                    }
+                }
+            }
+        }
+        strncpy(compositor->weather_humidity, humidity,
+            sizeof(compositor->weather_humidity) - 1);
+        strncpy(compositor->weather_wind, wind,
+            sizeof(compositor->weather_wind) - 1);
     }
 
     /* map condition text to a weather code for the theme engine:
@@ -1719,7 +1869,7 @@ static void lumo_weather_fetch(struct lumo_compositor *compositor) {
         close(pipefd[1]);
         close(STDERR_FILENO);
         execlp("curl", "curl", "-s", "--max-time", "8",
-            "https://wttr.in/41101?format=%t+%C&u", (char *)NULL);
+            "https://wttr.in/41101?format=%t+%C+%h+%w&u", (char *)NULL);
         _exit(127);
     }
 

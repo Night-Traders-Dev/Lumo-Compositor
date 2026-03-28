@@ -917,14 +917,24 @@ static void lumo_app_text_input_enter(void *data,
     struct lumo_app_client *client = data;
     (void)ti; (void)surface;
     if (client == NULL) return;
-    if (!client->text_input_enabled && client->text_input != NULL) {
+
+    /* only enable text-input (and thus trigger the OSK) for apps
+     * that have text fields: terminal and notes */
+    bool wants_osk = client->app_id == LUMO_APP_MESSAGES ||
+        client->app_id == LUMO_APP_NOTES;
+
+    if (wants_osk && !client->text_input_enabled &&
+            client->text_input != NULL) {
+        uint32_t purpose = (client->app_id == LUMO_APP_MESSAGES)
+            ? ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_TERMINAL
+            : ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL;
         zwp_text_input_v3_enable(client->text_input);
         zwp_text_input_v3_set_content_type(client->text_input,
-            ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE,
-            ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_TERMINAL);
+            ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE, purpose);
         zwp_text_input_v3_commit(client->text_input);
         client->text_input_enabled = true;
-        fprintf(stderr, "lumo-app: text-input enabled (terminal)\n");
+        fprintf(stderr, "lumo-app: text-input enabled for %s\n",
+            lumo_app_id_name(client->app_id));
     }
 }
 
@@ -1499,21 +1509,18 @@ int main(int argc, char **argv) {
         if (client.text_input != NULL) {
             zwp_text_input_v3_add_listener(client.text_input,
                 &lumo_app_text_input_listener, &client);
-            /* Enable text-input immediately — the compositor may have
-             * already sent the enter event before this object existed.
-             * We set text_input_enabled = true here so that the enter
-             * callback (lumo_app_text_input_enter) won't redundantly
-             * re-enable; the guard check `!client->text_input_enabled`
-             * in that callback is intentional and correct. */
-            zwp_text_input_v3_enable(client.text_input);
-            zwp_text_input_v3_set_content_type(client.text_input,
-                ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE,
-                ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_TERMINAL);
-            zwp_text_input_v3_commit(client.text_input);
-            client.text_input_enabled = true;
-            fprintf(stderr, "lumo-app: text-input-v3 ready and enabled\n");
+            /* do NOT enable here — wait for the compositor to send the
+             * enter event (which arrives after wl_display_roundtrip).
+             * enable()+commit() must happen after enter, otherwise
+             * wlroots ignores the commit and current_enabled stays false */
+            fprintf(stderr, "lumo-app: text-input-v3 ready\n");
         }
     }
+
+    /* roundtrip so the compositor's enter event arrives before we
+     * proceed — the enter callback will enable text-input for
+     * apps that want the OSK (terminal, notes) */
+    wl_display_roundtrip(client.display);
 
     /* set up PTY for terminal app */
     if (client.app_id == LUMO_APP_MESSAGES) {

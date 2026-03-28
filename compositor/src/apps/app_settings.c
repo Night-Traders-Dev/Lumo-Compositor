@@ -1,4 +1,5 @@
 #include "lumo/app_render.h"
+#include "lumo/version.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -353,7 +354,7 @@ void lumo_app_render_settings(
         { char hn[32]="?"; gethostname(hn,sizeof(hn)-1);
             draw_row(px,w,h,y,"ABOUT",hn,false); } y += row_h;
 
-        draw_row(px, w, h, y, "LUMO", "0.0.51", false); y += row_h;
+        draw_row(px, w, h, y, "LUMO", LUMO_VERSION_STRING, false); y += row_h;
         draw_row(px, w, h, y, "CPU", "RISCV64", false);
     }
 
