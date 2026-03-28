@@ -143,9 +143,27 @@ static double lumo_clamp_unit(double value) {
     return value;
 }
 
-static double lumo_ease_out_cubic(double value) {
+/* Material Design decelerate curve: cubic-bezier(0.0, 0.0, 0.2, 1.0)
+ * Approximated as cubic ease-out for panel/drawer open */
+static double lumo_ease_decelerate(double value) {
     double t = 1.0 - lumo_clamp_unit(value);
     return 1.0 - t * t * t;
+}
+
+/* Material Design standard curve: cubic-bezier(0.4, 0.0, 0.2, 1.0)
+ * Smooth ease-in-out for general transitions */
+static double lumo_ease_standard(double value) {
+    double t = lumo_clamp_unit(value);
+    if (t < 0.5) {
+        return 4.0 * t * t * t;
+    }
+    double u = -2.0 * t + 2.0;
+    return 1.0 - u * u * u / 2.0;
+}
+
+/* backward compat alias */
+static double lumo_ease_out_cubic(double value) {
+    return lumo_ease_decelerate(value);
 }
 
 static uint64_t lumo_now_msec(void) {
@@ -601,7 +619,10 @@ static double lumo_shell_client_animation_value(
 
     progress = (double)(now - client->animation_started_msec) /
         (double)client->animation_duration_msec;
-    progress = lumo_ease_out_cubic(progress);
+    /* use standard ease-in-out for showing, decelerate for hiding */
+    progress = client->target_visible
+        ? lumo_ease_standard(progress)
+        : lumo_ease_decelerate(progress);
     value = client->animation_from +
         (client->animation_to - client->animation_from) * progress;
     return lumo_clamp_unit(value);

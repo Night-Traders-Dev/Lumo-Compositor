@@ -979,14 +979,20 @@ static void lumo_input_touch_point_trigger_edge_action(
         if (compositor->touch_audit_active) {
             lumo_touch_audit_set_active(compositor, false);
         }
-        if (lumo_touch_point_prefers_bottom_app_close(point,
-                compositor->launcher_visible,
-                compositor->touch_audit_active)) {
+        /* if an app is focused and the launcher is not visible,
+         * the bottom-edge swipe closes the app (like iOS/Android) */
+        if (!compositor->launcher_visible &&
+                !compositor->touch_audit_active &&
+                !wl_list_empty(&compositor->toplevels)) {
             closed_focused_app =
                 lumo_protocol_close_focused_app(compositor);
             if (closed_focused_app) {
+                /* also hide keyboard if it was showing */
+                if (compositor->keyboard_visible) {
+                    lumo_protocol_set_keyboard_visible(compositor, false);
+                }
                 wlr_log(WLR_INFO,
-                    "input: touch %d closed focused app from bottom-edge swipe at %u",
+                    "input: touch %d closed focused app from bottom swipe at %u",
                     point->touch_id, time_msec);
                 return;
             }

@@ -241,10 +241,10 @@ static void test_gesture_hitbox(void) {
 }
 
 static void test_transition_durations(void) {
-    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_LAUNCHER, true) == 140);
-    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_LAUNCHER, false) == 110);
-    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_OSK, true) == 130);
-    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_OSK, false) == 100);
+    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_LAUNCHER, true) == 350);
+    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_LAUNCHER, false) == 250);
+    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_OSK, true) == 300);
+    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_OSK, false) == 200);
     assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_GESTURE, true) == 0);
     assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_STATUS, false) == 0);
 }
