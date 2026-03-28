@@ -609,7 +609,7 @@ static bool lumo_shell_bridge_build_state_frame(
                 compositor->brightness_pct) ||
             !lumo_shell_protocol_frame_add_string(frame, "toast_msg",
                 compositor->toast_message[0] != '\0'
-                    ? compositor->toast_message : "") ||
+                    ? compositor->toast_message : "-") ||
             !lumo_shell_protocol_frame_add_u32(frame, "toast_time",
                 (uint32_t)(compositor->toast_show_time_ms & 0xFFFFFFFF)) ||
             !lumo_shell_protocol_frame_add_u32(frame, "toast_dur",
