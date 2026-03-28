@@ -666,6 +666,23 @@ static void lumo_app_touch_handle_down(
     lumo_app_client_set_close_active(client,
         lumo_app_client_close_contains(client, client->touch_down_x,
             client->touch_down_y));
+
+    /* try to enable text-input on touch if not already enabled —
+     * the enter event may have been missed during startup */
+    if (!client->text_input_enabled && client->text_input != NULL &&
+            (client->app_id == LUMO_APP_MESSAGES ||
+                client->app_id == LUMO_APP_NOTES)) {
+        uint32_t purpose = (client->app_id == LUMO_APP_MESSAGES)
+            ? ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_TERMINAL
+            : ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL;
+        zwp_text_input_v3_enable(client->text_input);
+        zwp_text_input_v3_set_content_type(client->text_input,
+            ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE, purpose);
+        zwp_text_input_v3_commit(client->text_input);
+        client->text_input_enabled = true;
+        fprintf(stderr, "lumo-app: text-input enabled on touch for %s\n",
+            lumo_app_id_name(client->app_id));
+    }
 }
 
 static void lumo_app_touch_handle_up(

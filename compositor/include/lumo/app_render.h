@@ -41,6 +41,19 @@ void lumo_app_draw_background(
     uint32_t *pixels, uint32_t width, uint32_t height
 );
 
+/* dynamic theme colors based on time of day */
+struct lumo_app_theme {
+    uint32_t bg;          /* app background */
+    uint32_t header_bg;   /* header/toolbar background */
+    uint32_t card_bg;     /* card/container fill */
+    uint32_t card_stroke; /* card border */
+    uint32_t accent;      /* always orange */
+    uint32_t text;        /* primary text (white) */
+    uint32_t text_dim;    /* secondary text */
+    uint32_t separator;   /* dividers */
+};
+void lumo_app_theme_get(struct lumo_app_theme *theme);
+
 void lumo_app_render_clock(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels, uint32_t width, uint32_t height

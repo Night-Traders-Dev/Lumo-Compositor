@@ -5,6 +5,54 @@
 #include <string.h>
 #include <time.h>
 
+void lumo_app_theme_get(struct lumo_app_theme *theme) {
+    time_t now = time(NULL);
+    struct tm tm_now;
+    uint32_t r, g, b;
+    localtime_r(&now, &tm_now);
+    uint32_t hour = (uint32_t)tm_now.tm_hour;
+
+    if (hour >= 5 && hour < 7) {
+        r = 0x14; g = 0x28; b = 0x38;
+    } else if (hour >= 7 && hour < 10) {
+        r = 0x30; g = 0x10; b = 0x28;
+    } else if (hour >= 10 && hour < 14) {
+        r = 0x2C; g = 0x00; b = 0x1E;
+    } else if (hour >= 14 && hour < 17) {
+        r = 0x28; g = 0x14; b = 0x18;
+    } else if (hour >= 17 && hour < 19) {
+        r = 0x42; g = 0x0C; b = 0x16;
+    } else if (hour >= 19 && hour < 21) {
+        r = 0x10; g = 0x18; b = 0x30;
+    } else {
+        r = 0x12; g = 0x08; b = 0x1A;
+    }
+
+    theme->bg = ((uint32_t)0xFF << 24) | (r << 16) | (g << 8) | b;
+    theme->header_bg = ((uint32_t)0xFF << 24) |
+        ((r > 0x08 ? r - 0x08 : 0) << 16) |
+        ((g > 0x04 ? g - 0x04 : 0) << 8) |
+        (b > 0x06 ? b - 0x06 : 0);
+    uint32_t cr = r + 0x0A, cg = g + 0x08, cb = b + 0x0A;
+    theme->card_bg = ((uint32_t)0xFF << 24) |
+        ((cr > 0xFF ? 0xFF : cr) << 16) |
+        ((cg > 0xFF ? 0xFF : cg) << 8) |
+        (cb > 0xFF ? 0xFF : cb);
+    uint32_t sr = r + 0x20, sg = g + 0x14, sb = b + 0x1C;
+    theme->card_stroke = ((uint32_t)0xFF << 24) |
+        ((sr > 0xFF ? 0xFF : sr) << 16) |
+        ((sg > 0xFF ? 0xFF : sg) << 8) |
+        (sb > 0xFF ? 0xFF : sb);
+    theme->accent = 0xFFE95420;
+    theme->text = 0xFFFFFFFF;
+    theme->text_dim = 0xFFAEA79F;
+    uint32_t dr = r + 0x30, dg = g + 0x18, db = b + 0x28;
+    theme->separator = ((uint32_t)0x40 << 24) |
+        ((dr > 0xFF ? 0xFF : dr) << 16) |
+        ((dg > 0xFF ? 0xFF : dg) << 8) |
+        (db > 0xFF ? 0xFF : db);
+}
+
 uint32_t lumo_app_argb(uint8_t a, uint8_t r, uint8_t g, uint8_t b) {
     return ((uint32_t)a << 24) | ((uint32_t)r << 16) |
         ((uint32_t)g << 8) | (uint32_t)b;
@@ -252,11 +300,12 @@ void lumo_app_draw_close_button(
 void lumo_app_draw_background(
     uint32_t *pixels, uint32_t width, uint32_t height
 ) {
+    struct lumo_app_theme theme;
     struct lumo_rect full = {0, 0, (int)width, (int)height};
+    lumo_app_theme_get(&theme);
     memset(pixels, 0, (size_t)width * height * 4);
     lumo_app_fill_gradient(pixels, width, height, &full,
-        lumo_app_argb(0xFF, 0x2C, 0x00, 0x1E),
-        lumo_app_argb(0xFF, 0x1D, 0x11, 0x22));
+        theme.bg, theme.header_bg);
 }
 
 static void lumo_app_card_text(
@@ -301,11 +350,13 @@ void lumo_app_render_stub(
     enum lumo_app_id app_id = ctx != NULL ? ctx->app_id : LUMO_APP_PHONE;
     bool close_active = ctx != NULL ? ctx->close_active : false;
     struct lumo_rect hero;
+    struct lumo_app_theme theme;
+    lumo_app_theme_get(&theme);
     uint32_t accent = lumo_app_accent_argb(app_id);
-    uint32_t text_primary = lumo_app_argb(0xFF, 0xFF, 0xFF, 0xFF);
-    uint32_t text_secondary = lumo_app_argb(0xFF, 0xAE, 0xA7, 0x9F);
-    uint32_t panel_fill = lumo_app_argb(0xFF, 0x2C, 0x16, 0x28);
-    uint32_t panel_stroke = lumo_app_argb(0xFF, 0x5E, 0x2C, 0x56);
+    uint32_t text_primary = theme.text;
+    uint32_t text_secondary = theme.text_dim;
+    uint32_t panel_fill = theme.card_bg;
+    uint32_t panel_stroke = theme.card_stroke;
 
     if (pixels == NULL || width == 0 || height == 0) return;
     lumo_app_draw_background(pixels, width, height);

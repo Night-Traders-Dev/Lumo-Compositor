@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.54] - 2026-03-28
+
+- Dynamic theme system: all UI elements (status bar, panels, drawer, app backgrounds) now shift with time-of-day and weather conditions using blended Ubuntu/Sailfish/webOS palettes.
+- Apps receive theme via `lumo_app_theme_get()` — terminal, stub apps, and background all follow the dynamic palette.
+- Terminal cursor now blinks (500ms on/off cycle).
+- OSK trigger on touch: terminal and notes apps enable text-input on first tap if the enter event was missed at startup.
+- Volume and brightness sliders in quick settings panel with live readback from ALSA and sysfs backlight.
+- Toast notification system: Android-style pills render below status bar with fade-in/out animation.
+- Weather panel shows temperature (Fahrenheit), condition, humidity, and wind speed.
+- Fixed critical bug: empty toast_msg field broke protocol token validator, silently aborting ALL state broadcasts to shell clients (no panels or drawer would show).
+- Fixed replay coordinate bug: touches replayed from OSK bootstrap surface had (0,0) coordinates instead of actual tap position.
+- Fixed bottom-edge swipe: now closes focused app when no launcher is visible (iOS/Android behavior).
+- Material Design animation curves: standard ease-in-out for show, decelerate for hide (350ms/250ms launcher, 300ms/200ms OSK).
+- Keyboard only shows when text-input-v3 is explicitly enabled (not for every toplevel focus).
+- Version header file (version.h) as single source of truth for version string across all binaries.
+- Boot chime plays two-tone C5/E5 WAV at shell startup.
+- Live device test harness with touch injection and log verification.
+- HID multitouch driver rebind workaround for USB touchscreen firmware freezes.
+
 ## [0.0.52] - 2026-03-28
 
 - Full codebase security and stability audit: fixed 26 issues across critical, high, medium, and low severity.
