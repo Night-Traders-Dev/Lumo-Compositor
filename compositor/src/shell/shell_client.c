@@ -113,6 +113,9 @@ struct lumo_shell_client {
     int weather_temp_c;
     uint32_t volume_pct;
     uint32_t brightness_pct;
+    char toast_message[128];
+    uint32_t toast_time_low;
+    uint32_t toast_duration_ms;
 };
 
 static bool lumo_shell_client_redraw(struct lumo_shell_client *client);
@@ -1687,6 +1690,46 @@ static void lumo_render_surface(
     switch (client->mode) {
     case LUMO_SHELL_MODE_LAUNCHER:
         lumo_draw_launcher(pixels, width, height, client, active_target, visibility);
+        /* draw toast notification overlay (Android-style pill under status bar) */
+        if (client->toast_message[0] != '\0' &&
+                client->toast_duration_ms > 0) {
+            uint64_t now_low = lumo_now_msec() & 0xFFFFFFFF;
+            uint64_t elapsed;
+            if (now_low >= client->toast_time_low) {
+                elapsed = now_low - client->toast_time_low;
+            } else {
+                elapsed = (0xFFFFFFFF - client->toast_time_low) + now_low;
+            }
+            if (elapsed < client->toast_duration_ms) {
+                uint32_t toast_bg = lumo_argb(0xE0, 0x30, 0x30, 0x34);
+                uint32_t toast_text = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
+                int tw = lumo_text_width(client->toast_message, 2);
+                int pad = 20;
+                int th = 28;
+                struct lumo_rect toast_rect;
+                toast_rect.width = tw + pad * 2;
+                toast_rect.height = th;
+                toast_rect.x = (int)width - toast_rect.width - 12;
+                toast_rect.y = 56;
+                /* fade in/out */
+                double alpha = 1.0;
+                if (elapsed < 200) {
+                    alpha = (double)elapsed / 200.0;
+                } else if (elapsed > client->toast_duration_ms - 300) {
+                    alpha = (double)(client->toast_duration_ms - elapsed) / 300.0;
+                }
+                if (alpha < 0.0) alpha = 0.0;
+                toast_bg = lumo_argb((uint8_t)(0xE0 * alpha),
+                    0x30, 0x30, 0x34);
+                toast_text = lumo_argb((uint8_t)(0xFF * alpha),
+                    0xFF, 0xFF, 0xFF);
+                lumo_fill_rounded_rect(pixels, width, height,
+                    &toast_rect, 14, toast_bg);
+                lumo_draw_text(pixels, width, height,
+                    toast_rect.x + pad, toast_rect.y + 8,
+                    2, toast_text, client->toast_message);
+            }
+        }
         return;
     case LUMO_SHELL_MODE_OSK:
         lumo_draw_osk(pixels, width, height, client, active_target, visibility);
@@ -1787,11 +1830,22 @@ static bool lumo_shell_client_should_be_visible(
     }
 
     switch (client->mode) {
-    case LUMO_SHELL_MODE_LAUNCHER:
+    case LUMO_SHELL_MODE_LAUNCHER: {
+        bool has_toast = client->toast_message[0] != '\0' &&
+            client->toast_duration_ms > 0;
+        if (has_toast) {
+            uint64_t now_low = lumo_now_msec() & 0xFFFFFFFF;
+            uint64_t elapsed = (now_low >= client->toast_time_low)
+                ? now_low - client->toast_time_low
+                : (0xFFFFFFFF - client->toast_time_low) + now_low;
+            has_toast = elapsed < client->toast_duration_ms;
+        }
         return client->compositor_launcher_visible ||
             client->compositor_touch_audit_active ||
             client->compositor_quick_settings_visible ||
-            client->compositor_time_panel_visible;
+            client->compositor_time_panel_visible ||
+            has_toast;
+    }
     case LUMO_SHELL_MODE_OSK:
         return client->compositor_keyboard_visible;
     case LUMO_SHELL_MODE_GESTURE:
@@ -2836,6 +2890,21 @@ static void lumo_shell_client_apply_state_frame(
     if (lumo_shell_protocol_frame_get_u32(frame, "brightness_pct",
             &timeout_value)) {
         client->brightness_pct = timeout_value;
+    }
+    if (lumo_shell_protocol_frame_get(frame, "toast_msg", &value)) {
+        strncpy(client->toast_message, value,
+            sizeof(client->toast_message) - 1);
+    }
+    if (lumo_shell_protocol_frame_get_u32(frame, "toast_time",
+            &timeout_value)) {
+        if (client->toast_time_low != timeout_value) {
+            client->toast_time_low = timeout_value;
+            changed = true; /* trigger redraw for new toast */
+        }
+    }
+    if (lumo_shell_protocol_frame_get_u32(frame, "toast_dur",
+            &timeout_value)) {
+        client->toast_duration_ms = timeout_value;
     }
 
     if (lumo_shell_protocol_frame_get(frame, "status", &value) &&

@@ -901,6 +901,9 @@ struct lumo_compositor {
     int weather_code;
     uint32_t volume_pct;
     uint32_t brightness_pct;
+    char toast_message[128];
+    uint64_t toast_show_time_ms;
+    uint32_t toast_duration_ms;
 };
 
 static inline bool lumo_touch_audit_debug_gesture_enabled(
