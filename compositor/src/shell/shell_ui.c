@@ -693,15 +693,15 @@ bool lumo_shell_surface_config_for_mode(
         break;
     case LUMO_SHELL_MODE_OSK:
         config->name = "osk";
-        osk_height = (output_height * 21) / 50;
-        osk_height = lumo_shell_clamp_u32(osk_height, 280, output_height);
+        osk_height = (output_height * 2) / 5;
+        osk_height = lumo_shell_clamp_u32(osk_height, 260, output_height);
         config->height = osk_height;
         config->anchor = LUMO_SHELL_ANCHOR_BOTTOM |
             LUMO_SHELL_ANCHOR_LEFT |
             LUMO_SHELL_ANCHOR_RIGHT;
         config->exclusive_zone = (int32_t)osk_height;
         config->keyboard_interactive = true;
-        config->background_rgba = 0x0012161C;
+        config->background_rgba = 0x002A2A2E;
         break;
     case LUMO_SHELL_MODE_GESTURE:
         config->name = "gesture";

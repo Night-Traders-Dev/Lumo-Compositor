@@ -219,7 +219,7 @@ More detailed notes live in:
 
 ## Status
 
-The project is at v0.0.50 with a functional mobile shell running on OrangePi RV2 hardware.
+The project is at v0.0.51 with a functional mobile shell running on OrangePi RV2 hardware.
 
 Current capabilities:
 
@@ -231,9 +231,10 @@ Current capabilities:
 - time/date panel (top-left swipe) with large clock, date, day name, week number
 - app drawer with 12 native touch apps launched via bottom gesture
 - functional Clock app with live seconds and interactive stopwatch
-- functional Files app with directory browsing, scroll, and navigation
-- functional Settings app with live system info (hostname, kernel, uptime, memory, WiFi)
-- functional Notes app with add and select
+- functional Files app with directory browsing, scroll, navigation, and file sizes
+- functional Settings app with 8 categorized rows (Network, Display, Storage, Memory, System, About, Lumo, CPU)
+- functional Notes app with add, select, and disk persistence (~/.lumo-notes)
+- functional Terminal app with keyboard input, command history, and OSK integration
 - on-screen keyboard with text-input-v3 integration
 - screen rotation via quick settings with correct touch matrix remapping
 - shell child supervision with automatic respawn
@@ -244,7 +245,9 @@ Current capabilities:
 
 Next milestones:
 
-- Vulkan/EGL rendering path when hardware supports it
-- more complete native app functionality
+- app icons for launcher tiles
+- settings sub-pages with toggles and sliders
+- custom login screen to replace GDM greeter
 - window management UX for third-party Wayland apps
 - notification system
+- Vulkan/EGL rendering path when hardware supports it

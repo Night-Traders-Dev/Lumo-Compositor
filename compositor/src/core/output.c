@@ -48,16 +48,13 @@ static void lumo_output_frame(struct wl_listener *listener, void *data) {
         return;
     }
 
-    if (!wlr_scene_output_commit(output->scene_output, NULL)) {
-        wlr_log(WLR_ERROR,
-            "output %s: failed to render scene",
-            output->wlr_output->name);
-        return;
-    }
+    wlr_scene_output_commit(output->scene_output, NULL);
 
-    struct timespec now;
-    clock_gettime(CLOCK_MONOTONIC, &now);
-    wlr_scene_output_send_frame_done(output->scene_output, &now);
+    {
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        wlr_scene_output_send_frame_done(output->scene_output, &now);
+    }
     (void)data;
 }
 

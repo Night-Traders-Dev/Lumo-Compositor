@@ -37,10 +37,11 @@ static void test_target_kind_parse(void) {
 static void test_osk_key_text(void) {
     assert(strcmp(lumo_shell_osk_key_text(0), "q") == 0);
     assert(strcmp(lumo_shell_osk_key_text(10), "a") == 0);
-    assert(strcmp(lumo_shell_osk_key_text(26), ",") == 0);
-    assert(strcmp(lumo_shell_osk_key_text(28), " ") == 0);
-    assert(strcmp(lumo_shell_osk_key_text(30), "\n") == 0);
-    assert(lumo_shell_osk_key_text(31) == NULL);
+    assert(strcmp(lumo_shell_osk_key_text(19), "\b") == 0);  /* backspace */
+    assert(strcmp(lumo_shell_osk_key_text(28), ",") == 0);
+    assert(strcmp(lumo_shell_osk_key_text(30), " ") == 0);   /* space */
+    assert(strcmp(lumo_shell_osk_key_text(31), "\n") == 0);  /* enter */
+    assert(lumo_shell_osk_key_text(33) == NULL);
 }
 
 static void test_shell_labels(void) {
@@ -49,9 +50,10 @@ static void test_shell_labels(void) {
     assert(lumo_shell_launcher_tile_label(12) == NULL);
 
     assert(strcmp(lumo_shell_osk_key_label(0), "Q") == 0);
-    assert(strcmp(lumo_shell_osk_key_label(28), "SPACE") == 0);
-    assert(strcmp(lumo_shell_osk_key_label(30), "RETURN") == 0);
-    assert(lumo_shell_osk_key_label(31) == NULL);
+    assert(strcmp(lumo_shell_osk_key_label(19), "<-") == 0);
+    assert(strcmp(lumo_shell_osk_key_label(30), "SPACE") == 0);
+    assert(strcmp(lumo_shell_osk_key_label(31), "ENTER") == 0);
+    assert(lumo_shell_osk_key_label(33) == NULL);
 
     assert(strcmp(lumo_shell_touch_audit_point_name(0), "top-left") == 0);
     assert(strcmp(lumo_shell_touch_audit_point_name(7), "bottom-right") == 0);
@@ -63,7 +65,7 @@ static void test_shell_labels(void) {
 
 static void test_layout_counts(void) {
     assert(lumo_shell_launcher_tile_count() == 12);
-    assert(lumo_shell_osk_key_count() == 31);
+    assert(lumo_shell_osk_key_count() == 33);
     assert(lumo_shell_touch_audit_point_count() == 8);
 }
 
@@ -91,13 +93,13 @@ static void test_osk_config(void) {
         1024, 600, &config));
     assert(config.mode == LUMO_SHELL_MODE_OSK);
     assert(config.width == 1024);
-    assert(config.height == 280);
+    assert(config.height == 260);
     assert(config.anchor == (LUMO_SHELL_ANCHOR_BOTTOM |
         LUMO_SHELL_ANCHOR_LEFT |
         LUMO_SHELL_ANCHOR_RIGHT));
-    assert(config.exclusive_zone == 280);
+    assert(config.exclusive_zone == 260);
     assert(config.keyboard_interactive);
-    assert(config.background_rgba == 0x0012161C);
+    assert(config.background_rgba == 0x002A2A2E);
 }
 
 static void test_gesture_config(void) {
@@ -212,13 +214,13 @@ static void test_osk_hitboxes(void) {
     assert(target.kind == LUMO_SHELL_TARGET_OSK_KEY);
     assert(target.index == 0);
 
-    assert(lumo_shell_osk_key_rect(1024, 320, 28, &rect));
+    assert(lumo_shell_osk_key_rect(1024, 320, 30, &rect));
     assert(rect.width > 0);
     assert(lumo_shell_target_for_mode(LUMO_SHELL_MODE_OSK,
         1024, 320, rect.x + rect.width / 2.0, rect.y + rect.height / 2.0,
         &target));
     assert(target.kind == LUMO_SHELL_TARGET_OSK_KEY);
-    assert(target.index == 28);
+    assert(target.index == 30);
 }
 
 static void test_gesture_hitbox(void) {

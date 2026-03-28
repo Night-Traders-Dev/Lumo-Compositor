@@ -5,6 +5,8 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <pty.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -12,12 +14,14 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
 #include <wayland-client.h>
 
 #include "xdg-shell-client-protocol.h"
+#include "text-input-unstable-v3-client-protocol.h"
 
 struct lumo_app_client;
 
@@ -45,6 +49,9 @@ struct lumo_app_client {
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *xdg_toplevel;
     struct lumo_app_buffer *buffer;
+    struct zwp_text_input_manager_v3 *text_input_manager;
+    struct zwp_text_input_v3 *text_input;
+    bool text_input_enabled;
     uint32_t width;
     uint32_t height;
     uint32_t pending_width;
@@ -75,11 +82,153 @@ struct lumo_app_client {
     char notes[8][128];
     int note_count;
     int note_editing;
+    int pty_fd;
+    pid_t pty_pid;
+    char pty_line_buf[256];
+    int pty_line_len;
+    char pending_commit[256];
+    int pending_commit_len;
 };
 
 static bool lumo_app_client_redraw(struct lumo_app_client *client);
 static void lumo_app_notes_save(const struct lumo_app_client *client);
 static void lumo_app_notes_load(struct lumo_app_client *client);
+
+static void lumo_app_term_add_line(struct lumo_app_client *client,
+    const char *line)
+{
+    if (client->term_line_count < 16) {
+        strncpy(client->term_lines[client->term_line_count], line,
+            sizeof(client->term_lines[0]) - 1);
+        client->term_lines[client->term_line_count]
+            [sizeof(client->term_lines[0]) - 1] = '\0';
+        client->term_line_count++;
+    } else {
+        memmove(client->term_lines[0], client->term_lines[1],
+            15 * sizeof(client->term_lines[0]));
+        strncpy(client->term_lines[15], line,
+            sizeof(client->term_lines[0]) - 1);
+        client->term_lines[15][sizeof(client->term_lines[0]) - 1] = '\0';
+    }
+}
+
+static void lumo_app_term_write(struct lumo_app_client *client,
+    const char *data, size_t len)
+{
+    if (client->pty_fd < 0 || len == 0) return;
+    (void)write(client->pty_fd, data, len);
+}
+
+static bool lumo_app_pty_setup(struct lumo_app_client *client) {
+    struct winsize ws = {
+        .ws_row = 24,
+        .ws_col = 80,
+        .ws_xpixel = 0,
+        .ws_ypixel = 0,
+    };
+    pid_t pid;
+    int master_fd;
+    const char *shell;
+
+    pid = forkpty(&master_fd, NULL, NULL, &ws);
+    if (pid < 0) {
+        fprintf(stderr, "lumo-app: forkpty failed: %s\n", strerror(errno));
+        return false;
+    }
+
+    if (pid == 0) {
+        shell = getenv("SHELL");
+        if (shell == NULL || shell[0] == '\0') shell = "/bin/sh";
+        setenv("TERM", "dumb", 1);
+        setenv("COLORTERM", "", 1);
+        unsetenv("LS_COLORS");
+        execlp(shell, shell, "--norc", "--noprofile", (char *)NULL);
+        _exit(127);
+    }
+
+    int flags = fcntl(master_fd, F_GETFL, 0);
+    if (flags >= 0) fcntl(master_fd, F_SETFL, flags | O_NONBLOCK);
+
+    client->pty_fd = master_fd;
+    client->pty_pid = pid;
+    client->pty_line_len = 0;
+    return true;
+}
+
+static void lumo_app_pty_read(struct lumo_app_client *client) {
+    char buf[512];
+    ssize_t n;
+    bool changed = false;
+
+    if (client->pty_fd < 0) return;
+
+    while ((n = read(client->pty_fd, buf, sizeof(buf))) > 0) {
+        for (ssize_t i = 0; i < n; i++) {
+            char ch = buf[i];
+            if (ch == '\x1b') {
+                /* skip ANSI escape sequences */
+                i++;
+                if (i < n && buf[i] == '[') {
+                    i++;
+                    while (i < n && !((buf[i] >= 'A' && buf[i] <= 'Z') ||
+                            (buf[i] >= 'a' && buf[i] <= 'z')))
+                        i++;
+                }
+                continue;
+            }
+            if (ch == '\r') {
+                client->pty_line_len = 0;
+                continue;
+            }
+            if (ch == '\n') {
+                client->pty_line_buf[client->pty_line_len] = '\0';
+                lumo_app_term_add_line(client, client->pty_line_buf);
+                client->pty_line_len = 0;
+                changed = true;
+                continue;
+            }
+            if (ch == '\b' || ch == 0x7f) {
+                if (client->pty_line_len > 0) client->pty_line_len--;
+                continue;
+            }
+            if (ch < 0x20 && ch != '\t') continue;
+            if (ch == '\t') {
+                int spaces = 8 - (client->pty_line_len % 8);
+                for (int s = 0; s < spaces &&
+                        client->pty_line_len < (int)sizeof(client->pty_line_buf) - 1; s++)
+                    client->pty_line_buf[client->pty_line_len++] = ' ';
+                continue;
+            }
+            if (client->pty_line_len < (int)sizeof(client->pty_line_buf) - 1) {
+                client->pty_line_buf[client->pty_line_len++] = ch;
+            }
+        }
+    }
+
+    /* current incomplete line goes into term_input for display */
+    client->pty_line_buf[client->pty_line_len] = '\0';
+    strncpy(client->term_input, client->pty_line_buf,
+        sizeof(client->term_input) - 1);
+    client->term_input[sizeof(client->term_input) - 1] = '\0';
+    client->term_input_len = client->pty_line_len > 81 ? 81 :
+        client->pty_line_len;
+
+    if (changed || n > 0) {
+        (void)lumo_app_client_redraw(client);
+    }
+}
+
+static void lumo_app_pty_cleanup(struct lumo_app_client *client) {
+    if (client->pty_fd >= 0) {
+        close(client->pty_fd);
+        client->pty_fd = -1;
+    }
+    if (client->pty_pid > 0) {
+        kill(client->pty_pid, SIGTERM);
+        waitpid(client->pty_pid, NULL, WNOHANG);
+        client->pty_pid = 0;
+    }
+}
 
 static int lumo_app_create_shm_file(size_t size) {
     char template[] = "/tmp/lumo-app-XXXXXX";
@@ -638,11 +787,16 @@ static void lumo_app_touch_handle_up(
 
     if (client->app_id == LUMO_APP_SETTINGS && client->width > 0 &&
             client->height > 0) {
-        int row = lumo_app_settings_row_at(client->width, client->height,
-            client->touch_down_x, client->touch_down_y);
-        if (row >= 0) {
-            client->selected_row = (client->selected_row == row) ? -1 : row;
+        if (client->selected_row >= 0 && client->touch_down_y < 40.0) {
+            client->selected_row = -1;
             (void)lumo_app_client_redraw(client);
+        } else if (client->selected_row < 0) {
+            int row = lumo_app_settings_row_at(client->width, client->height,
+                client->touch_down_x, client->touch_down_y);
+            if (row >= 0) {
+                client->selected_row = row;
+                (void)lumo_app_client_redraw(client);
+            }
         }
     }
 }
@@ -745,6 +899,127 @@ static const struct wl_touch_listener lumo_app_touch_listener = {
     .orientation = lumo_app_touch_handle_orientation,
 };
 
+/* --- text-input-v3 listener (receives OSK committed text) --- */
+
+static void lumo_app_text_input_enter(void *data,
+    struct zwp_text_input_v3 *ti, struct wl_surface *surface)
+{
+    struct lumo_app_client *client = data;
+    (void)ti; (void)surface;
+    if (client == NULL) return;
+    if (!client->text_input_enabled && client->text_input != NULL) {
+        zwp_text_input_v3_enable(client->text_input);
+        zwp_text_input_v3_set_content_type(client->text_input,
+            ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE,
+            ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_TERMINAL);
+        zwp_text_input_v3_commit(client->text_input);
+        client->text_input_enabled = true;
+        fprintf(stderr, "lumo-app: text-input enabled (terminal)\n");
+    }
+}
+
+static void lumo_app_text_input_leave(void *data,
+    struct zwp_text_input_v3 *ti, struct wl_surface *surface)
+{
+    struct lumo_app_client *client = data;
+    (void)ti; (void)surface;
+    if (client == NULL) return;
+    if (client->text_input_enabled && client->text_input != NULL) {
+        zwp_text_input_v3_disable(client->text_input);
+        zwp_text_input_v3_commit(client->text_input);
+        client->text_input_enabled = false;
+        fprintf(stderr, "lumo-app: text-input disabled\n");
+    }
+}
+
+static void lumo_app_text_input_preedit(void *data,
+    struct zwp_text_input_v3 *ti, const char *text,
+    int32_t cursor_begin, int32_t cursor_end)
+{
+    (void)data; (void)ti; (void)text;
+    (void)cursor_begin; (void)cursor_end;
+}
+
+static void lumo_app_text_input_commit_string(void *data,
+    struct zwp_text_input_v3 *ti, const char *text)
+{
+    struct lumo_app_client *client = data;
+    (void)ti;
+    if (client == NULL || text == NULL) return;
+    /* buffer the committed text until done event */
+    size_t len = strlen(text);
+    if (client->pending_commit_len + (int)len <
+            (int)sizeof(client->pending_commit) - 1) {
+        memcpy(client->pending_commit + client->pending_commit_len, text, len);
+        client->pending_commit_len += (int)len;
+        client->pending_commit[client->pending_commit_len] = '\0';
+    }
+}
+
+static void lumo_app_text_input_delete_surrounding(void *data,
+    struct zwp_text_input_v3 *ti, uint32_t before, uint32_t after)
+{
+    struct lumo_app_client *client = data;
+    (void)ti; (void)after;
+    if (client == NULL) return;
+    /* handle backspace from OSK */
+    if (before > 0 && client->app_id == LUMO_APP_MESSAGES &&
+            client->pty_fd >= 0) {
+        for (uint32_t i = 0; i < before; i++) {
+            lumo_app_term_write(client, "\x7f", 1);
+        }
+    }
+}
+
+static void lumo_app_text_input_done(void *data,
+    struct zwp_text_input_v3 *ti, uint32_t serial)
+{
+    struct lumo_app_client *client = data;
+    (void)ti; (void)serial;
+    if (client == NULL) return;
+
+    if (client->pending_commit_len > 0) {
+        if (client->app_id == LUMO_APP_MESSAGES && client->pty_fd >= 0) {
+            /* forward OSK text to PTY */
+            for (int i = 0; i < client->pending_commit_len; i++) {
+                char ch = client->pending_commit[i];
+                if (ch == '\n') {
+                    lumo_app_term_write(client, "\n", 1);
+                } else {
+                    lumo_app_term_write(client, &ch, 1);
+                }
+            }
+        } else if (client->app_id == LUMO_APP_NOTES) {
+            /* OSK text for notes app */
+            if (client->note_editing >= 0 &&
+                    client->note_editing < client->note_count) {
+                size_t cur = strlen(client->notes[client->note_editing]);
+                size_t add = (size_t)client->pending_commit_len;
+                if (cur + add < sizeof(client->notes[0]) - 1) {
+                    memcpy(client->notes[client->note_editing] + cur,
+                        client->pending_commit, add);
+                    client->notes[client->note_editing][cur + add] = '\0';
+                    lumo_app_notes_save(client);
+                    (void)lumo_app_client_redraw(client);
+                }
+            }
+        }
+        client->pending_commit_len = 0;
+        client->pending_commit[0] = '\0';
+    }
+}
+
+static const struct zwp_text_input_v3_listener lumo_app_text_input_listener = {
+    .enter = lumo_app_text_input_enter,
+    .leave = lumo_app_text_input_leave,
+    .preedit_string = lumo_app_text_input_preedit,
+    .commit_string = lumo_app_text_input_commit_string,
+    .delete_surrounding_text = lumo_app_text_input_delete_surrounding,
+    .done = lumo_app_text_input_done,
+};
+
+/* --- keyboard handler (physical keys forwarded to PTY) --- */
+
 static void lumo_app_keyboard_key(
     void *data, struct wl_keyboard *kb, uint32_t serial,
     uint32_t time, uint32_t key, uint32_t state
@@ -755,6 +1030,30 @@ static void lumo_app_keyboard_key(
     if (client == NULL || state != WL_KEYBOARD_KEY_STATE_PRESSED) return;
     if (client->app_id != LUMO_APP_MESSAGES) return;
 
+    /* PTY mode: forward keystrokes to the shell */
+    if (client->pty_fd >= 0) {
+        if (key == 14) {
+            lumo_app_term_write(client, "\x7f", 1); /* backspace */
+        } else if (key == 28) {
+            lumo_app_term_write(client, "\n", 1); /* enter */
+        } else if (key == 57) {
+            lumo_app_term_write(client, " ", 1); /* space */
+        } else if (key >= 2 && key <= 52) {
+            static const char keymap[] =
+                "1234567890-="
+                "\0qwertyuiop[]\0\0"
+                "asdfghjkl;'\0\0\0"
+                "zxcvbnm,./";
+            int idx = (int)key - 2;
+            if (idx >= 0 && idx < (int)sizeof(keymap) - 1 &&
+                    keymap[idx] != '\0') {
+                lumo_app_term_write(client, &keymap[idx], 1);
+            }
+        }
+        return;
+    }
+
+    /* fallback: no PTY, echo locally */
     if (key == 14 && client->term_input_len > 0) {
         client->term_input[--client->term_input_len] = '\0';
         (void)lumo_app_client_redraw(client);
@@ -930,6 +1229,12 @@ static void lumo_app_registry_add(
             xdg_wm_base_add_listener(client->wm_base,
                 &lumo_app_wm_base_listener, client);
         }
+        return;
+    }
+
+    if (strcmp(interface, zwp_text_input_manager_v3_interface.name) == 0) {
+        client->text_input_manager = wl_registry_bind(registry, name,
+            &zwp_text_input_manager_v3_interface, 1);
     }
 }
 
@@ -995,6 +1300,16 @@ static void lumo_app_client_destroy(struct lumo_app_client *client) {
         return;
     }
 
+    lumo_app_pty_cleanup(client);
+
+    if (client->text_input != NULL) {
+        zwp_text_input_v3_destroy(client->text_input);
+        client->text_input = NULL;
+    }
+    if (client->text_input_manager != NULL) {
+        zwp_text_input_manager_v3_destroy(client->text_input_manager);
+        client->text_input_manager = NULL;
+    }
     if (client->pointer != NULL) {
         wl_pointer_release(client->pointer);
         client->pointer = NULL;
@@ -1002,6 +1317,10 @@ static void lumo_app_client_destroy(struct lumo_app_client *client) {
     if (client->touch != NULL) {
         wl_touch_release(client->touch);
         client->touch = NULL;
+    }
+    if (client->keyboard != NULL) {
+        wl_keyboard_release(client->keyboard);
+        client->keyboard = NULL;
     }
     if (client->seat != NULL) {
         wl_seat_release(client->seat);
@@ -1097,6 +1416,8 @@ int main(int argc, char **argv) {
         .active_touch_id = -1,
         .selected_row = -1,
         .note_editing = -1,
+        .pty_fd = -1,
+        .pty_pid = 0,
     };
 
     for (int i = 1; i < argc; i++) {
@@ -1155,19 +1476,51 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    /* create text-input-v3 for OSK support */
+    if (client.text_input_manager != NULL && client.seat != NULL) {
+        client.text_input = zwp_text_input_manager_v3_get_text_input(
+            client.text_input_manager, client.seat);
+        if (client.text_input != NULL) {
+            zwp_text_input_v3_add_listener(client.text_input,
+                &lumo_app_text_input_listener, &client);
+            fprintf(stderr, "lumo-app: text-input-v3 ready\n");
+        }
+    }
+
+    /* set up PTY for terminal app */
+    if (client.app_id == LUMO_APP_MESSAGES) {
+        if (!lumo_app_pty_setup(&client)) {
+            fprintf(stderr, "lumo-app: PTY setup failed, running in echo mode\n");
+        } else {
+            fprintf(stderr, "lumo-app: PTY shell started (pid=%d)\n",
+                (int)client.pty_pid);
+        }
+    }
+
     {
         int display_fd = wl_display_get_fd(client.display);
+        bool is_terminal = client.app_id == LUMO_APP_MESSAGES &&
+            client.pty_fd >= 0;
         bool needs_periodic = client.app_id == LUMO_APP_CLOCK ||
-            client.app_id == LUMO_APP_SETTINGS;
+            client.app_id == LUMO_APP_SETTINGS || is_terminal;
         int timeout_ms = client.app_id == LUMO_APP_CLOCK ? 1000 :
-            client.app_id == LUMO_APP_SETTINGS ? 5000 : -1;
+            client.app_id == LUMO_APP_SETTINGS ? 5000 :
+            is_terminal ? 100 : -1;
 
         while (client.running) {
-            struct pollfd pfd = {
-                .fd = display_fd,
-                .events = POLLIN,
-            };
+            struct pollfd pfds[2];
+            int nfds = 1;
             int ret;
+
+            pfds[0].fd = display_fd;
+            pfds[0].events = POLLIN;
+            pfds[0].revents = 0;
+            if (is_terminal) {
+                pfds[1].fd = client.pty_fd;
+                pfds[1].events = POLLIN;
+                pfds[1].revents = 0;
+                nfds = 2;
+            }
 
             if (wl_display_dispatch_pending(client.display) == -1) {
                 break;
@@ -1176,7 +1529,7 @@ int main(int argc, char **argv) {
                 break;
             }
 
-            ret = poll(&pfd, 1, timeout_ms);
+            ret = poll(pfds, (nfds_t)nfds, timeout_ms);
             if (ret < 0) {
                 if (errno == EINTR) {
                     continue;
@@ -1185,17 +1538,36 @@ int main(int argc, char **argv) {
             }
 
             if (ret == 0 && needs_periodic) {
-                (void)lumo_app_client_redraw(&client);
+                if (is_terminal) {
+                    lumo_app_pty_read(&client);
+                } else {
+                    (void)lumo_app_client_redraw(&client);
+                }
                 continue;
             }
 
-            if (pfd.revents & POLLIN) {
+            if (pfds[0].revents & POLLIN) {
                 if (wl_display_dispatch(client.display) == -1) {
                     break;
                 }
             }
-            if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
+            if (pfds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
                 break;
+            }
+            if (is_terminal && (pfds[1].revents & POLLIN)) {
+                lumo_app_pty_read(&client);
+            }
+            if (is_terminal && (pfds[1].revents & POLLHUP)) {
+                /* shell exited */
+                fprintf(stderr, "lumo-app: PTY shell exited\n");
+                lumo_app_term_add_line(&client, "[shell exited]");
+                (void)lumo_app_client_redraw(&client);
+                close(client.pty_fd);
+                client.pty_fd = -1;
+                is_terminal = false;
+                nfds = 1;
+                timeout_ms = -1;
+                needs_periodic = false;
             }
         }
     }

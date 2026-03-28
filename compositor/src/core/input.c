@@ -1751,17 +1751,28 @@ static void lumo_input_touch_down(
     }
 
     if (target.surface != NULL) {
+        bool is_app_toplevel = false;
+        struct lumo_toplevel *tl;
+
+        wl_list_for_each(tl, &compositor->toplevels, link) {
+            if (tl->xdg_surface != NULL &&
+                    tl->xdg_surface->surface == target.surface) {
+                is_app_toplevel = true;
+                break;
+            }
+        }
+
         lumo_input_touch_point_deliver_now(compositor, point, &target,
             event->time_msec);
-        lumo_input_focus_surface(compositor, point->surface);
+        lumo_input_focus_surface(compositor,
+            is_app_toplevel ? target.surface : point->surface);
         lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
             true, point->lx, point->ly);
         return;
     }
 
     if (!wl_list_empty(&compositor->toplevels) &&
-            !compositor->launcher_visible &&
-            !compositor->keyboard_visible) {
+            !compositor->launcher_visible) {
         struct lumo_toplevel *tl;
         wl_list_for_each(tl, &compositor->toplevels, link) {
             if (tl->xdg_surface != NULL && tl->xdg_surface->surface != NULL) {

@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.50',
+  version: '0.0.51',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -38,6 +38,8 @@ app_deps = [
   dependency('wayland-client', required: true),
   dependency('wayland-protocols', required: true),
 ]
+
+libutil = meson.get_compiler('c').find_library('util', required: true)
 
 screenshot_deps = [
   dependency('wayland-client', required: true),
@@ -103,6 +105,21 @@ shell_protocol_files = [
   ),
 ]
 
+text_input_client_protocol_files = [
+  custom_target(
+    'text-input-v3-client-protocol-header',
+    input: join_paths(wayland_protocols_dir, 'unstable/text-input/text-input-unstable-v3.xml'),
+    output: 'text-input-unstable-v3-client-protocol.h',
+    command: [wayland_scanner, 'client-header', '@INPUT@', '@OUTPUT@'],
+  ),
+  custom_target(
+    'text-input-v3-client-protocol-code',
+    input: join_paths(wayland_protocols_dir, 'unstable/text-input/text-input-unstable-v3.xml'),
+    output: 'text-input-unstable-v3-client-protocol.c',
+    command: [wayland_scanner, 'private-code', '@INPUT@', '@OUTPUT@'],
+  ),
+]
+
 screenshot_protocol_files = [
   custom_target(
     'wlr-screencopy-client-protocol-header',
@@ -148,7 +165,7 @@ app_sources = files(
   'src/apps/app_notes.c',
   'src/apps/app_terminal.c',
   'src/apps/app_client.c',
-) + xdg_client_protocol_files
+) + xdg_client_protocol_files + text_input_client_protocol_files
 
 screenshot_sources = files(
   'src/tools/screenshot.c',
@@ -188,7 +205,7 @@ executable(
   'lumo-app',
   app_sources,
   include_directories: lumo_inc,
-  dependencies: app_deps,
+  dependencies: app_deps + [libutil],
   install: true,
 )
 

@@ -28,16 +28,17 @@ struct lumo_rect {
     int height;
 };
 
+/* Inclusive top-left, exclusive bottom-right hit-testing */
 static inline bool lumo_rect_contains(
     const struct lumo_rect *rect,
     double x,
     double y
 ) {
     return rect != NULL &&
-        x >= rect->x &&
-        y >= rect->y &&
-        x < rect->x + rect->width &&
-        y < rect->y + rect->height;
+        x >= (double)rect->x &&
+        y >= (double)rect->y &&
+        x < (double)rect->x + (double)rect->width &&
+        y < (double)rect->y + (double)rect->height;
 }
 
 struct lumo_shell_surface_config {

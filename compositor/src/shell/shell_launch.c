@@ -743,6 +743,12 @@ static const char *lumo_shell_bridge_commit_osk_text(
         return "invalid_index";
     }
 
+    /* shift key (empty text) - ignore for now */
+    if (text[0] == '\0') {
+        wlr_log(WLR_INFO, "shell: osk key %u is modifier, ignoring", index);
+        return NULL;
+    }
+
     text_input = lumo_shell_bridge_focused_text_input(compositor);
     if (text_input == NULL) {
         if (reason_out != NULL) {
@@ -752,6 +758,15 @@ static const char *lumo_shell_bridge_commit_osk_text(
             "shell: osk key %u ignored, no focused text input",
             index);
         return "no_text_input_focus";
+    }
+
+    /* backspace - delete one character before cursor */
+    if (text[0] == '\b') {
+        wlr_text_input_v3_send_delete_surrounding_text(text_input, 1, 0);
+        wlr_text_input_v3_send_commit_string(text_input, "");
+        wlr_text_input_v3_send_done(text_input);
+        wlr_log(WLR_INFO, "shell: committed backspace from key %u", index);
+        return NULL;
     }
 
     wlr_text_input_v3_send_commit_string(text_input, text);

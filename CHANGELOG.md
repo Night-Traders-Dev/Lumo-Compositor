@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.51] - 2026-03-27
+- Reduced compositor idle CPU from 26% to ~10% by slowing the animated background refresh from 500ms to 2s and caching gradient rows.
+- Fixed OSK activation: touches on app toplevels now correctly focus the surface and auto-show the on-screen keyboard, resolving the scene-tree ordering bug where the invisible OSK layer surface intercepted touches.
+- Fixed WiFi signal bars to dynamically update based on actual signal strength from /proc/net/wireless, handling both link quality and dBm formats.
+- Fixed OSK keyboard layout: corrected minimum width check for the 5-key bottom row, added overflow guard for narrow screens, and added INT_MAX safety for rect coordinate casting.
+- Fixed `lumo_rect_contains` to cast coordinates to double before addition to prevent signed integer overflow.
+- Removed close button and accent bar from the app drawer for a cleaner look.
+- Redesigned gesture pill as a subtle opacity gradient in warm grey (webOS style).
+- Redesigned app close button as a minimal circular X icon with orange highlight.
+- Tightened app drawer tile layout with smaller insets and gaps for better fit on all screen sizes.
+- Added functional terminal app with keyboard input handling (letters, numbers, backspace, enter, command history).
+- Added persistent notes (saved to ~/.lumo-notes).
+- Added file sizes (B/K/M) to the file manager via stat().
+- Added rotation persistence across reboots via ~/.lumo-rotation.
+- Rebuilt Settings app with 8 categorized rows: Network, Display, Storage, Memory, System, About, Lumo, and CPU.
+- Fixed panel tap bleed-through: tapping in panel area no longer accidentally launches app tiles behind it.
+- Fixed app drawer flash on panel close with instant hide instead of animation.
+- Slowed animated background to reduce scene damage frequency.
+- Applied shell_osk.c header fixes (limits.h, stdint.h).
+- No NPU available on OrangePi RV2 (SpacemiT K1/X1 SoC).
+
 ## [0.0.50] - 2026-03-27
 - Switched the entire shell to Ubuntu's stock color palette: aubergine backgrounds, orange accents, warm grey secondary text, and white primary text.
 - Removed the gesture pill touch debug overlay so the bottom handle is a clean orange bar with no diagnostic dots or crosshairs.
