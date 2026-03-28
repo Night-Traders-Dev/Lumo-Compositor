@@ -119,6 +119,20 @@ struct lumo_shell_client {
 };
 
 static bool lumo_shell_client_redraw(struct lumo_shell_client *client);
+
+/* --- dynamic theme state (shared by all drawing functions) --- */
+static struct {
+    uint32_t base_r, base_g, base_b;
+    uint32_t bar_top, bar_bottom;
+    uint32_t panel_bg, panel_stroke;
+    uint32_t tile_fill, tile_stroke;
+    uint32_t accent, text_primary, text_secondary, dim;
+    uint32_t hour;
+    int weather_code;
+} lumo_theme;
+
+static void lumo_theme_update(int weather_code);
+
 static void lumo_draw_quick_settings_panel(
     uint32_t *pixels, uint32_t width, uint32_t height,
     int bar_height, const struct lumo_shell_client *client);
@@ -768,14 +782,20 @@ static void lumo_draw_launcher(
     const struct lumo_shell_target *active_target,
     double visibility
 ) {
-    const uint32_t panel_top = lumo_argb(0xFF, 0x3B, 0x1F, 0x34);
-    const uint32_t panel_bottom = lumo_argb(0xFF, 0x1D, 0x11, 0x22);
-    const uint32_t panel_stroke = lumo_argb(0xFF, 0x77, 0x21, 0x6F);
-    const uint32_t title_color = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
-    const uint32_t subtitle_color = lumo_argb(0xFF, 0xAE, 0xA7, 0x9F);
-    const uint32_t tile_fill = lumo_argb(0xFF, 0x2C, 0x16, 0x28);
-    const uint32_t tile_stroke = lumo_argb(0xFF, 0x5E, 0x2C, 0x56);
-    const uint32_t highlight = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
+    const uint32_t panel_top = lumo_argb(0xFF,
+        (uint8_t)(lumo_theme.base_r + 0x14),
+        (uint8_t)(lumo_theme.base_g + 0x0C),
+        (uint8_t)(lumo_theme.base_b + 0x10));
+    const uint32_t panel_bottom = lumo_argb(0xFF,
+        (uint8_t)lumo_theme.base_r,
+        (uint8_t)lumo_theme.base_g,
+        (uint8_t)lumo_theme.base_b);
+    const uint32_t panel_stroke = lumo_theme.panel_stroke;
+    const uint32_t title_color = lumo_theme.text_primary;
+    const uint32_t subtitle_color = lumo_theme.text_secondary;
+    const uint32_t tile_fill = lumo_theme.tile_fill;
+    const uint32_t tile_stroke = lumo_theme.tile_stroke;
+    const uint32_t highlight = lumo_theme.accent;
     const uint32_t close_fill = lumo_argb(0xFF, 0x3B, 0x1F, 0x34);
     const uint32_t close_label = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
     const uint32_t accent_colors[] = {
@@ -811,11 +831,11 @@ static void lumo_draw_launcher(
                 client);
         }
         if (client->compositor_time_panel_visible) {
-            uint32_t tp_bg = lumo_argb(0xF0, 0x2C, 0x00, 0x1E);
-            uint32_t tp_stroke = lumo_argb(0x60, 0x77, 0x21, 0x6F);
-            uint32_t tp_label = lumo_argb(0xFF, 0xAE, 0xA7, 0x9F);
-            uint32_t tp_text = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
-            uint32_t tp_accent = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
+            uint32_t tp_bg = lumo_theme.panel_bg;
+            uint32_t tp_stroke = lumo_theme.panel_stroke;
+            uint32_t tp_label = lumo_theme.text_secondary;
+            uint32_t tp_text = lumo_theme.text_primary;
+            uint32_t tp_accent = lumo_theme.accent;
             struct lumo_rect tp;
             time_t now = time(NULL);
             struct tm tm_now = {0};
@@ -1279,12 +1299,12 @@ static void lumo_draw_quick_settings_panel(
     int bar_height,
     const struct lumo_shell_client *client
 ) {
-    const uint32_t panel_bg = lumo_argb(0xF0, 0x2C, 0x00, 0x1E);
-    const uint32_t panel_stroke = lumo_argb(0x60, 0x77, 0x21, 0x6F);
-    const uint32_t label_color = lumo_argb(0xFF, 0xAE, 0xA7, 0x9F);
-    const uint32_t value_color = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
-    const uint32_t accent = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
-    const uint32_t dim = lumo_argb(0x40, 0x77, 0x21, 0x6F);
+    const uint32_t panel_bg = lumo_theme.panel_bg;
+    const uint32_t panel_stroke = lumo_theme.panel_stroke;
+    const uint32_t label_color = lumo_theme.text_secondary;
+    const uint32_t value_color = lumo_theme.text_primary;
+    const uint32_t accent = lumo_theme.accent;
+    const uint32_t dim = lumo_theme.dim;
     struct lumo_rect panel;
     int panel_w = (int)(width / 2);
     int row_y;
@@ -1431,11 +1451,11 @@ static void lumo_draw_status(
     uint32_t height,
     const struct lumo_shell_client *client
 ) {
-    const uint32_t bar_top = lumo_argb(0xE0, 0x2C, 0x00, 0x1E);
-    const uint32_t bar_bottom = lumo_argb(0xE0, 0x1D, 0x00, 0x14);
-    const uint32_t separator = lumo_argb(0x40, 0x77, 0x21, 0x6F);
-    const uint32_t text_color = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
-    const uint32_t accent_color = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
+    const uint32_t bar_top = lumo_theme.bar_top;
+    const uint32_t bar_bottom = lumo_theme.bar_bottom;
+    const uint32_t separator = lumo_theme.dim;
+    const uint32_t text_color = lumo_theme.text_primary;
+    const uint32_t accent_color = lumo_theme.accent;
     const uint32_t wifi_dim = lumo_argb(0x30, 0xAE, 0xA7, 0x9F);
     int bar_height;
     struct lumo_rect bar_rect;
@@ -1507,6 +1527,80 @@ static void lumo_draw_status(
             (int)width - 42, bar_height / 2 - 8, wifi_bars,
             accent_color, wifi_dim);
     }
+}
+
+static void lumo_theme_update(int weather_code) {
+    time_t now = time(NULL);
+    struct tm tm_now;
+    localtime_r(&now, &tm_now);
+    uint32_t hour = (uint32_t)tm_now.tm_hour;
+
+    if (hour == lumo_theme.hour &&
+            weather_code == lumo_theme.weather_code &&
+            lumo_theme.base_r != 0) {
+        return; /* no change */
+    }
+
+    uint32_t r, g, b;
+    if (hour >= 5 && hour < 7) {
+        r = 0x14; g = 0x28; b = 0x38;
+    } else if (hour >= 7 && hour < 10) {
+        r = 0x30; g = 0x10; b = 0x28;
+    } else if (hour >= 10 && hour < 14) {
+        r = 0x2C; g = 0x00; b = 0x1E;
+    } else if (hour >= 14 && hour < 17) {
+        r = 0x28; g = 0x14; b = 0x18;
+    } else if (hour >= 17 && hour < 19) {
+        r = 0x42; g = 0x0C; b = 0x16;
+    } else if (hour >= 19 && hour < 21) {
+        r = 0x10; g = 0x18; b = 0x30;
+    } else {
+        r = 0x12; g = 0x08; b = 0x1A;
+    }
+
+    switch (weather_code) {
+    case 1: g += 0x06; b += 0x0A; break;
+    case 2: r = (r*3+0x30)/4; g = (g*3+0x28)/4; b = (b*3+0x28)/4; break;
+    case 3: r = r*2/3; g += 0x08; b += 0x1A; break;
+    case 4: r = r/2+0x08; g = g/2; b += 0x24; break;
+    case 5: r += 0x14; g += 0x1A; b += 0x24; break;
+    case 6: r = (r+0x28)/2; g = (g+0x24)/2; b = (b+0x22)/2; break;
+    default: break;
+    }
+    if (r > 0xFF) r = 0xFF;
+    if (g > 0xFF) g = 0xFF;
+    if (b > 0xFF) b = 0xFF;
+
+    lumo_theme.base_r = r;
+    lumo_theme.base_g = g;
+    lumo_theme.base_b = b;
+    lumo_theme.hour = hour;
+    lumo_theme.weather_code = weather_code;
+
+    /* derive UI colors from the base */
+    lumo_theme.bar_top = lumo_argb(0xE0, (uint8_t)(r + 0x10),
+        (uint8_t)g, (uint8_t)(b + 0x06));
+    lumo_theme.bar_bottom = lumo_argb(0xE0, (uint8_t)r,
+        (uint8_t)g, (uint8_t)b);
+    lumo_theme.panel_bg = lumo_argb(0xF0, (uint8_t)(r + 0x08),
+        (uint8_t)(g + 0x04), (uint8_t)(b + 0x06));
+    lumo_theme.panel_stroke = lumo_argb(0x60,
+        (uint8_t)(r + 0x30 > 0xFF ? 0xFF : r + 0x30),
+        (uint8_t)(g + 0x18 > 0xFF ? 0xFF : g + 0x18),
+        (uint8_t)(b + 0x28 > 0xFF ? 0xFF : b + 0x28));
+    lumo_theme.tile_fill = lumo_argb(0xFF, (uint8_t)(r + 0x0A),
+        (uint8_t)(g + 0x08), (uint8_t)(b + 0x0A));
+    lumo_theme.tile_stroke = lumo_argb(0xFF,
+        (uint8_t)(r + 0x20 > 0xFF ? 0xFF : r + 0x20),
+        (uint8_t)(g + 0x14 > 0xFF ? 0xFF : g + 0x14),
+        (uint8_t)(b + 0x1C > 0xFF ? 0xFF : b + 0x1C));
+    lumo_theme.accent = lumo_argb(0xFF, 0xE9, 0x54, 0x20);
+    lumo_theme.text_primary = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
+    lumo_theme.text_secondary = lumo_argb(0xFF, 0xAE, 0xA7, 0x9F);
+    lumo_theme.dim = lumo_argb(0x40,
+        (uint8_t)(r + 0x30 > 0xFF ? 0xFF : r + 0x30),
+        (uint8_t)(g + 0x18 > 0xFF ? 0xFF : g + 0x18),
+        (uint8_t)(b + 0x28 > 0xFF ? 0xFF : b + 0x28));
 }
 
 static uint32_t bg_row_cache[2048];
@@ -1681,9 +1775,13 @@ static void lumo_render_surface(
     }
 
     lumo_clear_pixels(pixels, width, height);
+
+    /* update shared theme colors from time-of-day + weather */
+    lumo_theme_update(client->weather_code);
+
     visibility = client->mode == LUMO_SHELL_MODE_GESTURE
-        || client->mode == LUMO_SHELL_MODE_STATUS || client->mode == LUMO_SHELL_MODE_BACKGROUND ||
-            client->mode == LUMO_SHELL_MODE_BACKGROUND
+        || client->mode == LUMO_SHELL_MODE_STATUS
+        || client->mode == LUMO_SHELL_MODE_BACKGROUND
         ? 1.0
         : lumo_shell_client_animation_value(client);
 
