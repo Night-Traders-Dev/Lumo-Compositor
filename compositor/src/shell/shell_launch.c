@@ -338,6 +338,9 @@ static void lumo_shell_reap_children(struct lumo_compositor *compositor) {
         struct lumo_shell_process *process = lumo_shell_process_for_pid(state,
             pid);
         if (process == NULL) {
+            /* Reap untracked children (e.g. pids from lumo_shell_launch_app)
+             * to prevent zombie processes. The waitpid(-1,...) loop above
+             * already handles these; we simply discard them here. */
             wlr_log(WLR_DEBUG, "shell: reaped untracked child pid=%d",
                 (int)pid);
             continue;
@@ -1481,6 +1484,63 @@ size_t lumo_shell_build_argv(
 
 static int lumo_weather_timer_cb(void *data);
 
+static void lumo_shell_play_boot_sound(void) {
+    /* generate a short two-tone chime WAV in /tmp and play it async */
+    pid_t pid = fork();
+    if (pid != 0) return; /* parent returns immediately */
+
+    /* child: create a tiny WAV and play it */
+    const char *path = "/tmp/lumo-boot.wav";
+    const uint32_t sample_rate = 22050;
+    const uint32_t duration_ms = 400;
+    const uint32_t num_samples = sample_rate * duration_ms / 1000;
+    const uint32_t data_size = num_samples * 2; /* 16-bit mono */
+    FILE *fp = fopen(path, "wb");
+    if (fp == NULL) _exit(1);
+
+    /* WAV header */
+    uint32_t chunk_size = 36 + data_size;
+    uint16_t audio_fmt = 1; /* PCM */
+    uint16_t channels = 1;
+    uint32_t byte_rate = sample_rate * 2;
+    uint16_t block_align = 2;
+    uint16_t bits = 16;
+    fwrite("RIFF", 1, 4, fp);
+    fwrite(&chunk_size, 4, 1, fp);
+    fwrite("WAVE", 1, 4, fp);
+    fwrite("fmt ", 1, 4, fp);
+    uint32_t fmt_size = 16;
+    fwrite(&fmt_size, 4, 1, fp);
+    fwrite(&audio_fmt, 2, 1, fp);
+    fwrite(&channels, 2, 1, fp);
+    fwrite(&sample_rate, 4, 1, fp);
+    fwrite(&byte_rate, 4, 1, fp);
+    fwrite(&block_align, 2, 1, fp);
+    fwrite(&bits, 2, 1, fp);
+    fwrite("data", 1, 4, fp);
+    fwrite(&data_size, 4, 1, fp);
+
+    /* two-tone chime: C5 (523Hz) then E5 (659Hz) with fade */
+    for (uint32_t i = 0; i < num_samples; i++) {
+        double t = (double)i / sample_rate;
+        double freq = (i < num_samples / 2) ? 523.0 : 659.0;
+        double env = 1.0 - (double)i / num_samples; /* linear fade */
+        env *= env; /* quadratic fade for smoother decay */
+        double sample = env * 0.4 * __builtin_sin(2.0 * 3.14159265 * freq * t);
+        int16_t pcm = (int16_t)(sample * 32000.0);
+        fwrite(&pcm, 2, 1, fp);
+    }
+    fclose(fp);
+
+    /* play with aplay (non-interactive, no blocking the compositor) */
+    setsid();
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+    execlp("aplay", "aplay", "-q", path, (char *)NULL);
+    _exit(127);
+}
+
 int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
     struct lumo_shell_state *state;
     const enum lumo_shell_mode modes[] = {
@@ -1555,6 +1615,9 @@ int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
             return -1;
         }
     }
+
+    /* play boot chime */
+    lumo_shell_play_boot_sound();
 
     /* start weather timer — first fetch after 2s, then every 5 min */
     if (compositor->event_loop != NULL) {
@@ -1662,9 +1725,22 @@ static void lumo_weather_fetch(struct lumo_compositor *compositor) {
 
     close(pipefd[1]);
 
-    /* read result (blocking is OK since curl has --max-time 10) */
+    /* Use poll() with a 5 s timeout before reading so that a stalled curl
+     * process cannot block the compositor event loop indefinitely.  curl is
+     * also given --max-time 10 as a belt-and-suspenders guard, but poll()
+     * here ensures we give up earlier if the kernel pipe never becomes
+     * readable (e.g. curl hangs before writing anything). */
     char buf[128] = "";
-    ssize_t n = read(pipefd[0], buf, sizeof(buf) - 1);
+    ssize_t n = 0;
+    {
+        struct pollfd pfd = { .fd = pipefd[0], .events = POLLIN };
+        int pr = poll(&pfd, 1, 5000);
+        if (pr > 0 && (pfd.revents & POLLIN)) {
+            n = read(pipefd[0], buf, sizeof(buf) - 1);
+        } else if (pr == 0) {
+            wlr_log(WLR_INFO, "weather: curl timed out after 5s, skipping");
+        }
+    }
     close(pipefd[0]);
     waitpid(pid, NULL, 0);
 

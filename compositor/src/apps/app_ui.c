@@ -151,6 +151,23 @@ static bool lumo_app_glyph_rows(char ch, uint8_t rows[7]) {
     case '/': memcpy(rows, (uint8_t[]){0x01,0x02,0x04,0x08,0x10,0x00,0x00}, 7); return true;
     case '+': memcpy(rows, (uint8_t[]){0x00,0x04,0x04,0x1F,0x04,0x04,0x00}, 7); return true;
     case ' ': memset(rows, 0, 7); return true;
+    case '.': memcpy(rows, (uint8_t[]){0x00,0x00,0x00,0x00,0x00,0x00,0x04}, 7); return true;
+    case '!': memcpy(rows, (uint8_t[]){0x04,0x04,0x04,0x04,0x04,0x00,0x04}, 7); return true;
+    case '(': memcpy(rows, (uint8_t[]){0x02,0x04,0x04,0x04,0x04,0x04,0x02}, 7); return true;
+    case ')': memcpy(rows, (uint8_t[]){0x08,0x04,0x04,0x04,0x04,0x04,0x08}, 7); return true;
+    case '%': memcpy(rows, (uint8_t[]){0x11,0x12,0x04,0x04,0x04,0x09,0x11}, 7); return true;
+    case '@': memcpy(rows, (uint8_t[]){0x0E,0x11,0x17,0x15,0x17,0x10,0x0E}, 7); return true;
+    case '#': memcpy(rows, (uint8_t[]){0x0A,0x1F,0x0A,0x0A,0x1F,0x0A,0x00}, 7); return true;
+    case '_': memcpy(rows, (uint8_t[]){0x00,0x00,0x00,0x00,0x00,0x00,0x1F}, 7); return true;
+    case '>': memcpy(rows, (uint8_t[]){0x08,0x04,0x02,0x01,0x02,0x04,0x08}, 7); return true;
+    case '<': memcpy(rows, (uint8_t[]){0x02,0x04,0x08,0x10,0x08,0x04,0x02}, 7); return true;
+    case '=': memcpy(rows, (uint8_t[]){0x00,0x00,0x1F,0x00,0x1F,0x00,0x00}, 7); return true;
+    case '*': memcpy(rows, (uint8_t[]){0x00,0x0A,0x04,0x1F,0x04,0x0A,0x00}, 7); return true;
+    case '~': memcpy(rows, (uint8_t[]){0x00,0x00,0x08,0x15,0x02,0x00,0x00}, 7); return true;
+    case '$': memcpy(rows, (uint8_t[]){0x04,0x0F,0x14,0x0E,0x05,0x1E,0x04}, 7); return true;
+    case '&': memcpy(rows, (uint8_t[]){0x0C,0x12,0x0C,0x12,0x11,0x11,0x0E}, 7); return true;
+    case '[': memcpy(rows, (uint8_t[]){0x06,0x04,0x04,0x04,0x04,0x04,0x06}, 7); return true;
+    case ']': memcpy(rows, (uint8_t[]){0x0C,0x04,0x04,0x04,0x04,0x04,0x0C}, 7); return true;
     default: memset(rows, 0, 7); return false;
     }
 }
@@ -207,6 +224,14 @@ void lumo_app_draw_close_button(
         lumo_app_fill_rounded_rect(pixels, width, height, &circle,
             (uint32_t)r, bg);
 
+        /* NOTE: lumo_app_draw_close_button is currently dead code — all app
+         * render paths removed their close-button call sites and navigation
+         * was moved to a bottom-edge swipe gesture.  The x1+1 / x2+1 pixel
+         * writes below are checked within (int)width bounds, but the
+         * adjacent +1 pixel is only guarded by the original x1/x2 check and
+         * not by a separate x1+1 < (int)width guard.  This is harmless while
+         * the function is unused, but should be fixed if the close button is
+         * ever re-enabled. */
         for (int i = -r / 3; i <= r / 3; i++) {
             int x1 = cx - r / 3 + i;
             int y1 = cy - r / 3 + i;

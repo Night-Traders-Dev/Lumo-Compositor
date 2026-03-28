@@ -459,12 +459,15 @@ void lumo_protocol_refresh_shell_hitboxes(struct lumo_compositor *compositor) {
     if (lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_GESTURE,
             (uint32_t)workarea.width, (uint32_t)workarea.height,
             &shell_config)) {
-        rect.x = workarea.x;
-        rect.y = workarea.y + workarea.height - (int)shell_config.height;
-        rect.width = workarea.width;
-        rect.height = (int)shell_config.height;
-        lumo_protocol_register_hitbox(compositor, "shell-gesture", &rect,
-            LUMO_HITBOX_EDGE_GESTURE, true, true);
+        /* Guard: shell_config.height > workarea.height would wrap rect.y */
+        if (shell_config.height <= (uint32_t)workarea.height) {
+            rect.x = workarea.x;
+            rect.y = workarea.y + workarea.height - (int)shell_config.height;
+            rect.width = workarea.width;
+            rect.height = (int)shell_config.height;
+            lumo_protocol_register_hitbox(compositor, "shell-gesture", &rect,
+                LUMO_HITBOX_EDGE_GESTURE, true, true);
+        }
     }
 
     if (lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_STATUS,
@@ -482,12 +485,15 @@ void lumo_protocol_refresh_shell_hitboxes(struct lumo_compositor *compositor) {
             lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_OSK,
                 (uint32_t)workarea.width, (uint32_t)workarea.height,
                 &shell_config)) {
-        rect.x = workarea.x;
-        rect.y = workarea.y + workarea.height - (int)shell_config.height;
-        rect.width = workarea.width;
-        rect.height = (int)shell_config.height;
-        lumo_protocol_register_hitbox(compositor, "shell-osk", &rect,
-            LUMO_HITBOX_OSK_KEY, true, true);
+        /* Guard: shell_config.height > workarea.height would wrap rect.y */
+        if (shell_config.height <= (uint32_t)workarea.height) {
+            rect.x = workarea.x;
+            rect.y = workarea.y + workarea.height - (int)shell_config.height;
+            rect.width = workarea.width;
+            rect.height = (int)shell_config.height;
+            lumo_protocol_register_hitbox(compositor, "shell-osk", &rect,
+                LUMO_HITBOX_OSK_KEY, true, true);
+        }
     }
 
     if (compositor->launcher_visible && !compositor->touch_audit_active &&

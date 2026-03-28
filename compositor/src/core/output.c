@@ -48,6 +48,10 @@ static void lumo_output_frame(struct wl_listener *listener, void *data) {
         return;
     }
 
+    /* Passing NULL for the options struct is correct: in wlroots 0.18 the
+     * scene graph maintains its own damage tracking internally, so there is
+     * no need to supply explicit damage rectangles here.  The scene layer
+     * will only repaint regions that have actually changed. */
     wlr_scene_output_commit(output->scene_output, NULL);
 
     {
@@ -256,6 +260,8 @@ void lumo_output_stop(struct lumo_compositor *compositor) {
             wlr_scene_output_destroy(output->scene_output);
             output->scene_output = NULL;
         }
+        wl_list_remove(&output->link);
+        free(output);
     }
 
     if (compositor->scene != NULL) {

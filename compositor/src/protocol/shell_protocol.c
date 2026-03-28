@@ -507,6 +507,10 @@ bool lumo_shell_protocol_stream_feed(
 
         if (ch != '\n') {
             if (stream->line_used + 1 >= sizeof(stream->line_buffer)) {
+                fprintf(stderr,
+                    "shell_protocol: line exceeds buffer (%zu bytes), "
+                    "dropping stream\n",
+                    sizeof(stream->line_buffer));
                 lumo_shell_protocol_stream_reset(stream);
                 return false;
             }

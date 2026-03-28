@@ -130,7 +130,7 @@ static bool lumo_input_transform_touch_coords(
             output->wlr_output->transform != WL_OUTPUT_TRANSFORM_NORMAL) {
         wlr_output_layout_get_box(compositor->output_layout, output->wlr_output,
             &box);
-        if (!wlr_box_empty(&box)) {
+        if (!wlr_box_empty(&box) && box.width > 0 && box.height > 0) {
             double norm_x = (mapped_x - box.x) / box.width;
             double norm_y = (mapped_y - box.y) / box.height;
             double out_x = norm_x;
@@ -202,16 +202,6 @@ static bool lumo_input_surface_target_at(
     }
 
     node = wlr_scene_node_at(&compositor->scene->tree.node, lx, ly, &sx, &sy);
-    {
-        FILE *tf = fopen("/home/orangepi/lumo-touch.log", "a");
-        if (tf != NULL) {
-            fprintf(tf, "  NODE_AT lx=%.1f ly=%.1f node=%s type=%d\n",
-                lx, ly,
-                node != NULL ? "found" : "null",
-                node != NULL ? (int)node->type : -1);
-            fclose(tf);
-        }
-    }
     if (node == NULL) {
         return false;
     }
@@ -671,9 +661,9 @@ static void lumo_input_touch_point_surface_destroy(
     }
 
     lumo_input_touch_point_surface_destroyed_cb(compositor, point, time_msec);
-    if (!point->captured) {
-        lumo_input_touch_point_destroy(point);
-    }
+    /* Always destroy the point when its surface is gone — even if captured
+     * but not yet delivered — to prevent a zombie point with surface=NULL. */
+    lumo_input_touch_point_destroy(point);
 }
 
 static void lumo_input_remove_touch_point(
@@ -1642,23 +1632,6 @@ static void lumo_input_touch_down(
     point->down_time_msec = event->time_msec;
     point->hitbox = lumo_protocol_hitbox_at(compositor, point->lx, point->ly);
 
-    {
-        FILE *tf = fopen("/home/orangepi/lumo-touch.log", "a");
-        if (tf != NULL) {
-            fprintf(tf,
-                "DISPATCH id=%d lx=%.1f ly=%.1f surface=%s role=%d "
-                "hitbox=%s qs=%d tp=%d lv=%d\n",
-                point->touch_id, point->lx, point->ly,
-                target.surface != NULL ? "yes" : "no",
-                target.object != NULL ? (int)target.role : -1,
-                point->hitbox != NULL ? point->hitbox->name : "none",
-                compositor->quick_settings_visible,
-                compositor->time_panel_visible,
-                compositor->launcher_visible);
-            fclose(tf);
-        }
-    }
-
     lumo_input_touch_audit_log(compositor, point, output, &target,
         event->x, event->y);
     lumo_touch_audit_note_touch(compositor, output, &event->touch->base, point,
@@ -1801,6 +1774,8 @@ static void lumo_input_touch_down(
                 }
             }
         }
+        /* Safe: bind_surface was already called at line 1718 above with
+         * target.surface, so point->surface is valid before deliver_now. */
         lumo_input_touch_point_deliver_now(compositor, point, &target,
             event->time_msec);
         lumo_input_focus_surface(compositor, point->surface);

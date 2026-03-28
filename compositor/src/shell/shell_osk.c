@@ -169,6 +169,11 @@ bool lumo_shell_osk_key_rect(
     if (output_width <= side_padding * 2 + gap * (columns - 1)) {
         return false;
     }
+    /* Extra guard: ensure row_units worth of space remains after padding/gaps
+     * to prevent unsigned wrap in the subtraction below on tiny displays. */
+    if (output_width < side_padding * 2 + gap * (columns - 1) + row_units) {
+        return false;
+    }
 
     unit_width = (output_width - side_padding * 2 - gap * (columns - 1)) / row_units;
     unit_width = lumo_shell_max_u32(unit_width, 24);

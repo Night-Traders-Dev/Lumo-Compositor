@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.52] - 2026-03-28
+
+- Full codebase security and stability audit: fixed 26 issues across critical, high, medium, and low severity.
+- Fixed critical use-after-free: touch points with destroyed surfaces are now always freed instead of left as zombies.
+- Fixed division-by-zero crash in touch coordinate transform for degenerate output dimensions.
+- Fixed duplicate LUMO_SHELL_MODE_BACKGROUND check in animation state machine (copy-paste bug).
+- Fixed SHM buffer use-after-free when allocation fails during force-recycle.
+- Removed hardcoded debug touch log file (/home/orangepi/lumo-touch.log) that caused disk I/O on every touch event.
+- Fixed socket path null-termination in sd_notify to prevent buffer overrun.
+- Added zombie process reaping for app-launch children (previously only tracked shell children).
+- Added PTY write error checking in terminal app.
+- Added hitbox coordinate guards to prevent signed/unsigned wraparound on small displays.
+- Added unsigned-wrap protection in OSK key rect calculation for tiny displays.
+- Added directory traversal validation (reject `..` entries) in the file browser.
+- Fixed dangling output pointers during compositor shutdown.
+- Added weather-based dynamic theme: compositor fetches weather for ZIP 41101 every 5 minutes via wttr.in.
+- Background hue now shifts based on weather (clear/cloudy/rain/storm/snow/fog) combined with time-of-day.
+- Weather data broadcast to all shell clients via the bridge protocol.
+- Added boot chime: two-tone C5/E5 WAV generated and played via aplay at shell startup.
+- Restyled OSK to match ubuntu-frame-osk (Lomiri): dark charcoal keys, orange enter, subtle grab handle.
+- Added shift and backspace keys to OSK layout (33 keys, up from 31).
+- Added real PTY terminal backend: terminal app now executes /bin/sh via forkpty() with live output.
+- Added text-input-v3 client support for OSK text delivery to apps.
+- Fixed OSK not appearing: removed keyboard visibility race conditions, disabled OSK scene node when hidden, raised to top when visible.
+- Fixed app drawer tile taps not working due to invisible OSK surface intercepting wlr_scene_node_at.
+- Removed close button from all apps (use bottom-edge swipe gesture to dismiss).
+- Reordered touch dispatch: hitbox checks (edges, gestures, OSK) now run before shell surface redirect.
+- Added 17 new bitmap font glyphs (., !, (, ), %, @, #, _, >, <, =, *, ~, $, &, [, ]).
+- Added protocol line-overflow logging for DoS detection.
+- Added weather fetch timeout (5s poll) to prevent compositor stall on slow networks.
+- New fuzz/stress test suite: protocol parsing with garbage/oversized input, degenerate coordinate transforms, extreme layout dimensions, all-app rendering, type coercion checks, hitbox helpers.
+- Version bumped to 0.0.52 with 5 test suites (compositor, shell, app, screenshot, fuzz).
+
 ## [0.0.51] - 2026-03-27
 - Reduced compositor idle CPU from 26% to ~10% by slowing the animated background refresh from 500ms to 2s and caching gradient rows.
 - Fixed OSK activation: touches on app toplevels now correctly focus the surface and auto-show the on-screen keyboard, resolving the scene-tree ordering bug where the invisible OSK layer surface intercepted touches.

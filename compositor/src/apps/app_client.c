@@ -115,8 +115,12 @@ static void lumo_app_term_add_line(struct lumo_app_client *client,
 static void lumo_app_term_write(struct lumo_app_client *client,
     const char *data, size_t len)
 {
+    ssize_t ret;
     if (client->pty_fd < 0 || len == 0) return;
-    (void)write(client->pty_fd, data, len);
+    ret = write(client->pty_fd, data, len);
+    if (ret < 0 && errno != EAGAIN && errno != EINTR) {
+        fprintf(stderr, "lumo-app: pty write failed: %s\n", strerror(errno));
+    }
 }
 
 static bool lumo_app_pty_setup(struct lumo_app_client *client) {
@@ -202,6 +206,9 @@ static void lumo_app_pty_read(struct lumo_app_client *client) {
                     client->pty_line_buf[client->pty_line_len++] = ' ';
                 continue;
             }
+            /* Intentional truncation: characters beyond the line buffer
+             * capacity are silently dropped.  This is acceptable for a
+             * dumb terminal — long lines simply get clipped at display width. */
             if (client->pty_line_len < (int)sizeof(client->pty_line_buf) - 1) {
                 client->pty_line_buf[client->pty_line_len++] = ch;
             }
@@ -727,6 +734,10 @@ static void lumo_app_touch_handle_up(
                     if (entry->d_name[0] == '.') {
                         continue;
                     }
+                    /* Explicit guard against directory traversal via
+                     * ".." — already caught above by the dot check,
+                     * but stated here for clarity and defence-in-depth. */
+                    if (strcmp(entry->d_name, "..") == 0) continue;
                     if (visible == adjusted) {
                         if (entry->d_type == DT_DIR) {
                             size_t plen = strlen(client->browse_path);
@@ -1367,6 +1378,9 @@ static void lumo_app_notes_load(struct lumo_app_client *client) {
     char path[1100];
     FILE *fp;
 
+    /* Path safety: browse_path is initialised from $HOME (a trusted
+     * environment variable) and the filename ".lumo-notes" is
+     * hardcoded — no user-controlled input reaches this path. */
     snprintf(path, sizeof(path), "%s/.lumo-notes", client->browse_path);
     fp = fopen(path, "r");
     if (fp == NULL) {
@@ -1390,6 +1404,9 @@ static void lumo_app_notes_save(const struct lumo_app_client *client) {
     char path[1100];
     FILE *fp;
 
+    /* Path safety: browse_path is initialised from $HOME (a trusted
+     * environment variable) and the filename ".lumo-notes" is
+     * hardcoded — no user-controlled input reaches this path. */
     snprintf(path, sizeof(path), "%s/.lumo-notes", client->browse_path);
     fp = fopen(path, "w");
     if (fp == NULL) {
@@ -1482,8 +1499,12 @@ int main(int argc, char **argv) {
         if (client.text_input != NULL) {
             zwp_text_input_v3_add_listener(client.text_input,
                 &lumo_app_text_input_listener, &client);
-            /* enable text-input immediately — the compositor may have
-             * already sent the enter event before this object existed */
+            /* Enable text-input immediately — the compositor may have
+             * already sent the enter event before this object existed.
+             * We set text_input_enabled = true here so that the enter
+             * callback (lumo_app_text_input_enter) won't redundantly
+             * re-enable; the guard check `!client->text_input_enabled`
+             * in that callback is intentional and correct. */
             zwp_text_input_v3_enable(client.text_input);
             zwp_text_input_v3_set_content_type(client.text_input,
                 ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE,
@@ -1508,6 +1529,9 @@ int main(int argc, char **argv) {
         int display_fd = wl_display_get_fd(client.display);
         bool is_terminal = client.app_id == LUMO_APP_MESSAGES &&
             client.pty_fd >= 0;
+        /* Clock must redraw every second to keep the displayed time current.
+         * Settings polls every 5 s so status values (battery, wifi, etc.) stay
+         * reasonably fresh without hammering the compositor. */
         bool needs_periodic = client.app_id == LUMO_APP_CLOCK ||
             client.app_id == LUMO_APP_SETTINGS || is_terminal;
         int timeout_ms = client.app_id == LUMO_APP_CLOCK ? 1000 :
@@ -1573,7 +1597,10 @@ int main(int argc, char **argv) {
                 lumo_app_pty_read(&client);
             }
             if (is_terminal && (pfds[1].revents & POLLHUP)) {
-                /* shell exited */
+                /* shell exited; is_terminal, nfds, timeout_ms and
+                 * needs_periodic are declared outside the while loop so
+                 * clearing them here correctly persists across subsequent
+                 * loop iterations -- no stale flag risk. */
                 fprintf(stderr, "lumo-app: PTY shell exited\n");
                 lumo_app_term_add_line(&client, "[shell exited]");
                 (void)lumo_app_client_redraw(&client);

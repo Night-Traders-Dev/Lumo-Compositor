@@ -1847,7 +1847,8 @@ static void lumo_shell_client_begin_transition(
     }
 
     if (client->mode == LUMO_SHELL_MODE_GESTURE ||
-            client->mode == LUMO_SHELL_MODE_STATUS || client->mode == LUMO_SHELL_MODE_BACKGROUND || client->mode == LUMO_SHELL_MODE_BACKGROUND) {
+            client->mode == LUMO_SHELL_MODE_STATUS ||
+            client->mode == LUMO_SHELL_MODE_BACKGROUND) {
         client->target_visible = true;
         client->surface_hidden = false;
         client->animation_active = false;
@@ -1901,14 +1902,16 @@ static void lumo_shell_client_sync_surface_state(
     desired_visible = lumo_shell_client_should_be_visible(client);
     if (desired_visible != client->target_visible ||
             ((client->mode == LUMO_SHELL_MODE_GESTURE ||
-                client->mode == LUMO_SHELL_MODE_STATUS || client->mode == LUMO_SHELL_MODE_BACKGROUND || client->mode == LUMO_SHELL_MODE_BACKGROUND) &&
+                client->mode == LUMO_SHELL_MODE_STATUS ||
+                client->mode == LUMO_SHELL_MODE_BACKGROUND) &&
                 client->surface_hidden)) {
         lumo_shell_client_begin_transition(client, desired_visible);
         return;
     }
 
     if ((desired_visible || client->mode == LUMO_SHELL_MODE_GESTURE ||
-                client->mode == LUMO_SHELL_MODE_STATUS || client->mode == LUMO_SHELL_MODE_BACKGROUND || client->mode == LUMO_SHELL_MODE_BACKGROUND) &&
+                client->mode == LUMO_SHELL_MODE_STATUS ||
+                client->mode == LUMO_SHELL_MODE_BACKGROUND) &&
             force_layout &&
             lumo_shell_client_build_config(client, true, &config) &&
             !lumo_shell_surface_config_equal(&client->config, &config)) {
@@ -2041,8 +2044,12 @@ static struct lumo_shell_buffer *lumo_shell_get_free_buffer(
         if (client->buffers[i] == NULL || !client->buffers[i]->busy) {
             if (client->buffers[i] != NULL) {
                 lumo_shell_buffer_destroy(client->buffers[i]);
+                client->buffers[i] = NULL;
             }
             client->buffers[i] = lumo_shell_alloc_buffer(client, width, height);
+            if (client->buffers[i] == NULL) {
+                return NULL;
+            }
             return client->buffers[i];
         }
     }
@@ -2052,7 +2059,11 @@ static struct lumo_shell_buffer *lumo_shell_get_free_buffer(
     {
         int victim = (client->buffer == client->buffers[0]) ? 1 : 0;
         lumo_shell_buffer_destroy(client->buffers[victim]);
+        client->buffers[victim] = NULL;
         client->buffers[victim] = lumo_shell_alloc_buffer(client, width, height);
+        if (client->buffers[victim] == NULL) {
+            return NULL;
+        }
         return client->buffers[victim];
     }
 }

@@ -219,13 +219,15 @@ More detailed notes live in:
 
 ## Status
 
-The project is at v0.0.51 with a functional mobile shell running on OrangePi RV2 hardware.
+The project is at v0.0.52 with a functional mobile shell running on OrangePi RV2 hardware.
 
 Current capabilities:
 
 - full DRM compositor with pixman software rendering
 - Ubuntu-themed color palette (aubergine, orange, warm grey)
-- animated procedural background that adapts to time of day
+- animated procedural background that adapts to time of day and live weather
+- weather-aware dynamic theme: fetches conditions every 5 minutes via wttr.in
+- boot chime on shell startup
 - status bar with live clock, WiFi signal bars, and LUMO branding
 - quick settings panel (top-right swipe) with WiFi, display, session info, reload and rotate buttons
 - time/date panel (top-left swipe) with large clock, date, day name, week number
@@ -234,19 +236,20 @@ Current capabilities:
 - functional Files app with directory browsing, scroll, navigation, and file sizes
 - functional Settings app with 8 categorized rows (Network, Display, Storage, Memory, System, About, Lumo, CPU)
 - functional Notes app with add, select, and disk persistence (~/.lumo-notes)
-- functional Terminal app with keyboard input, command history, and OSK integration
-- on-screen keyboard with text-input-v3 integration
+- functional Terminal app with real PTY shell execution (/bin/sh via forkpty)
+- Lomiri-style on-screen keyboard with text-input-v3, shift, backspace, 33 keys
+- OSK text input flows to terminal PTY for live command execution
 - screen rotation via quick settings with correct touch matrix remapping
 - shell child supervision with automatic respawn
 - double-buffered SHM rendering for shell clients
 - coalesced state broadcasts for performance
 - systemd ready notification for GDM session registration
 - optional xWayland support at build time
+- 5 test suites: compositor, shell, app, screenshot, and fuzz/stress
+- full security audit: 26 issues fixed across input handling, protocol parsing, buffer management, and resource lifecycle
 
 Next milestones:
 
-- app icons for launcher tiles
-- settings sub-pages with toggles and sliders
 - custom login screen to replace GDM greeter
 - window management UX for third-party Wayland apps
 - notification system

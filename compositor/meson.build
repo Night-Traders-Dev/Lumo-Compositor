@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.51',
+  version: '0.0.52',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -286,6 +286,29 @@ screenshot_test_exe = executable(
 )
 
 test('lumo-screenshot', screenshot_test_exe)
+
+fuzz_test_sources = files(
+  'src/shell/shell_osk.c',
+  'src/shell/shell_ui.c',
+  'src/apps/app_catalog.c',
+  'src/apps/app_ui.c',
+  'src/apps/app_clock.c',
+  'src/apps/app_files.c',
+  'src/apps/app_settings.c',
+  'src/apps/app_notes.c',
+  'src/apps/app_terminal.c',
+  'tests/core/test_fuzz.c',
+) + lumo_sources
+
+fuzz_test_exe = executable(
+  'lumo-fuzz-tests',
+  fuzz_test_sources,
+  include_directories: lumo_inc,
+  dependencies: lumo_deps,
+  install: false,
+)
+
+test('lumo-fuzz', fuzz_test_exe)
 
 # Add wlroots, wayland-server, libinput, xkbcommon, pixman, libdrm,
 # GBM, libseat, and wayland-protocols once the real backend lands.

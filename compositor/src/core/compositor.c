@@ -83,6 +83,7 @@ static void lumo_notify_ready(void) {
         strncpy(addr.sun_path + 1, socket_path + 1, sizeof(addr.sun_path) - 2);
     } else {
         strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
+        addr.sun_path[sizeof(addr.sun_path) - 1] = '\0';
     }
 
     sent = sendto(fd, "READY=1", 7, MSG_NOSIGNAL,
