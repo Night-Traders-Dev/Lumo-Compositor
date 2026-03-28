@@ -2004,7 +2004,14 @@ static struct lumo_shell_buffer *lumo_shell_get_free_buffer(
         }
     }
 
-    return NULL;
+    /* both busy — force-recycle the non-current buffer so the surface
+     * can still render during size transitions (e.g. OSK bootstrap→full) */
+    {
+        int victim = (client->buffer == client->buffers[0]) ? 1 : 0;
+        lumo_shell_buffer_destroy(client->buffers[victim]);
+        client->buffers[victim] = lumo_shell_alloc_buffer(client, width, height);
+        return client->buffers[victim];
+    }
 }
 
 static bool lumo_shell_draw_buffer(

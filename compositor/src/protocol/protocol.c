@@ -122,23 +122,46 @@ void lumo_protocol_refresh_keyboard_visibility(
 ) {
     bool visible = false;
 
-    if (compositor == NULL || compositor->text_input_manager == NULL ||
-            compositor->seat == NULL) {
+    if (compositor == NULL || compositor->seat == NULL) {
         lumo_protocol_set_keyboard_visible(compositor, false);
         return;
     }
 
-    struct wl_resource *resource;
-    wl_list_for_each(resource, &compositor->text_input_manager->text_inputs, link) {
-        struct wlr_text_input_v3 *text_input = wl_resource_get_user_data(resource);
+    /* check text-input-v3 enabled state */
+    if (compositor->text_input_manager != NULL) {
+        struct wl_resource *resource;
+        wl_list_for_each(resource,
+                &compositor->text_input_manager->text_inputs, link) {
+            struct wlr_text_input_v3 *text_input =
+                wl_resource_get_user_data(resource);
 
-        if (text_input == NULL || text_input->seat != compositor->seat) {
-            continue;
+            if (text_input == NULL ||
+                    text_input->seat != compositor->seat) {
+                continue;
+            }
+
+            if (text_input->focused_surface != NULL &&
+                    text_input->current_enabled) {
+                visible = true;
+                break;
+            }
         }
+    }
 
-        if (text_input->focused_surface != NULL && text_input->current_enabled) {
-            visible = true;
-            break;
+    /* also keep keyboard visible if a toplevel is focused, even if
+     * the client hasn't enabled text-input yet (the OSK is useful
+     * for any app, not just ones that implement text-input-v3) */
+    if (!visible && !compositor->launcher_visible &&
+            compositor->seat->keyboard_state.focused_surface != NULL) {
+        struct wlr_surface *focused =
+            compositor->seat->keyboard_state.focused_surface;
+        struct lumo_toplevel *tl;
+        wl_list_for_each(tl, &compositor->toplevels, link) {
+            if (tl->xdg_surface != NULL &&
+                    tl->xdg_surface->surface == focused) {
+                visible = true;
+                break;
+            }
         }
     }
 
@@ -184,6 +207,7 @@ static void lumo_protocol_text_input_enable(
 
     (void)data;
     if (binding != NULL) {
+        wlr_log(WLR_INFO, "protocol: text_input_enable fired");
         lumo_protocol_refresh_keyboard_visibility(binding->compositor);
     }
 }
@@ -197,6 +221,9 @@ static void lumo_protocol_text_input_commit(
 
     (void)data;
     if (binding != NULL) {
+        wlr_log(WLR_INFO, "protocol: text_input_commit fired, enabled=%d",
+            binding->text_input != NULL ?
+                binding->text_input->current_enabled : -1);
         lumo_protocol_refresh_keyboard_visibility(binding->compositor);
     }
 }
@@ -210,6 +237,7 @@ static void lumo_protocol_text_input_disable(
 
     (void)data;
     if (binding != NULL) {
+        wlr_log(WLR_INFO, "protocol: text_input_disable fired");
         lumo_protocol_refresh_keyboard_visibility(binding->compositor);
     }
 }
@@ -258,7 +286,10 @@ static void lumo_protocol_new_text_input(
     wl_signal_add(&text_input->events.disable, &binding->disable);
     wl_signal_add(&text_input->events.destroy, &binding->destroy);
     wl_list_insert(&state->text_input_bindings, &binding->link);
-    lumo_protocol_refresh_keyboard_visibility(state->compositor);
+    /* Do not refresh keyboard visibility here.  The new text-input has
+     * not been enabled yet, so refresh would see current_enabled=false
+     * and hide the keyboard even if it was just shown for a toplevel.
+     * Visibility will be refreshed when the client calls enable(). */
 }
 
 static struct lumo_output *lumo_protocol_output_for_wlr(

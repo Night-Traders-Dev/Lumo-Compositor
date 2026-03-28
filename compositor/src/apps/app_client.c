@@ -142,7 +142,10 @@ static bool lumo_app_pty_setup(struct lumo_app_client *client) {
         setenv("TERM", "dumb", 1);
         setenv("COLORTERM", "", 1);
         unsetenv("LS_COLORS");
-        execlp(shell, shell, "--norc", "--noprofile", (char *)NULL);
+        /* use /bin/sh for predictable behavior — fish/zsh don't
+         * accept --norc --noprofile and our dumb-terminal parser
+         * can't handle their escape sequences anyway */
+        execlp("/bin/sh", "sh", (char *)NULL);
         _exit(127);
     }
 

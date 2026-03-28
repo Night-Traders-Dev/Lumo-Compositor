@@ -529,15 +529,29 @@ static void lumo_input_focus_surface(
         if (!wl_list_empty(&compositor->toplevels) &&
                 !compositor->launcher_visible) {
             struct lumo_toplevel *tl;
+            bool matched = false;
             wl_list_for_each(tl, &compositor->toplevels, link) {
                 if (tl->xdg_surface != NULL &&
                         tl->xdg_surface->surface == surface) {
+                    matched = true;
                     if (!compositor->keyboard_visible) {
+                        wlr_log(WLR_INFO,
+                            "input: focus_surface setting keyboard visible");
                         lumo_protocol_set_keyboard_visible(compositor, true);
                     }
                     break;
                 }
             }
+            if (!matched) {
+                wlr_log(WLR_INFO,
+                    "input: focus_surface surface not in toplevels list");
+            }
+        } else {
+            wlr_log(WLR_INFO,
+                "input: focus_surface skipped kbd check "
+                "(toplevels_empty=%d launcher=%d)",
+                wl_list_empty(&compositor->toplevels),
+                compositor->launcher_visible);
         }
     } else {
         wlr_seat_keyboard_notify_clear_focus(compositor->seat);
@@ -1718,11 +1732,23 @@ static void lumo_input_touch_down(
          * the shell surface is an invisible bootstrap placeholder.
          * Redirect the touch to the app toplevel so it gets focus and
          * the OSK can activate. */
+        /* keyboard_visible is intentionally excluded — when the OSK
+         * is showing, the OSK hitbox handles touches in that zone;
+         * touches elsewhere should still reach the app toplevel
+         * through the invisible launcher surface. */
         bool shell_ui_active = compositor->launcher_visible ||
-            compositor->keyboard_visible ||
             compositor->quick_settings_visible ||
             compositor->time_panel_visible ||
             compositor->touch_audit_active;
+        wlr_log(WLR_INFO,
+            "input: touch %d hit shell surface, ui_active=%d "
+            "launcher=%d kbd=%d qs=%d tp=%d toplevels=%d",
+            point->touch_id, shell_ui_active,
+            compositor->launcher_visible,
+            compositor->keyboard_visible,
+            compositor->quick_settings_visible,
+            compositor->time_panel_visible,
+            !wl_list_empty(&compositor->toplevels));
         if (!shell_ui_active && !wl_list_empty(&compositor->toplevels)) {
             struct lumo_toplevel *tl;
             wl_list_for_each(tl, &compositor->toplevels, link) {
@@ -1795,6 +1821,11 @@ static void lumo_input_touch_down(
                 break;
             }
         }
+
+        wlr_log(WLR_INFO,
+            "input: touch %d surface found, is_toplevel=%d role=%d",
+            point->touch_id, is_app_toplevel,
+            target.object != NULL ? (int)target.role : -1);
 
         lumo_input_touch_point_deliver_now(compositor, point, &target,
             event->time_msec);
