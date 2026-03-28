@@ -711,8 +711,21 @@ static void lumo_input_replay_touch_point(
                 if (ls->layer_surface->namespace != NULL &&
                         strcmp(ls->layer_surface->namespace, "launcher") == 0) {
                     point->surface = ls->layer_surface->surface;
+                    /* fix sample coordinates — the stored sx/sy are from
+                     * the OSK surface (0,0). Use the compositor-global
+                     * coords instead, which are correct for the fullscreen
+                     * launcher surface at (0,0) */
+                    {
+                        struct lumo_touch_sample *s;
+                        wl_list_for_each(s, &point->samples, link) {
+                            s->sx = s->lx;
+                            s->sy = s->ly;
+                        }
+                    }
                     wlr_log(WLR_INFO,
-                        "input: replay redirected from osk to launcher");
+                        "input: replay redirected from osk to launcher "
+                        "at %.0f,%.0f",
+                        point->down_lx, point->down_ly);
                     break;
                 }
             }
