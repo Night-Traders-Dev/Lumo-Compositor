@@ -831,8 +831,19 @@ static void lumo_draw_launcher(
                 strftime(day_name, sizeof(day_name), "%A", &tm_now);
                 int dnw = lumo_text_width(day_name, 3);
                 lumo_draw_text(pixels, width, height,
-                    tp.x + tp.width / 2 - dnw / 2, tp.y + 118,
+                    tp.x + tp.width / 2 - dnw / 2, tp.y + 110,
                     3, tp_text, day_name);
+            }
+
+            /* weather info */
+            if (client->weather_condition[0] != '\0') {
+                char weath[64];
+                snprintf(weath, sizeof(weath), "%dF %s",
+                    client->weather_temp_c, client->weather_condition);
+                int wew = lumo_text_width(weath, 2);
+                lumo_draw_text(pixels, width, height,
+                    tp.x + tp.width / 2 - wew / 2, tp.y + 140,
+                    2, tp_accent, weath);
             }
         }
         return;
@@ -1404,44 +1415,68 @@ static void lumo_draw_animated_bg(
             weather_code != bg_cache_weather_code) {
         uint32_t base_r, base_g, base_b;
 
-        /* time-of-day base colors (Ubuntu palette) */
-        if (hour >= 6 && hour < 10) {
-            base_r = 0x3A; base_g = 0x08; base_b = 0x20; /* morning */
-        } else if (hour >= 10 && hour < 17) {
-            base_r = 0x2C; base_g = 0x00; base_b = 0x1E; /* midday */
-        } else if (hour >= 17 && hour < 20) {
-            base_r = 0x40; base_g = 0x0A; base_b = 0x1A; /* sunset */
+        /* Multi-palette time-of-day colors:
+         * Ubuntu (aubergine/orange), Sailfish (teal/petrol blue),
+         * webOS (warm charcoal/slate) blended by time period.
+         *
+         * Dawn/morning  : Sailfish teal-blue → Ubuntu warm purple
+         * Midday        : Ubuntu aubergine core
+         * Afternoon     : webOS warm slate-grey
+         * Sunset        : Ubuntu orange-red warmth
+         * Evening       : Sailfish deep petrol blue
+         * Night         : blend of all three — deep dark */
+        if (hour >= 5 && hour < 7) {
+            /* dawn — Sailfish teal with warm hint */
+            base_r = 0x14; base_g = 0x28; base_b = 0x38;
+        } else if (hour >= 7 && hour < 10) {
+            /* morning — Ubuntu warm purple + Sailfish blue */
+            base_r = 0x30; base_g = 0x10; base_b = 0x28;
+        } else if (hour >= 10 && hour < 14) {
+            /* midday — Ubuntu aubergine core */
+            base_r = 0x2C; base_g = 0x00; base_b = 0x1E;
+        } else if (hour >= 14 && hour < 17) {
+            /* afternoon — webOS warm charcoal */
+            base_r = 0x28; base_g = 0x14; base_b = 0x18;
+        } else if (hour >= 17 && hour < 19) {
+            /* sunset — Ubuntu orange-red warmth */
+            base_r = 0x42; base_g = 0x0C; base_b = 0x16;
+        } else if (hour >= 19 && hour < 21) {
+            /* evening — Sailfish deep petrol */
+            base_r = 0x10; base_g = 0x18; base_b = 0x30;
         } else {
-            base_r = 0x18; base_g = 0x00; base_b = 0x14; /* night */
+            /* night — deep blend of all three */
+            base_r = 0x12; base_g = 0x08; base_b = 0x1A;
         }
 
         /* weather hue shift:
          * 0=clear 1=partly_cloudy 2=cloudy 3=rain 4=storm 5=snow 6=fog */
         switch (weather_code) {
-        case 1: /* partly cloudy — slightly cooler */
-            base_g += 0x04; base_b += 0x06;
+        case 1: /* partly cloudy — Sailfish cool blue push */
+            base_g += 0x06; base_b += 0x0A;
             break;
-        case 2: /* cloudy — grey-purple */
-            base_r = base_r * 3 / 4;
-            base_g += 0x08; base_b += 0x0C;
+        case 2: /* cloudy — webOS grey-slate overlay */
+            base_r = (base_r * 3 + 0x30) / 4;
+            base_g = (base_g * 3 + 0x28) / 4;
+            base_b = (base_b * 3 + 0x28) / 4;
             break;
-        case 3: /* rain — blue-grey, darker */
+        case 3: /* rain — Sailfish deep teal-blue */
             base_r = base_r * 2 / 3;
-            base_g += 0x06; base_b += 0x18;
+            base_g += 0x08; base_b += 0x1A;
             break;
-        case 4: /* storm — dark blue-purple */
-            base_r = base_r / 2;
-            base_b += 0x20;
+        case 4: /* storm — deep purple-indigo */
+            base_r = base_r / 2 + 0x08;
+            base_g = base_g / 2;
+            base_b += 0x24;
             break;
-        case 5: /* snow — cool blue-white lift */
-            base_r += 0x10; base_g += 0x14; base_b += 0x20;
+        case 5: /* snow — Sailfish ice blue-white */
+            base_r += 0x14; base_g += 0x1A; base_b += 0x24;
             break;
-        case 6: /* fog — washed grey */
-            base_r = (base_r + 0x20) / 2;
-            base_g = (base_g + 0x20) / 2;
-            base_b = (base_b + 0x20) / 2;
+        case 6: /* fog — webOS warm grey wash */
+            base_r = (base_r + 0x28) / 2;
+            base_g = (base_g + 0x24) / 2;
+            base_b = (base_b + 0x22) / 2;
             break;
-        default: /* clear / unknown — warm Ubuntu tones, no shift */
+        default: /* clear — keep time-of-day palette */
             break;
         }
         if (base_r > 0xFF) base_r = 0xFF;

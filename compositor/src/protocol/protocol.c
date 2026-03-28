@@ -148,22 +148,9 @@ void lumo_protocol_refresh_keyboard_visibility(
         }
     }
 
-    /* also keep keyboard visible if a toplevel is focused, even if
-     * the client hasn't enabled text-input yet (the OSK is useful
-     * for any app, not just ones that implement text-input-v3) */
-    if (!visible && !compositor->launcher_visible &&
-            compositor->seat->keyboard_state.focused_surface != NULL) {
-        struct wlr_surface *focused =
-            compositor->seat->keyboard_state.focused_surface;
-        struct lumo_toplevel *tl;
-        wl_list_for_each(tl, &compositor->toplevels, link) {
-            if (tl->xdg_surface != NULL &&
-                    tl->xdg_surface->surface == focused) {
-                visible = true;
-                break;
-            }
-        }
-    }
+    /* keyboard is only visible when a client has explicitly enabled
+     * text-input-v3 (meaning a text field is focused, not just any
+     * toplevel).  Apps that want the OSK must implement text-input. */
 
     if (compositor->keyboard_visible && !visible) {
         wlr_log(WLR_INFO,
@@ -1187,6 +1174,11 @@ void lumo_protocol_set_launcher_visible(
     }
 
     compositor->launcher_visible = visible;
+    /* hide keyboard when launcher opens — the OSK at LAYER_OVERLAY would
+     * block all interaction with the launcher tiles */
+    if (visible && compositor->keyboard_visible) {
+        lumo_protocol_set_keyboard_visible(compositor, false);
+    }
     if (visible) {
         compositor->scrim_state = LUMO_SCRIM_MODAL;
     } else if (!compositor->keyboard_visible) {
@@ -1388,6 +1380,23 @@ void lumo_protocol_configure_layers(
     }
 
     lumo_protocol_refresh_shell_hitboxes(compositor);
+
+    /* wlr_scene_layer_surface_v1_configure re-enables nodes based on
+     * surface->mapped.  Re-disable the OSK node when the keyboard is
+     * hidden so its 1px bootstrap surface doesn't intercept touches. */
+    if (!compositor->keyboard_visible) {
+        wl_list_for_each_safe(layer_surface, tmp,
+                &compositor->layer_surfaces, link) {
+            if (layer_surface->layer_surface != NULL &&
+                    layer_surface->layer_surface->namespace != NULL &&
+                    strcmp(layer_surface->layer_surface->namespace, "osk") == 0 &&
+                    layer_surface->scene_surface != NULL &&
+                    layer_surface->scene_surface->tree != NULL) {
+                wlr_scene_node_set_enabled(
+                    &layer_surface->scene_surface->tree->node, false);
+            }
+        }
+    }
 }
 
 void lumo_protocol_configure_all_layers(struct lumo_compositor *compositor) {

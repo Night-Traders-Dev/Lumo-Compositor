@@ -524,11 +524,9 @@ static void lumo_input_focus_surface(
                 if (tl->xdg_surface != NULL &&
                         tl->xdg_surface->surface == surface) {
                     matched = true;
-                    if (!compositor->keyboard_visible) {
-                        wlr_log(WLR_INFO,
-                            "input: focus_surface setting keyboard visible");
-                        lumo_protocol_set_keyboard_visible(compositor, true);
-                    }
+                    /* do NOT auto-show keyboard here — the OSK should
+                     * only appear when the client enables text-input-v3
+                     * (i.e. a text field is focused, not any toplevel) */
                     break;
                 }
             }
@@ -686,6 +684,39 @@ static void lumo_input_replay_touch_point(
     if (compositor == NULL || compositor->seat == NULL || point == NULL ||
             point->surface == NULL || point->delivered) {
         return;
+    }
+
+    /* if the bound surface belongs to a hidden shell mode (e.g. OSK when
+     * keyboard is not visible), re-resolve to find the correct overlay
+     * surface (launcher) so the touch reaches the right client */
+    {
+        struct lumo_layer_surface *ls;
+        bool wrong_surface = false;
+        wl_list_for_each(ls, &compositor->layer_surfaces, link) {
+            if (ls->layer_surface == NULL || ls->scene_surface == NULL) {
+                continue;
+            }
+            if (ls->layer_surface->surface == point->surface &&
+                    ls->layer_surface->namespace != NULL &&
+                    strcmp(ls->layer_surface->namespace, "osk") == 0 &&
+                    !compositor->keyboard_visible) {
+                wrong_surface = true;
+                break;
+            }
+        }
+        if (wrong_surface) {
+            /* find the launcher surface instead */
+            wl_list_for_each(ls, &compositor->layer_surfaces, link) {
+                if (ls->layer_surface == NULL) continue;
+                if (ls->layer_surface->namespace != NULL &&
+                        strcmp(ls->layer_surface->namespace, "launcher") == 0) {
+                    point->surface = ls->layer_surface->surface;
+                    wlr_log(WLR_INFO,
+                        "input: replay redirected from osk to launcher");
+                    break;
+                }
+            }
+        }
     }
 
     lumo_input_focus_surface(compositor, point->surface);

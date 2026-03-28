@@ -1693,7 +1693,7 @@ static void lumo_weather_parse(struct lumo_compositor *compositor,
             sizeof(compositor->weather_condition) - 1);
         compositor->weather_temp_c = temp;
         compositor->weather_code = code;
-        wlr_log(WLR_INFO, "weather: %d°C %s (code=%d)", temp, condition,
+        wlr_log(WLR_INFO, "weather: %dF %s (code=%d)", temp, condition,
             code);
         lumo_shell_mark_state_dirty(compositor);
     }
@@ -1718,8 +1718,8 @@ static void lumo_weather_fetch(struct lumo_compositor *compositor) {
         dup2(pipefd[1], STDOUT_FILENO);
         close(pipefd[1]);
         close(STDERR_FILENO);
-        execlp("curl", "curl", "-s", "--max-time", "10",
-            "https://wttr.in/41101?format=%t+%C", (char *)NULL);
+        execlp("curl", "curl", "-s", "--max-time", "8",
+            "https://wttr.in/41101?format=%t+%C&u", (char *)NULL);
         _exit(127);
     }
 
@@ -1742,7 +1742,7 @@ static void lumo_weather_fetch(struct lumo_compositor *compositor) {
         }
     }
     close(pipefd[0]);
-    waitpid(pid, NULL, 0);
+    waitpid(pid, NULL, WNOHANG); /* non-blocking reap; zombie cleaned by SIGCHLD */
 
     if (n > 0) {
         buf[n] = '\0';
