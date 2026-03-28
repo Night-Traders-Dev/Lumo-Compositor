@@ -578,7 +578,12 @@ static void lumo_input_focus_surface(
         }
     }
 
-    lumo_protocol_refresh_keyboard_visibility(compositor);
+    /* Do NOT call lumo_protocol_refresh_keyboard_visibility here.
+     * The keyboard was already set visible at line 536 if the surface
+     * is a toplevel.  refresh_keyboard_visibility checks
+     * text_input->current_enabled, but the client has not had a chance
+     * to process the enter event and call enable()+commit() yet, so
+     * refresh would immediately undo the show. */
 }
 
 static void lumo_input_refresh_capabilities(struct lumo_compositor *compositor) {
@@ -1709,6 +1714,35 @@ static void lumo_input_touch_down(
     }
 
     if (lumo_input_target_is_shell(&target)) {
+        /* If no shell UI is actively visible but a toplevel app is open,
+         * the shell surface is an invisible bootstrap placeholder.
+         * Redirect the touch to the app toplevel so it gets focus and
+         * the OSK can activate. */
+        bool shell_ui_active = compositor->launcher_visible ||
+            compositor->keyboard_visible ||
+            compositor->quick_settings_visible ||
+            compositor->time_panel_visible ||
+            compositor->touch_audit_active;
+        if (!shell_ui_active && !wl_list_empty(&compositor->toplevels)) {
+            struct lumo_toplevel *tl;
+            wl_list_for_each(tl, &compositor->toplevels, link) {
+                if (tl->xdg_surface != NULL &&
+                        tl->xdg_surface->surface != NULL) {
+                    lumo_input_touch_point_bind_surface(point,
+                        tl->xdg_surface->surface);
+                    lumo_input_touch_point_deliver_now(compositor, point,
+                        &target, event->time_msec);
+                    lumo_input_focus_surface(compositor,
+                        tl->xdg_surface->surface);
+                    wlr_log(WLR_INFO,
+                        "input: touch %d redirected from invisible shell "
+                        "to toplevel", point->touch_id);
+                    lumo_input_touch_debug_update(compositor, point,
+                        LUMO_TOUCH_SAMPLE_DOWN, true, point->lx, point->ly);
+                    return;
+                }
+            }
+        }
         lumo_input_touch_point_deliver_now(compositor, point, &target,
             event->time_msec);
         lumo_input_focus_surface(compositor, point->surface);
