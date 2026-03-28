@@ -54,5 +54,5 @@ void lumo_app_render_terminal(
         lumo_app_fill_rect(pixels, width, height, 12, y, 2, 14, cursor_color);
     }
 
-    lumo_app_draw_close_button(pixels, width, height, close_active);
+    /* close button removed — use bottom-edge swipe */
 }

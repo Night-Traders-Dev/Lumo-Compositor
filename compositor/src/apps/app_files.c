@@ -167,5 +167,5 @@ void lumo_app_render_files(
         }
     }
 
-    lumo_app_draw_close_button(pixels, width, height, close_active);
+    /* close button removed — use bottom-edge swipe */
 }

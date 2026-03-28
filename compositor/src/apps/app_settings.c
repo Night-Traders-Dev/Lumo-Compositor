@@ -307,7 +307,7 @@ void lumo_app_render_settings(
 
     if (selected >= 0 && selected <= 7) {
         render_subpage(ctx, px, w, h, selected);
-        lumo_app_draw_close_button(px, w, h, close_active);
+        /* close button removed — use bottom-edge swipe */
         return;
     }
 
@@ -357,5 +357,5 @@ void lumo_app_render_settings(
         draw_row(px, w, h, y, "CPU", "RISCV64", false);
     }
 
-    lumo_app_draw_close_button(px, w, h, close_active);
+    /* close button removed — use bottom-edge swipe */
 }

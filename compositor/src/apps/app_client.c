@@ -1482,7 +1482,15 @@ int main(int argc, char **argv) {
         if (client.text_input != NULL) {
             zwp_text_input_v3_add_listener(client.text_input,
                 &lumo_app_text_input_listener, &client);
-            fprintf(stderr, "lumo-app: text-input-v3 ready\n");
+            /* enable text-input immediately — the compositor may have
+             * already sent the enter event before this object existed */
+            zwp_text_input_v3_enable(client.text_input);
+            zwp_text_input_v3_set_content_type(client.text_input,
+                ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE,
+                ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_TERMINAL);
+            zwp_text_input_v3_commit(client.text_input);
+            client.text_input_enabled = true;
+            fprintf(stderr, "lumo-app: text-input-v3 ready and enabled\n");
         }
     }
 

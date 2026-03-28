@@ -1258,6 +1258,19 @@ void lumo_protocol_set_keyboard_visible(
 
     if (visible) {
         compositor->scrim_state = LUMO_SCRIM_DIMMED;
+
+        /* raise overlay-layer surfaces (OSK, launcher) above all other
+         * scene nodes so they render on top of fullscreen toplevels */
+        struct lumo_layer_surface *ls;
+        wl_list_for_each(ls, &compositor->layer_surfaces, link) {
+            if (ls->layer_surface != NULL && ls->scene_surface != NULL &&
+                    ls->scene_surface->tree != NULL &&
+                    (ls->layer_surface->current.layer ==
+                        ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY)) {
+                wlr_scene_node_raise_to_top(
+                    &ls->scene_surface->tree->node);
+            }
+        }
     } else if (!compositor->launcher_visible) {
         compositor->scrim_state = LUMO_SCRIM_HIDDEN;
     }

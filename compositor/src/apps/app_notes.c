@@ -70,5 +70,5 @@ void lumo_app_render_notes(
             text_primary, "+ ADD NOTE");
     }
 
-    lumo_app_draw_close_button(pixels, width, height, close_active);
+    /* close button removed — use bottom-edge swipe */
 }

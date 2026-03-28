@@ -97,5 +97,5 @@ void lumo_app_render_clock(
             timer_card.y + 50, 2, text_secondary, "TAP:RESET");
     }
 
-    lumo_app_draw_close_button(pixels, width, height, close_active);
+    /* close button removed — use bottom-edge swipe */
 }
