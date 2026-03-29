@@ -1092,6 +1092,7 @@ void lumo_protocol_stop(struct lumo_compositor *compositor) {
     struct lumo_layer_surface *layer_surface, *layer_surface_tmp;
     struct lumo_text_input_binding *binding, *binding_tmp;
 
+    lumo_protocol_clear_shell_hitboxes(compositor);
     if (compositor == NULL || !compositor->protocol_started) {
         return;
     }
@@ -1214,8 +1215,11 @@ void lumo_protocol_set_launcher_visible(
     }
 
     compositor->launcher_visible = visible;
-    /* hide keyboard when launcher opens — the OSK at LAYER_OVERLAY would
-     * block all interaction with the launcher tiles */
+    /* clear search query when drawer closes */
+    if (!visible) {
+        compositor->toast_message[0] = '\0';
+    }
+    /* hide keyboard when launcher opens (unless search activates it) */
     if (visible && compositor->keyboard_visible) {
         lumo_protocol_set_keyboard_visible(compositor, false);
     }

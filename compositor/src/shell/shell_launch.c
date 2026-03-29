@@ -813,6 +813,28 @@ static const char *lumo_shell_bridge_commit_osk_text(
 
     text_input = lumo_shell_bridge_focused_text_input(compositor);
     if (text_input == NULL) {
+        /* if launcher is showing, route key to search */
+        if (compositor->launcher_visible) {
+            if (text[0] == '\b') {
+                /* backspace in search */
+                if (compositor->toast_message[0] != '\0') {
+                    size_t len = strlen(compositor->toast_message);
+                    if (len > 0)
+                        compositor->toast_message[len - 1] = '\0';
+                }
+            } else if (text[0] != '\n') {
+                /* append to search query (reuse toast_message field) */
+                size_t len = strlen(compositor->toast_message);
+                if (len + 1 < sizeof(compositor->toast_message) - 1) {
+                    compositor->toast_message[len] = text[0];
+                    compositor->toast_message[len + 1] = '\0';
+                }
+            }
+            lumo_shell_mark_state_dirty(compositor);
+            wlr_log(WLR_INFO, "shell: osk key routed to search: '%s'",
+                compositor->toast_message);
+            return NULL;
+        }
         if (reason_out != NULL) {
             *reason_out = "text_input_v3";
         }
@@ -2124,11 +2146,13 @@ static void lumo_weather_fetch(struct lumo_compositor *compositor) {
     ssize_t n = 0;
     {
         struct pollfd pfd = { .fd = pipefd[0], .events = POLLIN };
-        int pr = poll(&pfd, 1, 5000);
+        /* 500 ms is sufficient for a local/fast curl; longer would stall
+         * the Wayland event loop and cause dropped frames. */
+        int pr = poll(&pfd, 1, 500);
         if (pr > 0 && (pfd.revents & POLLIN)) {
             n = read(pipefd[0], buf, sizeof(buf) - 1);
         } else if (pr == 0) {
-            wlr_log(WLR_INFO, "weather: curl timed out after 5s, skipping");
+            wlr_log(WLR_INFO, "weather: curl timed out after 500ms, skipping");
         }
     }
     close(pipefd[0]);
@@ -2180,6 +2204,10 @@ void lumo_shell_autostart_stop(struct lumo_compositor *compositor) {
     if (state->child_signal_source != NULL) {
         wl_event_source_remove(state->child_signal_source);
         state->child_signal_source = NULL;
+    }
+    if (compositor->weather_timer != NULL) {
+        wl_event_source_remove(compositor->weather_timer);
+        compositor->weather_timer = NULL;
     }
 
     lumo_shell_bridge_stop(state);

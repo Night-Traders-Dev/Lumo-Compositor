@@ -739,6 +739,7 @@ static void lumo_app_client_set_close_active(
 }
 
 static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
+    /* TODO: implement double-buffering to avoid per-frame allocation */
     struct lumo_app_buffer *buffer;
     size_t stride;
     size_t size;
@@ -1486,8 +1487,7 @@ static void lumo_app_touch_handle_up(
             (void)lumo_app_client_redraw(client);
         } else if (row == -2) {
             if (client->note_count < 8) {
-                snprintf(client->notes[client->note_count],
-                    sizeof(client->notes[0]), "");
+                client->notes[client->note_count][0] = '\0';
                 client->note_count++;
                 /* auto-select and edit the new note */
                 client->selected_row = client->note_count - 1;

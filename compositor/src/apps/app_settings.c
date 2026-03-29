@@ -102,6 +102,7 @@ static void render_subpage(
         {
             char wifi[64] = "NOT CONNECTED";
             float sig = 0;
+            /* TODO: cache results to avoid per-frame I/O */
             FILE *fp = fopen("/proc/net/wireless", "r");
             if (fp) {
                 char line[256]; char ifn[32] = {0};

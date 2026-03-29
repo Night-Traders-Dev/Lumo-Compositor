@@ -251,50 +251,15 @@ void lumo_app_draw_text_centered(
         rect->y + (rect->height - th) / 2, scale, color, text);
 }
 
+/* Dead code: close button removed — navigation uses bottom-edge swipe.
+ * Declaration kept for ABI compatibility; body is intentionally empty. */
 void lumo_app_draw_close_button(
     uint32_t *pixels, uint32_t width, uint32_t height, bool close_active
 ) {
-    struct lumo_rect close_rect = {0};
-    uint32_t fg = close_active
-        ? lumo_app_argb(0xFF, 0xFF, 0xFF, 0xFF)
-        : lumo_app_argb(0xA0, 0xAE, 0xA7, 0x9F);
-    uint32_t bg = close_active
-        ? lumo_app_argb(0xFF, 0xE9, 0x54, 0x20)
-        : lumo_app_argb(0x60, 0x2C, 0x00, 0x1E);
-
-    if (lumo_app_close_rect(width, height, &close_rect)) {
-        int cx = close_rect.x + close_rect.width / 2;
-        int cy = close_rect.y + close_rect.height / 2;
-        int r = close_rect.width < close_rect.height
-            ? close_rect.width / 2 : close_rect.height / 2;
-        struct lumo_rect circle = {cx - r, cy - r, r * 2, r * 2};
-
-        lumo_app_fill_rounded_rect(pixels, width, height, &circle,
-            (uint32_t)r, bg);
-
-        /* NOTE: lumo_app_draw_close_button is currently dead code — all app
-         * render paths removed their close-button call sites and navigation
-         * was moved to a bottom-edge swipe gesture.  The x1+1 / x2+1 pixel
-         * writes below are checked within (int)width bounds, but the
-         * adjacent +1 pixel is only guarded by the original x1/x2 check and
-         * not by a separate x1+1 < (int)width guard.  This is harmless while
-         * the function is unused, but should be fixed if the close button is
-         * ever re-enabled. */
-        for (int i = -r / 3; i <= r / 3; i++) {
-            int x1 = cx - r / 3 + i;
-            int y1 = cy - r / 3 + i;
-            int x2 = cx + r / 3 - i;
-            int y2 = cy - r / 3 + i;
-            if (x1 >= 0 && x1 < (int)width && y1 >= 0 && y1 < (int)height)
-                pixels[y1 * (int)width + x1] = fg;
-            if (x2 >= 0 && x2 < (int)width && y2 >= 0 && y2 < (int)height)
-                pixels[y2 * (int)width + x2] = fg;
-            if (x1+1 >= 0 && x1+1 < (int)width && y1 >= 0 && y1 < (int)height)
-                pixels[y1 * (int)width + x1 + 1] = fg;
-            if (x2+1 >= 0 && x2+1 < (int)width && y2 >= 0 && y2 < (int)height)
-                pixels[y2 * (int)width + x2 + 1] = fg;
-        }
-    }
+    (void)pixels;
+    (void)width;
+    (void)height;
+    (void)close_active;
 }
 
 void lumo_app_draw_background(

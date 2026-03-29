@@ -106,6 +106,9 @@ struct lumo_shell_client {
     uint64_t animation_started_msec;
     uint32_t animation_duration_msec;
     struct lumo_shell_target active_target;
+    bool search_active;
+    char search_query[32];
+    int search_len;
     char weather_condition[32];
     char weather_humidity[16];
     char weather_wind[24];
@@ -970,7 +973,10 @@ static void lumo_draw_launcher(
         int top_pad = 60 + search_bar_h + 16;
         int grid_y_start = top_pad + slide_y;
 
-        /* search bar */
+        /* search bar — shows query text from toast_message */
+        bool has_query = client != NULL &&
+            client->toast_message[0] != '\0' &&
+            strcmp(client->toast_message, "-") != 0;
         {
             int bar_w = (int)width * 2 / 5;
             if (bar_w < 280) bar_w = 280;
@@ -979,16 +985,50 @@ static void lumo_draw_launcher(
             int bar_y = 54 + slide_y;
             struct lumo_rect search_bg = {bar_x, bar_y, bar_w, search_bar_h};
             lumo_fill_rounded_rect(pixels, width, height, &search_bg, 20,
-                lumo_theme.tile_fill);
+                has_query ? lumo_theme.panel_bg : lumo_theme.tile_fill);
             lumo_draw_outline(pixels, width, height, &search_bg, 1,
-                lumo_theme.tile_stroke);
-            lumo_draw_text_centered(pixels, width, height, &search_bg, 2,
-                lumo_theme.text_secondary, "TYPE TO SEARCH...");
+                has_query ? lumo_theme.accent : lumo_theme.tile_stroke);
+            if (has_query) {
+                char display[40];
+                snprintf(display, sizeof(display), "> %s",
+                    client->toast_message);
+                lumo_draw_text_centered(pixels, width, height, &search_bg,
+                    2, lumo_theme.text_primary, display);
+            } else {
+                lumo_draw_text_centered(pixels, width, height, &search_bg,
+                    2, lumo_theme.text_secondary, "TYPE TO SEARCH...");
+            }
         }
 
-    for (uint32_t tile_index = 0; tile_index < tile_count; tile_index++) {
-        int col = (int)tile_index % cols;
-        int row = (int)tile_index / cols;
+        /* build filtered tile list */
+        uint32_t visible_tiles[12];
+        uint32_t visible_count = 0;
+        for (uint32_t i = 0; i < tile_count; i++) {
+            const char *name = lumo_shell_launcher_tile_label(i);
+            if (!has_query || name == NULL) {
+                visible_tiles[visible_count++] = i;
+                continue;
+            }
+            /* case-insensitive substring match */
+            bool match = false;
+            for (int j = 0; name[j] && !match; j++) {
+                bool partial = true;
+                for (int k = 0; client->toast_message[k] && partial; k++) {
+                    char a = name[j + k];
+                    char b = client->toast_message[k];
+                    if (a >= 'a' && a <= 'z') a -= 32;
+                    if (b >= 'a' && b <= 'z') b -= 32;
+                    if (a != b || a == '\0') partial = false;
+                }
+                if (partial) match = true;
+            }
+            if (match) visible_tiles[visible_count++] = i;
+        }
+
+    for (uint32_t vi = 0; vi < visible_count; vi++) {
+        uint32_t tile_index = visible_tiles[vi];
+        int col = (int)vi % cols;
+        int row = (int)vi / cols;
         int cx = grid_x_start + col * cell_w + cell_w / 2;
         int cy = grid_y_start + row * cell_h;
         struct lumo_rect tile_rect;
@@ -1537,6 +1577,7 @@ static void lumo_draw_status(
 
     {
         int wifi_bars = 0;
+        /* TODO: cache results to avoid per-frame I/O */
         FILE *wfp = fopen("/proc/net/wireless", "r");
         if (wfp != NULL) {
             char wline[256];
@@ -2792,6 +2833,12 @@ static void lumo_shell_client_apply_state_frame(
             &bool_value)) {
         if (client->compositor_launcher_visible != bool_value) {
             client->compositor_launcher_visible = bool_value;
+            /* clear search when drawer closes */
+            if (!bool_value) {
+                client->search_active = false;
+                client->search_query[0] = '\0';
+                client->search_len = 0;
+            }
             fprintf(stderr, "lumo-shell: launcher visible=%s\n",
                 bool_value ? "true" : "false");
             changed = true;
@@ -3502,6 +3549,21 @@ static void lumo_shell_touch_handle_up(
             lumo_shell_send_set_u32(client, "set_brightness", "pct", pct);
             return;
         }
+    }
+
+    /* search bar tap — show keyboard when tapping search area */
+    if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
+            client->compositor_launcher_visible &&
+            client->pointer_y >= 54.0 && client->pointer_y < 94.0) {
+        /* tap on search bar — request keyboard */
+        struct lumo_shell_protocol_frame kf;
+        if (lumo_shell_protocol_frame_init(&kf,
+                LUMO_SHELL_PROTOCOL_FRAME_REQUEST, "set_keyboard_visible",
+                client->next_request_id++)) {
+            lumo_shell_protocol_frame_add_bool(&kf, "visible", true);
+            (void)lumo_shell_client_send_frame(client, &kf);
+        }
+        return;
     }
 
     if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&

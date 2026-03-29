@@ -65,6 +65,7 @@ void lumo_app_render_files(
         panel_stroke);
 
     row_y = files_header_height;
+    /* TODO: cache results to avoid per-frame I/O */
     dir = opendir(browse_path);
     if (dir != NULL) {
         struct dirent *entry;
