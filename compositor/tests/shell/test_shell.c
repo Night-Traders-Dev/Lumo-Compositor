@@ -109,11 +109,11 @@ static void test_gesture_config(void) {
         1024, 600, &config));
     assert(config.mode == LUMO_SHELL_MODE_GESTURE);
     assert(config.width == 1024);
-    assert(config.height == 28);
+    assert(config.height == 48);
     assert(config.anchor == (LUMO_SHELL_ANCHOR_BOTTOM |
         LUMO_SHELL_ANCHOR_LEFT |
         LUMO_SHELL_ANCHOR_RIGHT));
-    assert(config.exclusive_zone == 28);
+    assert(config.exclusive_zone == 48);
     assert(!config.keyboard_interactive);
     assert(config.background_rgba == 0x00000000);
 }
@@ -139,8 +139,8 @@ static void test_bootstrap_config(void) {
 
     assert(lumo_shell_surface_bootstrap_config(LUMO_SHELL_MODE_GESTURE, &config));
     assert(config.width == 0);
-    assert(config.height == 40);
-    assert(config.exclusive_zone == 40);
+    assert(config.height == 60);
+    assert(config.exclusive_zone == 60);
     assert(!config.keyboard_interactive);
 }
 

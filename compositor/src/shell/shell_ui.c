@@ -706,7 +706,10 @@ bool lumo_shell_surface_config_for_mode(
         break;
     case LUMO_SHELL_MODE_GESTURE:
         config->name = "gesture";
-        gesture_height = lumo_shell_clamp_u32(output_height / 24, 28, 52);
+        /* wider gesture zone for better swipe-to-close reliability.
+         * Android uses 48dp, iOS ~34pt. We use ~80px which is ~6%
+         * of a 1280px display — enough for reliable bottom-edge swipes */
+        gesture_height = lumo_shell_clamp_u32(output_height / 16, 48, 80);
         config->height = gesture_height;
         config->anchor = LUMO_SHELL_ANCHOR_BOTTOM |
             LUMO_SHELL_ANCHOR_LEFT |
@@ -784,11 +787,11 @@ bool lumo_shell_surface_bootstrap_config(
     case LUMO_SHELL_MODE_GESTURE:
         config->name = "gesture";
         config->width = 0;
-        config->height = 40;
+        config->height = 60;
         config->anchor = LUMO_SHELL_ANCHOR_BOTTOM |
             LUMO_SHELL_ANCHOR_LEFT |
             LUMO_SHELL_ANCHOR_RIGHT;
-        config->exclusive_zone = 40;
+        config->exclusive_zone = 60;
         config->keyboard_interactive = false;
         config->background_rgba = 0x00000000;
         return true;

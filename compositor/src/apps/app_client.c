@@ -107,6 +107,8 @@ struct lumo_app_client {
 static bool lumo_app_client_redraw(struct lumo_app_client *client);
 static void lumo_app_notes_save(const struct lumo_app_client *client);
 static void lumo_app_notes_load(struct lumo_app_client *client);
+static void lumo_app_clock_save(const struct lumo_app_client *client);
+static void lumo_app_clock_load(struct lumo_app_client *client);
 
 static void lumo_app_scan_media(struct lumo_app_client *client,
     const char *dir, const char **exts, int ext_count)
@@ -1031,6 +1033,7 @@ static void lumo_app_touch_handle_up(
                 } else {
                     client->timer_total_sec += 300;
                 }
+                lumo_app_clock_save(client);
                 (void)lumo_app_client_redraw(client);
             } else if (ty >= 280) {
                 if (tx < cx) {
@@ -1054,6 +1057,7 @@ static void lumo_app_touch_handle_up(
             if (ty >= 190 && ty < 226) {
                 /* toggle alarm */
                 client->alarm_enabled = !client->alarm_enabled;
+                lumo_app_clock_save(client);
                 (void)lumo_app_client_redraw(client);
             } else if (ty >= 242) {
                 if (tx < cx) {
@@ -1061,8 +1065,14 @@ static void lumo_app_touch_handle_up(
                 } else {
                     client->alarm_min = (client->alarm_min + 5) % 60;
                 }
+                lumo_app_clock_save(client);
                 (void)lumo_app_client_redraw(client);
             }
+        }
+
+        /* save tab selection */
+        if (ty >= 48 && ty < 84) {
+            lumo_app_clock_save(client);
         }
     }
 
@@ -1785,6 +1795,42 @@ static void lumo_app_notes_save(const struct lumo_app_client *client) {
     fclose(fp);
 }
 
+static void lumo_app_clock_save(const struct lumo_app_client *client) {
+    const char *home = getenv("HOME");
+    char path[1100];
+    FILE *fp;
+    if (home == NULL) return;
+    snprintf(path, sizeof(path), "%s/.lumo-clock", home);
+    fp = fopen(path, "w");
+    if (fp == NULL) return;
+    fprintf(fp, "alarm_hour=%u\n", client->alarm_hour);
+    fprintf(fp, "alarm_min=%u\n", client->alarm_min);
+    fprintf(fp, "alarm_enabled=%d\n", client->alarm_enabled ? 1 : 0);
+    fprintf(fp, "timer_total=%u\n", client->timer_total_sec);
+    fprintf(fp, "clock_tab=%d\n", client->clock_tab);
+    fclose(fp);
+}
+
+static void lumo_app_clock_load(struct lumo_app_client *client) {
+    const char *home = getenv("HOME");
+    char path[1100], line[128];
+    FILE *fp;
+    if (home == NULL) return;
+    snprintf(path, sizeof(path), "%s/.lumo-clock", home);
+    fp = fopen(path, "r");
+    if (fp == NULL) return;
+    while (fgets(line, sizeof(line), fp)) {
+        unsigned val;
+        int ival;
+        if (sscanf(line, "alarm_hour=%u", &val) == 1) client->alarm_hour = val;
+        else if (sscanf(line, "alarm_min=%u", &val) == 1) client->alarm_min = val;
+        else if (sscanf(line, "alarm_enabled=%d", &ival) == 1) client->alarm_enabled = ival != 0;
+        else if (sscanf(line, "timer_total=%u", &val) == 1) client->timer_total_sec = val;
+        else if (sscanf(line, "clock_tab=%d", &ival) == 1) client->clock_tab = ival;
+    }
+    fclose(fp);
+}
+
 static void lumo_app_print_usage(const char *argv0) {
     fprintf(stderr,
         "usage: %s [--app phone|messages|browser|camera|maps|music|photos|videos|clock|notes|files|settings]\n",
@@ -1835,6 +1881,9 @@ int main(int argc, char **argv) {
 
     if (client.app_id == LUMO_APP_NOTES) {
         lumo_app_notes_load(&client);
+    }
+    if (client.app_id == LUMO_APP_CLOCK) {
+        lumo_app_clock_load(&client);
     }
     if (client.app_id == LUMO_APP_MUSIC) {
         static const char *audio_exts[] = {".mp3", ".wav", ".ogg", ".flac",
