@@ -144,8 +144,9 @@ static bool lumo_shell_launcher_geometry(
     grid_w = cols * cell_w + (cols - 1) * gap_x;
     grid_h = total_rows * (cell_h + gap_y) - gap_y;
     grid_x = (output_width - grid_w) / 2;
-    grid_y = (output_height - grid_h) / 2;
-    if (grid_y < 56) grid_y = 56;
+    /* position in upper portion: search bar (40) + padding */
+    grid_y = 56 + 40 + 24;
+    (void)grid_h; /* grid_h used only for centering, not needed here */
 
     row = tile_index / cols;
     col = tile_index % cols;

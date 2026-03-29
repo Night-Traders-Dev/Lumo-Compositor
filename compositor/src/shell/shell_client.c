@@ -956,20 +956,36 @@ static void lumo_draw_launcher(
     (void)close_label_rect;
     (void)accent_rect;
 
-    /* centered app grid — GNOME 3.x style */
+    /* GNOME 3.x style app grid with search bar */
     {
         int cols = 4;
         int icon_size = 56;
         int gap_x = 24;
         int gap_y = 20;
-        int cell_w = icon_size + 24; /* fixed cell width for consistent grid */
+        int cell_w = icon_size + 24;
         int cell_h = icon_size + 30;
         int total_rows = ((int)tile_count + cols - 1) / cols;
         int grid_w = cols * cell_w + (cols - 1) * gap_x;
         int grid_h = total_rows * (cell_h + gap_y) - gap_y;
         int grid_x_start = ((int)width - grid_w) / 2;
-        int grid_y_start = ((int)height - grid_h) / 2 + slide_y;
-        if (grid_y_start < 56) grid_y_start = 56 + slide_y;
+        /* position grid in upper portion, not dead center */
+        int search_bar_h = 40;
+        int top_pad = 56 + search_bar_h + 24;
+        int grid_y_start = top_pad + slide_y;
+
+        /* search bar */
+        {
+            int bar_w = grid_w > 400 ? 400 : grid_w;
+            int bar_x = ((int)width - bar_w) / 2;
+            int bar_y = 56 + slide_y + 4;
+            struct lumo_rect search_bg = {bar_x, bar_y, bar_w, search_bar_h};
+            lumo_fill_rounded_rect(pixels, width, height, &search_bg, 20,
+                lumo_theme.tile_fill);
+            lumo_draw_outline(pixels, width, height, &search_bg, 1,
+                lumo_theme.tile_stroke);
+            lumo_draw_text_centered(pixels, width, height, &search_bg, 2,
+                lumo_theme.text_secondary, "SEARCH APPS, FILES, SETTINGS");
+        }
 
     for (uint32_t tile_index = 0; tile_index < tile_count; tile_index++) {
         int col = (int)tile_index % cols;
