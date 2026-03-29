@@ -140,8 +140,13 @@ void lumo_protocol_refresh_keyboard_visibility(
                 continue;
             }
 
-            if (text_input->focused_surface != NULL &&
-                    text_input->current_enabled) {
+            /* check both current_enabled (set after commit) and
+             * pending_enabled (set after enable, before commit).
+             * The pending flag covers the race where the client called
+             * enable() but commit() was a no-op because focused_surface
+             * wasn't set yet (enter event still in the Wayland queue) */
+            if (text_input->current_enabled ||
+                    text_input->pending_enabled) {
                 visible = true;
                 break;
             }

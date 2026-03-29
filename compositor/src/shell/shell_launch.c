@@ -1590,23 +1590,26 @@ static uint32_t lumo_read_brightness_pct(void) {
 }
 
 static void lumo_write_brightness_pct(uint32_t pct) {
-    int max = 255;
-    FILE *mfp = fopen("/sys/class/backlight/soc:lcd_backlight/max_brightness", "r");
-    if (mfp) { if (fscanf(mfp, "%d", &max) < 1) max = 255; fclose(mfp); }
+    /* non-blocking: fork to write sysfs so event loop isn't stalled */
+    pid_t pid;
     if (pct > 100) pct = 100;
-    int val = (int)(pct * (uint32_t)max / 100);
-    if (val < 1) val = 1;
-    FILE *fp = fopen("/sys/class/backlight/soc:lcd_backlight/brightness", "w");
-    if (fp) { fprintf(fp, "%d", val); fclose(fp); }
+    pid = fork();
+    if (pid == 0) {
+        int max = 255;
+        FILE *mfp = fopen("/sys/class/backlight/soc:lcd_backlight/max_brightness", "r");
+        if (mfp) { if (fscanf(mfp, "%d", &max) < 1) max = 255; fclose(mfp); }
+        int val = (int)(pct * (uint32_t)max / 100);
+        if (val < 1) val = 1;
+        FILE *fp = fopen("/sys/class/backlight/soc:lcd_backlight/brightness", "w");
+        if (fp) { fprintf(fp, "%d", val); fclose(fp); }
+        _exit(0);
+    }
+    /* parent returns immediately */
 }
 
 static uint32_t lumo_read_volume_pct(void) {
-    /* read ALSA volume from sysfs to avoid blocking popen */
-    FILE *fp;
-    int val = 145, max_val = 192; /* es8323 PCM defaults */
-    fp = fopen("/proc/asound/card1/codec#0/codec_reg", "r");
-    if (fp) { fclose(fp); } /* not useful, use amixer in bg */
-    /* fallback: just return last known value or 50% */
+    /* return a default — actual value is set by the slider UI.
+     * reading amixer synchronously blocks the event loop. */
     return 50;
 }
 
