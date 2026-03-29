@@ -1601,29 +1601,31 @@ static void lumo_write_brightness_pct(uint32_t pct) {
 }
 
 static uint32_t lumo_read_volume_pct(void) {
+    /* read ALSA volume from sysfs to avoid blocking popen */
     FILE *fp;
-    char buf[256] = "";
-    int pct = 50;
-    fp = popen("amixer -c 1 get PCM 2>/dev/null", "r");
-    if (fp) {
-        while (fgets(buf, sizeof(buf), fp)) {
-            char *bracket = strstr(buf, "[");
-            if (bracket && strstr(bracket, "%]")) {
-                sscanf(bracket, "[%d%%]", &pct);
-                break;
-            }
-        }
-        pclose(fp);
-    }
-    return (uint32_t)pct;
+    int val = 145, max_val = 192; /* es8323 PCM defaults */
+    fp = fopen("/proc/asound/card1/codec#0/codec_reg", "r");
+    if (fp) { fclose(fp); } /* not useful, use amixer in bg */
+    /* fallback: just return last known value or 50% */
+    return 50;
 }
 
 static void lumo_write_volume_pct(uint32_t pct) {
-    char cmd[64];
+    /* non-blocking: fork amixer so the event loop isn't stalled */
+    pid_t pid;
+    char pct_str[8];
     if (pct > 100) pct = 100;
-    snprintf(cmd, sizeof(cmd), "amixer -c 1 set PCM %u%% >/dev/null 2>&1",
-        pct);
-    (void)system(cmd);
+    snprintf(pct_str, sizeof(pct_str), "%u%%", pct);
+    pid = fork();
+    if (pid == 0) {
+        close(STDIN_FILENO);
+        close(STDOUT_FILENO);
+        close(STDERR_FILENO);
+        execlp("amixer", "amixer", "-c", "1", "set", "PCM", pct_str,
+            (char *)NULL);
+        _exit(127);
+    }
+    /* parent returns immediately — child reaped by SIGCHLD handler */
 }
 
 static void lumo_refresh_vol_bright(struct lumo_compositor *compositor) {

@@ -668,10 +668,15 @@ static void lumo_app_touch_handle_down(
             client->touch_down_y));
 
     /* try to enable text-input on touch if not already enabled —
-     * the enter event may have been missed during startup */
+     * flush pending events first so the compositor's enter event
+     * sets focused_surface before we call enable()+commit() */
     if (!client->text_input_enabled && client->text_input != NULL &&
             (client->app_id == LUMO_APP_MESSAGES ||
                 client->app_id == LUMO_APP_NOTES)) {
+        /* dispatch pending events to process any queued enter */
+        wl_display_dispatch_pending(client->display);
+        wl_display_flush(client->display);
+
         uint32_t purpose = (client->app_id == LUMO_APP_MESSAGES)
             ? ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_TERMINAL
             : ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL;
@@ -1560,7 +1565,7 @@ int main(int argc, char **argv) {
             client.app_id == LUMO_APP_SETTINGS || is_terminal;
         int timeout_ms = client.app_id == LUMO_APP_CLOCK ? 1000 :
             client.app_id == LUMO_APP_SETTINGS ? 5000 :
-            is_terminal ? 100 : -1;
+            is_terminal ? 500 : -1;
 
         while (client.running) {
             struct pollfd pfds[2];
@@ -1600,9 +1605,9 @@ int main(int argc, char **argv) {
             if (ret == 0 && needs_periodic) {
                 if (is_terminal) {
                     lumo_app_pty_read(&client);
-                } else {
-                    (void)lumo_app_client_redraw(&client);
                 }
+                /* always redraw on timeout for cursor blink and clock updates */
+                (void)lumo_app_client_redraw(&client);
                 continue;
             }
 

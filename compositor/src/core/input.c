@@ -563,6 +563,12 @@ static void lumo_input_focus_surface(
             }
 
             if (surface != NULL) {
+                /* only send enter if the text-input belongs to the
+                 * same client as the focused surface */
+                if (wl_resource_get_client(text_input->resource) !=
+                        wl_resource_get_client(surface->resource)) {
+                    continue;
+                }
                 if (text_input->focused_surface == surface) {
                     continue;
                 }
@@ -572,6 +578,8 @@ static void lumo_input_focus_surface(
                 }
                 wlr_text_input_v3_send_enter(text_input, surface);
                 wlr_text_input_v3_send_done(text_input);
+                wlr_log(WLR_INFO,
+                    "input: sent text-input enter for focused surface");
                 continue;
             }
 
@@ -582,11 +590,14 @@ static void lumo_input_focus_surface(
         }
     }
 
-    /* Do NOT call lumo_protocol_refresh_keyboard_visibility here.
-     * The keyboard was already set visible at line 536 if the surface
-     * is a toplevel.  refresh_keyboard_visibility checks
-     * text_input->current_enabled, but the client has not had a chance
-     * to process the enter event and call enable()+commit() yet, so
+    /* Check if the text-input was already enabled before we sent enter.
+     * This handles the case where the app called enable()+commit() on
+     * touch BEFORE the enter event was delivered — the focused_surface
+     * was set by our send_enter above, and current_enabled may now be
+     * valid. We give the client one more frame to process events. */
+    /* Note: the keyboard will only show if current_enabled is true AND
+     * focused_surface matches. If the client hasn't processed enter yet,
+     * the commit listener will call refresh when it does.
      * refresh would immediately undo the show. */
 }
 
