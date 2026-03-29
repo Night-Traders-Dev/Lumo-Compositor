@@ -224,29 +224,31 @@ The project is at v0.0.56 with a functional mobile shell running on OrangePi RV2
 Current capabilities:
 
 - full DRM compositor with pixman software rendering
-- Ubuntu-themed color palette (aubergine, orange, warm grey)
-- animated procedural background that adapts to time of day and live weather
-- weather-aware dynamic theme: fetches conditions every 5 minutes via wttr.in
+- dynamic theme engine blending Ubuntu, Sailfish, and webOS palettes by time of day and weather
+- animated procedural background with weather-aware hue shifts (fetches wttr.in every 5 min)
 - boot chime on shell startup
+- GNOME 3.x style app drawer with 4x3 grid, search bar, and translucent overlay
+- functional search: type on OSK to filter apps by name in real-time
 - status bar with live clock, WiFi signal bars, and LUMO branding
-- quick settings panel (top-right swipe) with WiFi, display, session info, reload and rotate buttons
-- time/date panel (top-left swipe) with large clock, date, day name, week number
-- app drawer with 12 native touch apps launched via bottom gesture
-- functional Clock app with live seconds and interactive stopwatch
-- functional Files app with directory browsing, scroll, navigation, and file sizes
-- functional Settings app with 8 categorized rows (Network, Display, Storage, Memory, System, About, Lumo, CPU)
-- functional Notes app with add, select, and disk persistence (~/.lumo-notes)
-- functional Terminal app with real PTY shell execution (/bin/sh via forkpty)
-- Lomiri-style on-screen keyboard with text-input-v3, shift, backspace, 33 keys
-- OSK text input flows to terminal PTY for live command execution
-- screen rotation via quick settings with correct touch matrix remapping
+- quick settings panel with WiFi, display, volume/brightness sliders, session info, reload/rotate
+- time/date panel with large clock, date, weather (temperature, condition, humidity, wind)
+- on-screen keyboard (Lomiri style) with virtual keyboard fallback for reliable input
+- functional Browser (GTK4+WebKitGTK, local start page, smart URL bar, percent-encoded search)
+- functional Terminal with real PTY shell (/bin/sh via forkpty), blinking cursor, menu
+- functional Clock with 4 tabs (Clock, Alarm, Stopwatch, Timer), persistent settings
+- functional Files with directory browsing, scroll, navigation, file sizes
+- functional Settings with 8 categorized sub-pages
+- functional Notes with three-state editing, OSK input, persistence
+- functional Music player (scans ~/Music, playback via mpv)
+- functional Photos with PNG/JPEG decoding, fullscreen viewer, grid with scroll
+- functional Videos (scans ~/Videos, playback via mpv)
+- swipe gestures: velocity + angle + projection detection (iOS/Android research-based)
+- screen rotation via quick settings with touch matrix remapping
 - shell child supervision with automatic respawn
 - double-buffered SHM rendering for shell clients
-- coalesced state broadcasts for performance
-- systemd ready notification for GDM session registration
-- optional xWayland support at build time
+- toast notifications (Android-style pills)
 - 5 test suites: compositor, shell, app, screenshot, and fuzz/stress
-- full security audit: 26 issues fixed across input handling, protocol parsing, buffer management, and resource lifecycle
+- multiple security audits: 30+ issues fixed across all subsystems
 
 Next milestones:
 
