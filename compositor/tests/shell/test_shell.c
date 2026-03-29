@@ -255,7 +255,7 @@ static void test_quick_settings_button_rects(void) {
     assert(rotate.width == reload.width);
     assert(rotate.y == reload.y);
     assert(rotate.x > reload.x);
-    assert(screenshot.width > reload.width);
+    assert(screenshot.width == reload.width);
     assert(screenshot.x == reload.x);
     assert(screenshot.y > reload.y);
 }

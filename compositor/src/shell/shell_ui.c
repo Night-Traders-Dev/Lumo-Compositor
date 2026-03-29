@@ -222,8 +222,8 @@ static bool lumo_shell_quick_settings_button_geometry(
     }
 
     rect->x = panel.x + 12;
-    rect->y = top_row_y + rect->height + 12;
-    rect->width = panel.width - 24;
+    rect->y = top_row_y + rect->height + 8;
+    rect->width = half_button_width;
     return rect->width > 0;
 }
 
