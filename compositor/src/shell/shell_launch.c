@@ -1608,9 +1608,35 @@ static void lumo_write_brightness_pct(uint32_t pct) {
 }
 
 static uint32_t lumo_read_volume_pct(void) {
-    /* return a default — actual value is set by the slider UI.
-     * reading amixer synchronously blocks the event loop. */
-    return 50;
+    /* read PCM volume from ALSA mixer — uses a short-lived fork
+     * so the event loop isn't blocked for long */
+    int pipefd[2];
+    int pct = 50;
+    if (pipe(pipefd) < 0) return (uint32_t)pct;
+    pid_t pid = fork();
+    if (pid == 0) {
+        close(pipefd[0]);
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]);
+        close(STDERR_FILENO);
+        execlp("amixer", "amixer", "-c", "1", "get", "PCM",
+            (char *)NULL);
+        _exit(127);
+    }
+    close(pipefd[1]);
+    struct pollfd pfd = {.fd = pipefd[0], .events = POLLIN};
+    if (poll(&pfd, 1, 200) > 0) {
+        char buf[256];
+        ssize_t n = read(pipefd[0], buf, sizeof(buf) - 1);
+        if (n > 0) {
+            buf[n] = '\0';
+            char *b = strstr(buf, "[");
+            if (b && strstr(b, "%]")) sscanf(b, "[%d%%]", &pct);
+        }
+    }
+    close(pipefd[0]);
+    waitpid(pid, NULL, WNOHANG);
+    return (uint32_t)pct;
 }
 
 static void lumo_write_volume_pct(uint32_t pct) {

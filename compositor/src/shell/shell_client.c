@@ -2528,7 +2528,7 @@ static int lumo_shell_status_button_hit(
 
     panel_w = (int)client->configured_width / 2;
     if (panel_w < 200) panel_w = 200;
-    bar_h = 40;
+    bar_h = 48; /* must match drawing code bar_h */
     panel_x = (int)client->configured_width - panel_w - 8;
 
     /* layout offsets — must match the drawing code above:
