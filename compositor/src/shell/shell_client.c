@@ -1928,22 +1928,11 @@ static bool lumo_shell_client_should_be_visible(
     }
 
     switch (client->mode) {
-    case LUMO_SHELL_MODE_LAUNCHER: {
-        bool has_toast = client->toast_message[0] != '\0' &&
-            client->toast_duration_ms > 0;
-        if (has_toast) {
-            uint64_t now_low = lumo_now_msec() & 0xFFFFFFFF;
-            uint64_t elapsed = (now_low >= client->toast_time_low)
-                ? now_low - client->toast_time_low
-                : (0xFFFFFFFF - client->toast_time_low) + now_low;
-            has_toast = elapsed < client->toast_duration_ms;
-        }
+    case LUMO_SHELL_MODE_LAUNCHER:
         return client->compositor_launcher_visible ||
             client->compositor_touch_audit_active ||
             client->compositor_quick_settings_visible ||
-            client->compositor_time_panel_visible ||
-            has_toast;
-    }
+            client->compositor_time_panel_visible;
     case LUMO_SHELL_MODE_OSK:
         return client->compositor_keyboard_visible;
     case LUMO_SHELL_MODE_GESTURE:
@@ -3052,9 +3041,26 @@ static int lumo_shell_client_connect_state_socket(
         return -1;
     }
 
-    if (connect(fd, (struct sockaddr *)&address, sizeof(address)) != 0) {
+    /* retry connection up to 5 times with 200ms delays — the compositor
+     * socket may not be ready immediately after shell client launch */
+    for (int attempt = 0; attempt < 5; attempt++) {
+        if (connect(fd, (struct sockaddr *)&address, sizeof(address)) == 0) {
+            break;
+        }
+        if (attempt == 4) {
+            fprintf(stderr, "lumo-shell: state socket connect failed after "
+                "5 attempts\n");
+            close(fd);
+            return -1;
+        }
+        {
+            struct timespec ts = {0, 200000000};
+            nanosleep(&ts, NULL);
+        }
+        /* need a new fd for each retry on UNIX sockets */
         close(fd);
-        return -1;
+        fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (fd < 0) return -1;
     }
 
     flags = fcntl(fd, F_GETFD);

@@ -38,24 +38,57 @@ void lumo_app_render_terminal(
 
     lumo_app_fill_rect(pixels, width, height, 12, 38, (int)width - 24, 1, dim);
 
-    /* dropdown menu */
+    /* centered fullscreen menu overlay */
     if (menu_open) {
-        struct lumo_rect menu_bg = {8, 40, 176, 84};
-        uint32_t menu_fill = lumo_app_argb(0xF0, 0x30, 0x30, 0x34);
-        uint32_t menu_hl = theme.accent;
-        lumo_app_fill_rounded_rect(pixels, width, height, &menu_bg, 10,
-            menu_fill);
-        lumo_app_draw_outline(pixels, width, height, &menu_bg, 1,
+        /* dim background */
+        for (uint32_t py = 38; py < height; py++) {
+            for (uint32_t px = 0; px < width; px++) {
+                uint32_t idx = py * width + px;
+                uint32_t c = pixels[idx];
+                uint32_t r = ((c >> 16) & 0xFF) / 2;
+                uint32_t g = ((c >> 8) & 0xFF) / 2;
+                uint32_t b = (c & 0xFF) / 2;
+                pixels[idx] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+            }
+        }
+
+        int menu_w = (int)width * 2 / 3;
+        int menu_h = 220;
+        if (menu_w < 240) menu_w = 240;
+        int menu_x = ((int)width - menu_w) / 2;
+        int menu_y = ((int)height - menu_h) / 2;
+        int item_h = 44;
+        int pad = 24;
+
+        struct lumo_rect menu_bg_rect = {menu_x, menu_y, menu_w, menu_h};
+        uint32_t menu_fill = lumo_app_argb(0xF4, 0x28, 0x28, 0x2E);
+        lumo_app_fill_rounded_rect(pixels, width, height, &menu_bg_rect,
+            18, menu_fill);
+        lumo_app_draw_outline(pixels, width, height, &menu_bg_rect, 1,
             theme.card_stroke);
 
-        lumo_app_draw_text(pixels, width, height, 20, 48, 2,
-            theme.text, "NEW");
-        lumo_app_draw_text(pixels, width, height, 20, 68, 2,
-            menu_hl, "KEYBOARD");
-        lumo_app_draw_text(pixels, width, height, 20, 88, 2,
-            theme.text, "SETTINGS");
-        lumo_app_draw_text(pixels, width, height, 20, 108, 2,
-            theme.text_dim, "ABOUT");
+        /* title */
+        lumo_app_draw_text(pixels, width, height,
+            menu_x + pad, menu_y + 16, 2, theme.text_dim, "TERMINAL MENU");
+
+        /* separator */
+        lumo_app_fill_rect(pixels, width, height,
+            menu_x + pad, menu_y + 36, menu_w - pad * 2, 1,
+            theme.separator);
+
+        /* menu items — large scale 3 */
+        int iy = menu_y + 46;
+        lumo_app_draw_text(pixels, width, height,
+            menu_x + pad, iy, 3, theme.text, "NEW");
+        iy += item_h;
+        lumo_app_draw_text(pixels, width, height,
+            menu_x + pad, iy, 3, theme.accent, "KEYBOARD");
+        iy += item_h;
+        lumo_app_draw_text(pixels, width, height,
+            menu_x + pad, iy, 3, theme.text, "SETTINGS");
+        iy += item_h;
+        lumo_app_draw_text(pixels, width, height,
+            menu_x + pad, iy, 3, theme.text_dim, "ABOUT");
     }
 
     /* scrollback output lines */

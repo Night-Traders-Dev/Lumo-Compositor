@@ -524,9 +524,18 @@ static void lumo_input_focus_surface(
                 if (tl->xdg_surface != NULL &&
                         tl->xdg_surface->surface == surface) {
                     matched = true;
-                    /* do NOT auto-show keyboard here — the OSK should
-                     * only appear when the client enables text-input-v3
-                     * (i.e. a text field is focused, not any toplevel) */
+                    /* show keyboard for apps that have text fields
+                     * (messages=terminal, notes). Check xdg app_id. */
+                    if (!compositor->keyboard_visible &&
+                            tl->xdg_toplevel != NULL &&
+                            tl->xdg_toplevel->app_id != NULL &&
+                            (strstr(tl->xdg_toplevel->app_id, "messages") ||
+                                strstr(tl->xdg_toplevel->app_id, "notes"))) {
+                        wlr_log(WLR_INFO,
+                            "input: auto-show keyboard for %s",
+                            tl->xdg_toplevel->app_id);
+                        lumo_protocol_set_keyboard_visible(compositor, true);
+                    }
                     break;
                 }
             }
@@ -552,9 +561,11 @@ static void lumo_input_focus_surface(
 
     if (compositor->text_input_manager != NULL) {
         struct wl_resource *resource;
+        int ti_count = 0;
 
         wl_list_for_each(resource, &compositor->text_input_manager->text_inputs,
                 link) {
+            ti_count++;
             struct wlr_text_input_v3 *text_input =
                 wl_resource_get_user_data(resource);
 
@@ -587,6 +598,10 @@ static void lumo_input_focus_surface(
                 wlr_text_input_v3_send_leave(text_input);
                 wlr_text_input_v3_send_done(text_input);
             }
+        }
+        if (surface != NULL && ti_count == 0) {
+            wlr_log(WLR_INFO,
+                "input: focus_surface no text-inputs registered");
         }
     }
 

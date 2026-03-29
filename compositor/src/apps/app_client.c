@@ -721,11 +721,17 @@ static void lumo_app_touch_handle_up(
     /* terminal menu */
     if (client->app_id == LUMO_APP_MESSAGES) {
         if (client->term_menu_open) {
-            /* menu item hit test: 4 items at y=42,62,82,102 */
+            /* centered menu hit test */
             int mx = (int)client->touch_down_x;
             int my = (int)client->touch_down_y;
-            if (mx >= 12 && mx <= 180) {
-                if (my >= 42 && my < 62) {
+            int menu_w = (int)client->width * 2 / 3;
+            if (menu_w < 240) menu_w = 240;
+            int menu_x = ((int)client->width - menu_w) / 2;
+            int menu_y = ((int)client->height - 220) / 2;
+            int item_h = 44;
+            int iy = menu_y + 46;
+            if (mx >= menu_x && mx <= menu_x + menu_w) {
+                if (my >= iy && my < iy + item_h) {
                     /* New — clear terminal */
                     client->term_line_count = 0;
                     client->term_input[0] = '\0';
@@ -733,9 +739,12 @@ static void lumo_app_touch_handle_up(
                     client->term_menu_open = false;
                     (void)lumo_app_client_redraw(client);
                     return;
-                } else if (my >= 62 && my < 82) {
-                    /* Keyboard — toggle OSK */
+                } else if (my >= iy + item_h && my < iy + item_h * 2) {
+                    /* Keyboard — toggle OSK via text-input */
                     if (client->text_input != NULL) {
+                        /* dispatch pending to get enter event first */
+                        wl_display_roundtrip(client->display);
+
                         if (client->text_input_enabled) {
                             zwp_text_input_v3_disable(client->text_input);
                             zwp_text_input_v3_commit(client->text_input);
@@ -749,18 +758,19 @@ static void lumo_app_touch_handle_up(
                             zwp_text_input_v3_commit(client->text_input);
                             client->text_input_enabled = true;
                         }
+                        wl_display_flush(client->display);
                         fprintf(stderr, "lumo-app: keyboard toggled %s\n",
                             client->text_input_enabled ? "on" : "off");
                     }
                     client->term_menu_open = false;
                     (void)lumo_app_client_redraw(client);
                     return;
-                } else if (my >= 82 && my < 102) {
+                } else if (my >= iy + item_h * 2 && my < iy + item_h * 3) {
                     /* Settings — placeholder */
                     client->term_menu_open = false;
                     (void)lumo_app_client_redraw(client);
                     return;
-                } else if (my >= 102 && my < 122) {
+                } else if (my >= iy + item_h * 3 && my < iy + item_h * 4) {
                     /* About — placeholder */
                     client->term_menu_open = false;
                     (void)lumo_app_client_redraw(client);

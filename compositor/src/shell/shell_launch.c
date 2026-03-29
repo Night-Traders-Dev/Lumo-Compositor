@@ -1049,17 +1049,6 @@ static void lumo_shell_bridge_handle_request_frame(
         if (lumo_shell_protocol_frame_get_u32(frame, "pct", &pct)) {
             lumo_write_volume_pct(pct);
             client->compositor->volume_pct = pct;
-            snprintf(client->compositor->toast_message,
-                sizeof(client->compositor->toast_message),
-                "Volume: %u%%", pct);
-            {
-                struct timespec ts;
-                clock_gettime(CLOCK_MONOTONIC, &ts);
-                client->compositor->toast_show_time_ms =
-                    (uint64_t)ts.tv_sec * 1000 +
-                    (uint64_t)ts.tv_nsec / 1000000;
-            }
-            client->compositor->toast_duration_ms = 2000;
             lumo_shell_mark_state_dirty(client->compositor);
             wlr_log(WLR_INFO, "shell: volume set to %u%%", pct);
         }
@@ -1072,17 +1061,6 @@ static void lumo_shell_bridge_handle_request_frame(
         if (lumo_shell_protocol_frame_get_u32(frame, "pct", &pct)) {
             lumo_write_brightness_pct(pct);
             client->compositor->brightness_pct = pct;
-            snprintf(client->compositor->toast_message,
-                sizeof(client->compositor->toast_message),
-                "Brightness: %u%%", pct);
-            {
-                struct timespec ts;
-                clock_gettime(CLOCK_MONOTONIC, &ts);
-                client->compositor->toast_show_time_ms =
-                    (uint64_t)ts.tv_sec * 1000 +
-                    (uint64_t)ts.tv_nsec / 1000000;
-            }
-            client->compositor->toast_duration_ms = 2000;
             lumo_shell_mark_state_dirty(client->compositor);
             wlr_log(WLR_INFO, "shell: brightness set to %u%%", pct);
         }
