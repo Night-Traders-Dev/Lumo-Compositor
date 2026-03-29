@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Improved swipe gesture reliability: added velocity-based detection (800px/s triggers regardless of distance). Disabled immediate launcher toggle on gesture handle — now uses capture+swipe for both tap (launcher toggle) and swipe (app close).
 - Terminal menu: tap "LUMO TERMINAL" title for centered fullscreen menu with New, Keyboard, Settings, About items.
 - OSK auto-show: keyboard appears automatically when terminal or notes apps get focus, with `keyboard_auto_shown` flag preventing `refresh_keyboard_visibility` from undoing the show.
+- Fixed Notes OSK gating: Notes now only enables text-input while a note is actively being edited, so the keyboard no longer appears in a non-editable state and OSK commits always target real note edits.
 - Volume/brightness sliders: switched from ALSA amixer to PipeWire pactl to match GDM system volume. Removed toast from slider changes to prevent launcher surface redraw freeze.
 - Fixed stale header directory on OrangePi (`compositor/lumo/`) that caused build failures by shadowing `compositor/include/lumo/`.
 - Shell startup reliability: state socket connect retries up to 5 times with 200ms delays.

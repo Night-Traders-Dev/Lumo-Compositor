@@ -57,6 +57,13 @@ static void test_app_close_rect(void) {
     assert(rect.y + rect.height <= 800);
 }
 
+static void test_app_osk_policy(void) {
+    assert(lumo_app_wants_osk(LUMO_APP_MESSAGES, -1));
+    assert(!lumo_app_wants_osk(LUMO_APP_NOTES, -1));
+    assert(lumo_app_wants_osk(LUMO_APP_NOTES, 0));
+    assert(!lumo_app_wants_osk(LUMO_APP_SETTINGS, -1));
+}
+
 static void test_app_render(void) {
     const uint32_t width = 480;
     const uint32_t height = 320;
@@ -98,6 +105,7 @@ int main(void) {
     test_app_catalog();
     test_app_launcher_mapping();
     test_app_close_rect();
+    test_app_osk_policy();
     test_app_render();
     return 0;
 }

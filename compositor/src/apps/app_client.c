@@ -116,6 +116,10 @@ static void lumo_app_notes_save(const struct lumo_app_client *client);
 static void lumo_app_notes_load(struct lumo_app_client *client);
 static void lumo_app_clock_save(const struct lumo_app_client *client);
 static void lumo_app_clock_load(struct lumo_app_client *client);
+static void lumo_app_sync_text_input_state(
+    struct lumo_app_client *client,
+    bool flush_pending
+);
 
 static void lumo_app_scan_media(struct lumo_app_client *client,
     const char *dir, const char **exts, int ext_count)
@@ -967,23 +971,9 @@ static void lumo_app_touch_handle_down(
     /* try to enable text-input on touch if not already enabled —
      * flush pending events first so the compositor's enter event
      * sets focused_surface before we call enable()+commit() */
-    if (!client->text_input_enabled && client->text_input != NULL &&
-            (client->app_id == LUMO_APP_MESSAGES ||
-                client->app_id == LUMO_APP_NOTES)) {
-        /* dispatch pending events to process any queued enter */
-        wl_display_dispatch_pending(client->display);
-        wl_display_flush(client->display);
-
-        uint32_t purpose = (client->app_id == LUMO_APP_MESSAGES)
-            ? ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_TERMINAL
-            : ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL;
-        zwp_text_input_v3_enable(client->text_input);
-        zwp_text_input_v3_set_content_type(client->text_input,
-            ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE, purpose);
-        zwp_text_input_v3_commit(client->text_input);
-        client->text_input_enabled = true;
-        fprintf(stderr, "lumo-app: text-input enabled on touch for %s\n",
-            lumo_app_id_name(client->app_id));
+    if (!client->text_input_enabled &&
+            lumo_app_wants_osk(client->app_id, client->note_editing)) {
+        lumo_app_sync_text_input_state(client, true);
     }
 }
 
@@ -1346,6 +1336,7 @@ static void lumo_app_touch_handle_up(
                 (void)lumo_app_client_redraw(client);
             }
         }
+        lumo_app_sync_text_input_state(client, client->note_editing >= 0);
     }
 
     if (client->app_id == LUMO_APP_SETTINGS && client->width > 0 &&
@@ -1465,6 +1456,52 @@ static const struct wl_touch_listener lumo_app_touch_listener = {
 
 /* --- text-input-v3 listener (receives OSK committed text) --- */
 
+static uint32_t lumo_app_text_input_purpose(enum lumo_app_id app_id) {
+    return app_id == LUMO_APP_MESSAGES
+        ? ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_TERMINAL
+        : ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL;
+}
+
+static void lumo_app_sync_text_input_state(
+    struct lumo_app_client *client,
+    bool flush_pending
+) {
+    bool wants_osk;
+
+    if (client == NULL || client->text_input == NULL) {
+        return;
+    }
+
+    wants_osk = lumo_app_wants_osk(client->app_id, client->note_editing);
+    if (wants_osk == client->text_input_enabled) {
+        return;
+    }
+
+    if (wants_osk) {
+        if (flush_pending && client->display != NULL) {
+            wl_display_dispatch_pending(client->display);
+        }
+        zwp_text_input_v3_enable(client->text_input);
+        zwp_text_input_v3_set_content_type(client->text_input,
+            ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE,
+            lumo_app_text_input_purpose(client->app_id));
+        zwp_text_input_v3_commit(client->text_input);
+        client->text_input_enabled = true;
+        fprintf(stderr, "lumo-app: text-input enabled for %s\n",
+            lumo_app_id_name(client->app_id));
+    } else {
+        zwp_text_input_v3_disable(client->text_input);
+        zwp_text_input_v3_commit(client->text_input);
+        client->text_input_enabled = false;
+        fprintf(stderr, "lumo-app: text-input disabled for %s\n",
+            lumo_app_id_name(client->app_id));
+    }
+
+    if (client->display != NULL) {
+        wl_display_flush(client->display);
+    }
+}
+
 static void lumo_app_text_input_enter(void *data,
     struct zwp_text_input_v3 *ti, struct wl_surface *surface)
 {
@@ -1472,24 +1509,7 @@ static void lumo_app_text_input_enter(void *data,
     (void)ti; (void)surface;
     if (client == NULL) return;
 
-    /* only enable text-input (and thus trigger the OSK) for apps
-     * that have text fields: terminal and notes */
-    bool wants_osk = client->app_id == LUMO_APP_MESSAGES ||
-        client->app_id == LUMO_APP_NOTES;
-
-    if (wants_osk && !client->text_input_enabled &&
-            client->text_input != NULL) {
-        uint32_t purpose = (client->app_id == LUMO_APP_MESSAGES)
-            ? ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_TERMINAL
-            : ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL;
-        zwp_text_input_v3_enable(client->text_input);
-        zwp_text_input_v3_set_content_type(client->text_input,
-            ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE, purpose);
-        zwp_text_input_v3_commit(client->text_input);
-        client->text_input_enabled = true;
-        fprintf(stderr, "lumo-app: text-input enabled for %s\n",
-            lumo_app_id_name(client->app_id));
-    }
+    lumo_app_sync_text_input_state(client, false);
 }
 
 static void lumo_app_text_input_leave(void *data,

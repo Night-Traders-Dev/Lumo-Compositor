@@ -32,7 +32,7 @@ select the app. They use xdg-shell as Wayland clients with SHM rendering.
 ### Notes
 - Note list with add/select
 - Persistence to `~/.lumo-notes`
-- OSK auto-shows on focus
+- OSK appears when a note enters edit mode
 
 ### Music
 - Scans `~/Music/` for .mp3, .wav, .ogg, .flac, .m4a, .aac

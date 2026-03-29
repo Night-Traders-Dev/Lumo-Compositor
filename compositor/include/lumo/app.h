@@ -29,6 +29,7 @@ bool lumo_app_id_for_launcher_tile(uint32_t tile_index, enum lumo_app_id *app_id
 const char *lumo_app_title(enum lumo_app_id app_id);
 const char *lumo_app_subtitle(enum lumo_app_id app_id);
 uint32_t lumo_app_accent_argb(enum lumo_app_id app_id);
+bool lumo_app_wants_osk(enum lumo_app_id app_id, int note_editing);
 bool lumo_app_close_rect(
     uint32_t width,
     uint32_t height,

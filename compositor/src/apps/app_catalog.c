@@ -101,6 +101,27 @@ uint32_t lumo_app_accent_argb(enum lumo_app_id app_id) {
     return app != NULL ? app->accent_argb : 0xFF69D1FFu;
 }
 
+bool lumo_app_wants_osk(enum lumo_app_id app_id, int note_editing) {
+    switch (app_id) {
+    case LUMO_APP_MESSAGES:
+        return true;
+    case LUMO_APP_NOTES:
+        return note_editing >= 0;
+    case LUMO_APP_PHONE:
+    case LUMO_APP_BROWSER:
+    case LUMO_APP_CAMERA:
+    case LUMO_APP_MAPS:
+    case LUMO_APP_MUSIC:
+    case LUMO_APP_PHOTOS:
+    case LUMO_APP_VIDEOS:
+    case LUMO_APP_CLOCK:
+    case LUMO_APP_FILES:
+    case LUMO_APP_SETTINGS:
+    default:
+        return false;
+    }
+}
+
 bool lumo_app_close_rect(
     uint32_t width,
     uint32_t height,

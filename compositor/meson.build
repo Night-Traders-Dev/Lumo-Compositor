@@ -215,6 +215,18 @@ executable(
   install: true,
 )
 
+webkit_dep = dependency('webkitgtk-6.0', required: false)
+gtk4_dep = dependency('gtk4', required: false)
+
+if webkit_dep.found() and gtk4_dep.found()
+  executable(
+    'lumo-browser',
+    files('src/apps/browser.c'),
+    dependencies: [webkit_dep, gtk4_dep],
+    install: true,
+  )
+endif
+
 executable(
   'lumo-screenshot',
   screenshot_sources,

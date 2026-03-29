@@ -524,13 +524,13 @@ static void lumo_input_focus_surface(
                 if (tl->xdg_surface != NULL &&
                         tl->xdg_surface->surface == surface) {
                     matched = true;
-                    /* show keyboard for apps that have text fields
-                     * (messages=terminal, notes). Check xdg app_id. */
+                    /* only auto-show for the terminal app.
+                     * Notes enables text-input when a note enters edit mode,
+                     * which keeps the OSK aligned with actual editability. */
                     if (!compositor->keyboard_visible &&
                             tl->xdg_toplevel != NULL &&
                             tl->xdg_toplevel->app_id != NULL &&
-                            (strstr(tl->xdg_toplevel->app_id, "messages") ||
-                                strstr(tl->xdg_toplevel->app_id, "notes"))) {
+                            strstr(tl->xdg_toplevel->app_id, "messages")) {
                         wlr_log(WLR_INFO,
                             "input: auto-show keyboard for %s",
                             tl->xdg_toplevel->app_id);
