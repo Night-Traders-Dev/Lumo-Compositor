@@ -204,11 +204,14 @@ executable(
   install: true,
 )
 
+libpng = dependency('libpng', required: true)
+libjpeg = meson.get_compiler('c').find_library('jpeg', required: true)
+
 executable(
   'lumo-app',
   app_sources,
   include_directories: lumo_inc,
-  dependencies: app_deps + [libutil],
+  dependencies: app_deps + [libutil, libpng, libjpeg],
   install: true,
 )
 

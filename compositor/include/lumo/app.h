@@ -62,6 +62,10 @@ struct lumo_app_render_context {
     int media_file_count;
     int media_selected;
     bool media_playing;
+    bool photo_viewing;
+    uint32_t *photo_pixels;
+    uint32_t photo_width;
+    uint32_t photo_height;
 };
 
 void lumo_app_render(

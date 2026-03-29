@@ -15,6 +15,9 @@
 #include <strings.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <png.h>
+#include <jpeglib.h>
+#include <setjmp.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -102,6 +105,10 @@ struct lumo_app_client {
     int media_selected;
     bool media_playing;
     pid_t media_pid;
+    bool photo_viewing;
+    uint32_t *photo_pixels;
+    uint32_t photo_width;
+    uint32_t photo_height;
 };
 
 static bool lumo_app_client_redraw(struct lumo_app_client *client);
@@ -203,6 +210,156 @@ static void lumo_app_media_stop(struct lumo_app_client *client)
         client->media_pid = 0;
     }
     client->media_playing = false;
+}
+
+static bool lumo_app_load_png(const char *path, uint32_t **pixels_out,
+    uint32_t *w_out, uint32_t *h_out)
+{
+    FILE *fp = fopen(path, "rb");
+    if (!fp) return false;
+
+    png_structp png = png_create_read_struct(PNG_LIBPNG_VER_STRING,
+        NULL, NULL, NULL);
+    if (!png) { fclose(fp); return false; }
+    png_infop info = png_create_info_struct(png);
+    if (!info) { png_destroy_read_struct(&png, NULL, NULL); fclose(fp); return false; }
+    if (setjmp(png_jmpbuf(png))) {
+        png_destroy_read_struct(&png, &info, NULL);
+        fclose(fp);
+        return false;
+    }
+
+    png_init_io(png, fp);
+    png_read_info(png, info);
+    uint32_t w = png_get_image_width(png, info);
+    uint32_t h = png_get_image_height(png, info);
+    png_byte color_type = png_get_color_type(png, info);
+    png_byte bit_depth = png_get_bit_depth(png, info);
+
+    if (bit_depth == 16) png_set_strip_16(png);
+    if (color_type == PNG_COLOR_TYPE_PALETTE) png_set_palette_to_rgb(png);
+    if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8) png_set_expand_gray_1_2_4_to_8(png);
+    if (png_get_valid(png, info, PNG_INFO_tRNS)) png_set_tRNS_to_alpha(png);
+    if (color_type == PNG_COLOR_TYPE_RGB || color_type == PNG_COLOR_TYPE_GRAY || color_type == PNG_COLOR_TYPE_PALETTE)
+        png_set_filler(png, 0xFF, PNG_FILLER_AFTER);
+    if (color_type == PNG_COLOR_TYPE_GRAY || color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
+        png_set_gray_to_rgb(png);
+    png_set_bgr(png); /* ARGB format */
+    png_read_update_info(png, info);
+
+    if (w > 4096 || h > 4096) {
+        png_destroy_read_struct(&png, &info, NULL);
+        fclose(fp);
+        return false;
+    }
+
+    uint32_t *pixels = calloc((size_t)w * h, sizeof(uint32_t));
+    if (!pixels) {
+        png_destroy_read_struct(&png, &info, NULL);
+        fclose(fp);
+        return false;
+    }
+
+    png_bytep *rows = malloc(sizeof(png_bytep) * h);
+    if (!rows) { free(pixels); png_destroy_read_struct(&png, &info, NULL); fclose(fp); return false; }
+    for (uint32_t y = 0; y < h; y++)
+        rows[y] = (png_bytep)(pixels + y * w);
+    png_read_image(png, rows);
+    free(rows);
+    png_destroy_read_struct(&png, &info, NULL);
+    fclose(fp);
+
+    *pixels_out = pixels;
+    *w_out = w;
+    *h_out = h;
+    return true;
+}
+
+static bool lumo_app_load_jpeg(const char *path, uint32_t **pixels_out,
+    uint32_t *w_out, uint32_t *h_out)
+{
+    struct jpeg_decompress_struct cinfo;
+    struct jpeg_error_mgr jerr;
+    FILE *fp = fopen(path, "rb");
+    if (!fp) return false;
+
+    cinfo.err = jpeg_std_error(&jerr);
+    jpeg_create_decompress(&cinfo);
+    jpeg_stdio_src(&cinfo, fp);
+    jpeg_read_header(&cinfo, TRUE);
+    cinfo.out_color_space = JCS_RGB;
+    jpeg_start_decompress(&cinfo);
+
+    uint32_t w = cinfo.output_width;
+    uint32_t h = cinfo.output_height;
+    if (w > 4096 || h > 4096) {
+        jpeg_finish_decompress(&cinfo);
+        jpeg_destroy_decompress(&cinfo);
+        fclose(fp);
+        return false;
+    }
+
+    uint32_t *pixels = calloc((size_t)w * h, sizeof(uint32_t));
+    if (!pixels) {
+        jpeg_finish_decompress(&cinfo);
+        jpeg_destroy_decompress(&cinfo);
+        fclose(fp);
+        return false;
+    }
+
+    unsigned char *row_buf = malloc(w * 3);
+    if (!row_buf) { free(pixels); jpeg_finish_decompress(&cinfo); jpeg_destroy_decompress(&cinfo); fclose(fp); return false; }
+    while (cinfo.output_scanline < h) {
+        unsigned char *p = row_buf;
+        jpeg_read_scanlines(&cinfo, &p, 1);
+        uint32_t y = cinfo.output_scanline - 1;
+        for (uint32_t x = 0; x < w; x++) {
+            pixels[y * w + x] = 0xFF000000 |
+                ((uint32_t)row_buf[x * 3] << 16) |
+                ((uint32_t)row_buf[x * 3 + 1] << 8) |
+                (uint32_t)row_buf[x * 3 + 2];
+        }
+    }
+    free(row_buf);
+    jpeg_finish_decompress(&cinfo);
+    jpeg_destroy_decompress(&cinfo);
+    fclose(fp);
+
+    *pixels_out = pixels;
+    *w_out = w;
+    *h_out = h;
+    return true;
+}
+
+static bool lumo_app_load_image(struct lumo_app_client *client)
+{
+    if (client->media_selected < 0 ||
+            client->media_selected >= client->media_file_count) {
+        return false;
+    }
+
+    const char *home = getenv("HOME");
+    if (!home) home = "/home/orangepi";
+    char path[1300];
+    snprintf(path, sizeof(path), "%s/Pictures/%s", home,
+        client->media_files[client->media_selected]);
+
+    /* free previous */
+    if (client->photo_pixels) {
+        free(client->photo_pixels);
+        client->photo_pixels = NULL;
+    }
+
+    const char *dot = strrchr(path, '.');
+    if (dot && (strcasecmp(dot, ".png") == 0)) {
+        return lumo_app_load_png(path, &client->photo_pixels,
+            &client->photo_width, &client->photo_height);
+    }
+    if (dot && (strcasecmp(dot, ".jpg") == 0 || strcasecmp(dot, ".jpeg") == 0)) {
+        return lumo_app_load_jpeg(path, &client->photo_pixels,
+            &client->photo_width, &client->photo_height);
+    }
+    return false;
 }
 
 static void lumo_app_term_add_line(struct lumo_app_client *client,
@@ -530,6 +687,10 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             .media_file_count = client->media_file_count,
             .media_selected = client->media_selected,
             .media_playing = client->media_playing,
+            .photo_viewing = client->photo_viewing,
+            .photo_pixels = client->photo_pixels,
+            .photo_width = client->photo_width,
+            .photo_height = client->photo_height,
         };
         memcpy(ctx.notes, client->notes, sizeof(ctx.notes));
         memcpy(ctx.term_lines, client->term_lines, sizeof(ctx.term_lines));
@@ -934,18 +1095,35 @@ static void lumo_app_touch_handle_up(
             client->app_id == LUMO_APP_VIDEOS)
             ? 56 + (int)client->height / 3 + 72 : 144;
         if (client->app_id == LUMO_APP_PHOTOS) {
-            /* grid: compute cell from touch position */
-            int cols = 3;
-            int pad = 8;
-            int cell_w = ((int)client->width - pad * (cols + 1)) / cols;
-            int cell_h = cell_w * 3 / 4;
-            int col = ((int)client->touch_down_x - pad) / (cell_w + pad);
-            int row = (ty - 56) / (cell_h + pad);
-            int idx = client->scroll_offset + row * cols + col;
-            if (col >= 0 && col < cols && idx >= 0 &&
-                    idx < client->media_file_count) {
-                client->media_selected = idx;
+            if (client->photo_viewing) {
+                /* tap while viewing = exit viewer */
+                client->photo_viewing = false;
+                if (client->photo_pixels) {
+                    free(client->photo_pixels);
+                    client->photo_pixels = NULL;
+                }
                 (void)lumo_app_client_redraw(client);
+            } else {
+                /* grid: compute cell from touch position */
+                int cols = 3;
+                int pad = 8;
+                int cell_w = ((int)client->width - pad * (cols + 1)) / cols;
+                int cell_h = cell_w * 3 / 4;
+                int col = ((int)client->touch_down_x - pad) / (cell_w + pad);
+                int row_idx = (ty - 56) / (cell_h + pad);
+                int idx = client->scroll_offset + row_idx * cols + col;
+                if (col >= 0 && col < cols && idx >= 0 &&
+                        idx < client->media_file_count) {
+                    if (idx == client->media_selected) {
+                        /* double-tap selected = view photo */
+                        if (lumo_app_load_image(client)) {
+                            client->photo_viewing = true;
+                        }
+                    } else {
+                        client->media_selected = idx;
+                    }
+                    (void)lumo_app_client_redraw(client);
+                }
             }
         } else if (ty >= list_start) {
             int row_h = (client->app_id == LUMO_APP_MUSIC) ? 36 : 40;
@@ -1209,7 +1387,8 @@ static void lumo_app_touch_handle_motion(
         lumo_app_client_set_close_active(client,
             lumo_app_client_close_contains(client, cur_x, cur_y));
 
-        if (client->app_id == LUMO_APP_FILES) {
+        if (client->app_id == LUMO_APP_FILES ||
+                (client->app_id == LUMO_APP_PHOTOS && !client->photo_viewing)) {
             double dy = client->touch_down_y - cur_y;
             if (dy > 30.0) {
                 client->scroll_offset++;
