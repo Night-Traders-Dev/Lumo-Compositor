@@ -2087,7 +2087,16 @@ static void lumo_input_touch_up(
 
         if (!point->gesture_triggered && point->surface != NULL &&
                 point->capture_edge != LUMO_EDGE_NONE) {
-            lumo_input_replay_touch_point(compositor, point);
+            /* don't replay edge taps to the launcher when an app is
+             * focused — that causes input bleed-through to tiles behind
+             * the active app. Only replay when the launcher drawer is
+             * actually open and visible. */
+            if (!compositor->launcher_visible &&
+                    !wl_list_empty(&compositor->toplevels)) {
+                /* drop the touch — the app stays in foreground */
+            } else {
+                lumo_input_replay_touch_point(compositor, point);
+            }
         }
 
         if (point->gesture_triggered) {

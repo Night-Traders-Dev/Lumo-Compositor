@@ -240,6 +240,26 @@ static void test_gesture_hitbox(void) {
     assert(target.index == 0);
 }
 
+static void test_quick_settings_button_rects(void) {
+    struct lumo_rect reload = {0};
+    struct lumo_rect rotate = {0};
+    struct lumo_rect screenshot = {0};
+
+    assert(lumo_shell_quick_settings_button_rect(1024, 600, 0, &reload));
+    assert(lumo_shell_quick_settings_button_rect(1024, 600, 1, &rotate));
+    assert(lumo_shell_quick_settings_button_rect(1024, 600, 2, &screenshot));
+    assert(!lumo_shell_quick_settings_button_rect(1024, 600, 3, &screenshot));
+
+    assert(reload.width > 0);
+    assert(reload.height == 28);
+    assert(rotate.width == reload.width);
+    assert(rotate.y == reload.y);
+    assert(rotate.x > reload.x);
+    assert(screenshot.width > reload.width);
+    assert(screenshot.x == reload.x);
+    assert(screenshot.y > reload.y);
+}
+
 static void test_transition_durations(void) {
     assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_LAUNCHER, true) == 350);
     assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_LAUNCHER, false) == 250);
@@ -333,6 +353,7 @@ int main(void) {
     test_launcher_hitboxes();
     test_osk_hitboxes();
     test_gesture_hitbox();
+    test_quick_settings_button_rects();
     test_transition_durations();
     test_touch_audit_layout();
     test_surface_local_coords();

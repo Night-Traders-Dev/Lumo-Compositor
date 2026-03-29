@@ -186,6 +186,12 @@ bool lumo_shell_launcher_close_rect(
     uint32_t output_height,
     struct lumo_rect *rect
 );
+bool lumo_shell_quick_settings_button_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    uint32_t button_index,
+    struct lumo_rect *rect
+);
 bool lumo_shell_osk_key_rect(
     uint32_t output_width,
     uint32_t output_height,

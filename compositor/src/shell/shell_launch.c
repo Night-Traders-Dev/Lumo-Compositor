@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
@@ -23,6 +24,9 @@ struct lumo_shell_process {
 
 static void lumo_write_volume_pct(uint32_t pct);
 static void lumo_write_brightness_pct(uint32_t pct);
+static void lumo_shell_capture_screenshot_async(
+    struct lumo_compositor *compositor
+);
 
 struct lumo_shell_bridge_client {
     struct wl_list link;
@@ -1153,6 +1157,18 @@ static void lumo_shell_bridge_handle_request_frame(
         return;
     }
 
+    if (strcmp(frame->name, "capture_screenshot") == 0) {
+        if (client->compositor->quick_settings_visible) {
+            lumo_protocol_set_quick_settings_visible(client->compositor, false);
+        }
+        if (client->compositor->time_panel_visible) {
+            lumo_protocol_set_time_panel_visible(client->compositor, false);
+        }
+        (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
+        lumo_shell_capture_screenshot_async(client->compositor);
+        return;
+    }
+
     if (strcmp(frame->name, "ping") == 0) {
         (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
         return;
@@ -1702,6 +1718,103 @@ static void lumo_write_volume_pct(uint32_t pct) {
     }
     /* child is reaped by the compositor's SIGCHLD handler which calls
      * lumo_shell_reap_children() via waitpid(-1, ..., WNOHANG) in a loop. */
+}
+
+static bool lumo_shell_screenshot_output_path(
+    char *buffer,
+    size_t buffer_size
+) {
+    const char *home = getenv("HOME");
+    char pictures_dir[PATH_MAX];
+    char filename[64];
+    time_t now;
+    struct tm local_tm;
+
+    if (buffer == NULL || buffer_size == 0) {
+        return false;
+    }
+
+    if (home == NULL || home[0] == '\0') {
+        home = "/tmp";
+    }
+
+    if (strcmp(home, "/tmp") == 0) {
+        if (!lumo_shell_copy_path(pictures_dir, sizeof(pictures_dir), "/tmp")) {
+            return false;
+        }
+    } else {
+        if (!lumo_shell_join_path(pictures_dir, sizeof(pictures_dir), home,
+                "Pictures")) {
+            return false;
+        }
+        if (mkdir(pictures_dir, 0755) != 0 && errno != EEXIST) {
+            return false;
+        }
+    }
+
+    now = time(NULL);
+    if (localtime_r(&now, &local_tm) == NULL) {
+        return false;
+    }
+    if (strftime(filename, sizeof(filename), "lumo-screenshot-%Y%m%d-%H%M%S.png",
+            &local_tm) == 0) {
+        return false;
+    }
+
+    return lumo_shell_join_path(buffer, buffer_size, pictures_dir, filename);
+}
+
+static void lumo_shell_capture_screenshot_async(
+    struct lumo_compositor *compositor
+) {
+    struct lumo_shell_state *state;
+    char output_path[PATH_MAX];
+    char binary_path[PATH_MAX];
+    char parent_directory[PATH_MAX];
+    const char *binary = "lumo-screenshot";
+    pid_t pid;
+
+    if (compositor == NULL) {
+        return;
+    }
+
+    if (!lumo_shell_screenshot_output_path(output_path, sizeof(output_path))) {
+        wlr_log(WLR_ERROR, "shell: failed to build screenshot output path");
+        return;
+    }
+
+    state = compositor->shell_state;
+    if (state != NULL && state->binary_path[0] != '\0' &&
+            lumo_shell_parent_directory(state->binary_path, parent_directory,
+                sizeof(parent_directory)) &&
+            lumo_shell_join_path(binary_path, sizeof(binary_path),
+                parent_directory, "lumo-screenshot") &&
+            access(binary_path, X_OK) == 0) {
+        binary = binary_path;
+    }
+
+    pid = fork();
+    if (pid < 0) {
+        wlr_log_errno(WLR_ERROR, "shell: failed to fork screenshot helper");
+        return;
+    }
+
+    if (pid == 0) {
+        const struct timespec delay = {
+            .tv_sec = 0,
+            .tv_nsec = 150 * 1000 * 1000,
+        };
+        (void)nanosleep(&delay, NULL);
+        setsid();
+        if (strchr(binary, '/') != NULL) {
+            execl(binary, binary, "--output", output_path, (char *)NULL);
+        }
+        execlp("lumo-screenshot", "lumo-screenshot", "--output", output_path,
+            (char *)NULL);
+        _exit(127);
+    }
+
+    wlr_log(WLR_INFO, "shell: scheduled screenshot capture to %s", output_path);
 }
 
 static void lumo_shell_play_boot_sound(void) {

@@ -930,36 +930,55 @@ static void lumo_draw_launcher(
         return;
     }
 
-    slide_y = (int)((1.0 - visibility) * (height / 8));
-    if (!lumo_shell_launcher_panel_rect(width, height, &panel_rect)) {
-        return;
+    /* GNOME 3.x style fullscreen app grid */
+    slide_y = (int)((1.0 - visibility) * (int)(height / 4));
+
+    /* translucent dark overlay */
+    {
+        uint8_t alpha = (uint8_t)(0xE0 * visibility);
+        uint32_t overlay = lumo_argb(alpha,
+            (uint8_t)lumo_theme.base_r,
+            (uint8_t)lumo_theme.base_g,
+            (uint8_t)lumo_theme.base_b);
+        struct lumo_rect full = {0, 0, (int)width, (int)height};
+        lumo_fill_rounded_rect(pixels, width, height, &full, 0, overlay);
     }
-    panel_rect.y += slide_y;
 
-    lumo_fill_vertical_gradient(pixels, width, height, &panel_rect,
-        panel_top, panel_bottom);
-    lumo_draw_outline(pixels, width, height, &panel_rect, 2, panel_stroke);
-
-    title_badge.x = panel_rect.x + 26;
-    title_badge.y = panel_rect.y + 22;
-    title_badge.width = lumo_u32_min((uint32_t)(panel_rect.width / 3), 180);
-    title_badge.height = 28;
-    lumo_fill_rounded_rect(pixels, width, height, &title_badge, 14,
-        lumo_argb(0xFF, 0x2C, 0x00, 0x1E));
-    lumo_draw_text(pixels, width, height, title_badge.x + 14,
-        title_badge.y + 8, 2, subtitle_color, "APP DRAWER");
-    lumo_draw_text(pixels, width, height, panel_rect.x + 26,
-        panel_rect.y + 64, 3, title_color, "LUMO");
+    (void)panel_top;
+    (void)panel_bottom;
+    (void)panel_stroke;
+    (void)panel_rect;
+    (void)title_badge;
 
     (void)close_fill;
     (void)close_label;
     (void)close_rect;
     (void)close_label_rect;
+    (void)accent_rect;
+
+    /* centered app grid — GNOME 3.x style */
+    {
+        int cols = 4;
+        int icon_size = 56;
+        int gap_x = 24;
+        int gap_y = 20;
+        int cell_w = icon_size + 24; /* fixed cell width for consistent grid */
+        int cell_h = icon_size + 30;
+        int total_rows = ((int)tile_count + cols - 1) / cols;
+        int grid_w = cols * cell_w + (cols - 1) * gap_x;
+        int grid_h = total_rows * (cell_h + gap_y) - gap_y;
+        int grid_x_start = ((int)width - grid_w) / 2;
+        int grid_y_start = ((int)height - grid_h) / 2 + slide_y;
+        if (grid_y_start < 56) grid_y_start = 56 + slide_y;
+
     for (uint32_t tile_index = 0; tile_index < tile_count; tile_index++) {
+        int col = (int)tile_index % cols;
+        int row = (int)tile_index / cols;
+        int cx = grid_x_start + col * (cell_w + gap_x) + cell_w / 2;
+        int cy = grid_y_start + row * (cell_h + gap_y);
         struct lumo_rect tile_rect;
         struct lumo_rect icon_rect;
         struct lumo_rect label_rect;
-        struct lumo_rect accent_bar;
         bool active = active_target != NULL &&
             active_target->kind == LUMO_SHELL_TARGET_LAUNCHER_TILE &&
             active_target->index == tile_index;
@@ -967,31 +986,31 @@ static void lumo_draw_launcher(
         uint32_t accent = accent_colors[tile_index %
             (sizeof(accent_colors) / sizeof(accent_colors[0]))];
 
-        if (!lumo_shell_launcher_tile_rect(width, height, tile_index, &tile_rect)) {
-            continue;
+        tile_rect.x = cx - cell_w / 2;
+        tile_rect.y = cy;
+        tile_rect.width = cell_w;
+        tile_rect.height = cell_h;
+
+        /* icon background — centered rounded square */
+        icon_rect.x = cx - icon_size / 2;
+        icon_rect.y = cy;
+        icon_rect.width = icon_size;
+        icon_rect.height = icon_size;
+        lumo_fill_rounded_rect(pixels, width, height, &icon_rect, 16,
+            active ? highlight : tile_fill);
+
+        /* inner icon drawing area — centered in the icon background */
+        {
+            int inner = 36;
+            icon_rect.x = cx - inner / 2;
+            icon_rect.y = cy + (icon_size - inner) / 2;
+            icon_rect.width = inner;
+            icon_rect.height = inner;
         }
 
-        tile_rect.y += slide_y;
-        lumo_fill_rounded_rect(pixels, width, height, &tile_rect, 18, tile_fill);
-        lumo_draw_outline(pixels, width, height, &tile_rect, 2,
-            active ? highlight : tile_stroke);
-
-        accent_bar.x = tile_rect.x + 14;
-        accent_bar.y = tile_rect.y + 14;
-        accent_bar.width = tile_rect.width - 28;
-        accent_bar.height = 10;
-        lumo_fill_rounded_rect(pixels, width, height, &accent_bar, 5, accent);
-
-        icon_rect.x = tile_rect.x + 18;
-        icon_rect.y = tile_rect.y + 34;
-        icon_rect.width = 44;
-        icon_rect.height = 44;
-        lumo_fill_rounded_rect(pixels, width, height, &icon_rect, 12,
-            lumo_argb(0xFF, 0x1E, 0x0A, 0x1A));
-
         {
-            int ix = icon_rect.x + 8;
-            int iy = icon_rect.y + 8;
+            int ix = icon_rect.x + 4;
+            int iy = icon_rect.y + 4;
             int isz = 28;
             uint32_t ic = accent;
 
@@ -1097,13 +1116,16 @@ static void lumo_draw_launcher(
             }
         }
 
-        label_rect.x = tile_rect.x + 14;
-        label_rect.y = tile_rect.y + tile_rect.height - 36;
-        label_rect.width = tile_rect.width - 28;
+        /* app name centered below icon */
+        label_rect.x = cx - cell_w / 2;
+        label_rect.y = cy + icon_size + 8;
+        label_rect.width = cell_w;
         label_rect.height = 20;
         lumo_draw_text_centered(pixels, width, height, &label_rect, 2,
-            title_color, label != NULL ? label : "APP");
+            active ? highlight : subtitle_color,
+            label != NULL ? label : "APP");
     }
+    } /* end grid block */
 }
 
 static void lumo_draw_osk(
@@ -1421,13 +1443,17 @@ static void lumo_draw_quick_settings_panel(
 
         row_y += 10;
         {
-            int btn_w = (panel.width - 36) / 2;
-            struct lumo_rect reload_btn = {
-                panel.x + 12, row_y, btn_w, 28
-            };
-            struct lumo_rect rotate_btn = {
-                panel.x + 12 + btn_w + 12, row_y, btn_w, 28
-            };
+            struct lumo_rect reload_btn = {0};
+            struct lumo_rect rotate_btn = {0};
+            struct lumo_rect screenshot_btn = {0};
+
+            (void)row_y;
+            (void)lumo_shell_quick_settings_button_rect(width, height, 0,
+                &reload_btn);
+            (void)lumo_shell_quick_settings_button_rect(width, height, 1,
+                &rotate_btn);
+            (void)lumo_shell_quick_settings_button_rect(width, height, 2,
+                &screenshot_btn);
             lumo_fill_rounded_rect(pixels, width, height, &reload_btn,
                 8, accent);
             lumo_draw_text_centered(pixels, width, height, &reload_btn, 2,
@@ -1436,6 +1462,10 @@ static void lumo_draw_quick_settings_panel(
                 8, lumo_argb(0xFF, 0x77, 0x21, 0x6F));
             lumo_draw_text_centered(pixels, width, height, &rotate_btn, 2,
                 value_color, "ROTATE");
+            lumo_fill_rounded_rect(pixels, width, height, &screenshot_btn,
+                8, lumo_argb(0xFF, 0x1E, 0x68, 0x5B));
+            lumo_draw_text_centered(pixels, width, height, &screenshot_btn, 2,
+                value_color, "SCREENSHOT");
         }
     }
 }
@@ -2498,13 +2528,33 @@ static void lumo_shell_client_send_reload(struct lumo_shell_client *client) {
     fprintf(stderr, "lumo-shell: sent reload_session request\n");
 }
 
-/* returns: 1=reload, 2=rotate, 3=vol_slider, 4=bri_slider */
+static void lumo_shell_client_send_capture_screenshot(
+    struct lumo_shell_client *client
+) {
+    struct lumo_shell_protocol_frame frame;
+
+    if (client == NULL) {
+        return;
+    }
+
+    if (!lumo_shell_protocol_frame_init(&frame,
+            LUMO_SHELL_PROTOCOL_FRAME_REQUEST, "capture_screenshot",
+            client->next_request_id++)) {
+        return;
+    }
+
+    (void)lumo_shell_client_send_frame(client, &frame);
+    fprintf(stderr, "lumo-shell: sent capture_screenshot request\n");
+}
+
+/* returns: 1=reload, 2=rotate, 3=screenshot, 4=vol_slider, 5=bri_slider */
 static int lumo_shell_status_button_hit(
     const struct lumo_shell_client *client,
     double x,
     double y
 ) {
-    int panel_w, bar_h, panel_x, btn_w;
+    int panel_w, bar_h, panel_x;
+    struct lumo_rect button_rect = {0};
 
     if (client == NULL || !client->compositor_quick_settings_visible) {
         return 0;
@@ -2527,28 +2577,30 @@ static int lumo_shell_status_button_hit(
     int vol_y = base_y + 12 + 24 + 10 + 22 + 22 + 22 + 28 + 6;
     if (y >= vol_y && y <= vol_y + 20 &&
             x >= track_x && x <= track_x + track_w) {
-        return 3;
+        return 4;
     }
 
     /* brightness slider zone: vol + 32 */
     int bri_y = vol_y + 32;
     if (y >= bri_y && y <= bri_y + 20 &&
             x >= track_x && x <= track_x + track_w) {
-        return 4;
+        return 5;
     }
 
-    /* buttons: bri + 28 + 28 + 10 */
-    int btn_y = bri_y + 28 + 28 + 10;
-    int btn_h = 28;
-    btn_w = (panel_w - 36) / 2;
-    if (y >= btn_y && y <= btn_y + btn_h) {
-        if (x >= panel_x + 12 && x <= panel_x + 12 + btn_w) {
-            return 1; /* reload */
-        }
-        if (x >= panel_x + 12 + btn_w + 12 &&
-                x <= panel_x + 12 + btn_w + 12 + btn_w) {
-            return 2; /* rotate */
-        }
+    if (lumo_shell_quick_settings_button_rect(client->configured_width,
+            client->configured_height, 0, &button_rect) &&
+            lumo_rect_contains(&button_rect, x, y)) {
+        return 1;
+    }
+    if (lumo_shell_quick_settings_button_rect(client->configured_width,
+            client->configured_height, 1, &button_rect) &&
+            lumo_rect_contains(&button_rect, x, y)) {
+        return 2;
+    }
+    if (lumo_shell_quick_settings_button_rect(client->configured_width,
+            client->configured_height, 2, &button_rect) &&
+            lumo_rect_contains(&button_rect, x, y)) {
+        return 3;
     }
     return 0;
 }
@@ -3420,12 +3472,16 @@ static void lumo_shell_touch_handle_up(
             return;
         }
         if (btn == 3) {
+            lumo_shell_client_send_capture_screenshot(client);
+            return;
+        }
+        if (btn == 4) {
             uint32_t pct = lumo_shell_slider_pct_from_touch(client,
                 client->pointer_x);
             lumo_shell_send_set_u32(client, "set_volume", "pct", pct);
             return;
         }
-        if (btn == 4) {
+        if (btn == 5) {
             uint32_t pct = lumo_shell_slider_pct_from_touch(client,
                 client->pointer_x);
             lumo_shell_send_set_u32(client, "set_brightness", "pct", pct);

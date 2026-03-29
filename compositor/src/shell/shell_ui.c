@@ -55,10 +55,6 @@ static const char *const lumo_shell_touch_audit_labels[] = {
     "BOTTOM RIGHT",
 };
 
-static uint32_t lumo_shell_max_u32(uint32_t lhs, uint32_t rhs) {
-    return lhs > rhs ? lhs : rhs;
-}
-
 static uint32_t lumo_shell_clamp_u32(
     uint32_t value,
     uint32_t minimum,
@@ -129,55 +125,106 @@ static bool lumo_shell_launcher_geometry(
     uint32_t tile_index,
     struct lumo_rect *rect
 ) {
-    uint32_t row;
-    uint32_t col;
-    uint32_t gap;
-    uint32_t side_inset;
-    uint32_t top_inset;
-    uint32_t bottom_inset;
-    uint32_t header_height;
-    uint32_t panel_width;
-    uint32_t grid_top;
-    uint32_t grid_height;
-    uint32_t tile_width;
-    uint32_t tile_height;
+    /* GNOME 3.x style centered grid — must match shell_client.c */
+    uint32_t cols = 4;
+    uint32_t icon_size = 56;
+    uint32_t gap_x = 24;
+    uint32_t gap_y = 20;
+    uint32_t cell_w = icon_size + 24;
+    uint32_t cell_h = icon_size + 30;
+    uint32_t grid_w, grid_h, grid_x, grid_y;
+    uint32_t total_rows, row, col, cx;
 
     if (rect == NULL || output_width == 0 || output_height == 0 ||
             tile_index >= lumo_shell_launcher_columns * lumo_shell_launcher_rows) {
         return false;
     }
+    total_rows = (lumo_shell_launcher_columns * lumo_shell_launcher_rows +
+        cols - 1) / cols;
+    grid_w = cols * cell_w + (cols - 1) * gap_x;
+    grid_h = total_rows * (cell_h + gap_y) - gap_y;
+    grid_x = (output_width - grid_w) / 2;
+    grid_y = (output_height - grid_h) / 2;
+    if (grid_y < 56) grid_y = 56;
 
-    row = tile_index / lumo_shell_launcher_columns;
-    col = tile_index % lumo_shell_launcher_columns;
+    row = tile_index / cols;
+    col = tile_index % cols;
+    cx = grid_x + col * (cell_w + gap_x) + cell_w / 2;
 
-    gap = lumo_shell_clamp_u32(output_width / 80, 8, 16);
-    side_inset = lumo_shell_clamp_u32(output_width / 24, 16, 40);
-    top_inset = lumo_shell_clamp_u32(output_height / 14, 32, 72);
-    bottom_inset = lumo_shell_clamp_u32(output_height / 28, 16, 36);
-    header_height = lumo_shell_clamp_u32(output_height / 9, 48, 96);
+    rect->x = (int)(cx - cell_w / 2);
+    rect->y = (int)(grid_y + row * (cell_h + gap_y));
+    rect->width = (int)cell_w;
+    rect->height = (int)cell_h;
+    return true;
+}
 
-    if (output_width <= side_inset * 2 + gap * (lumo_shell_launcher_columns + 1) ||
-            output_height <= top_inset + bottom_inset + header_height +
-                gap * (lumo_shell_launcher_rows + 2)) {
+static bool lumo_shell_quick_settings_panel_geometry(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+) {
+    int panel_w;
+
+    if (rect == NULL || output_width == 0 || output_height <= 56) {
         return false;
     }
 
-    panel_width = output_width - side_inset * 2;
-    grid_top = top_inset + header_height;
-    grid_height = output_height - grid_top - bottom_inset;
-    tile_width = (panel_width - gap * (lumo_shell_launcher_columns + 1)) /
-        lumo_shell_launcher_columns;
-    tile_height = (grid_height - gap * (lumo_shell_launcher_rows + 1)) /
-        lumo_shell_launcher_rows;
+    panel_w = (int)(output_width / 2);
+    if (panel_w < 200) {
+        panel_w = 200;
+    }
+    if (panel_w > (int)output_width - 16) {
+        panel_w = (int)output_width - 16;
+    }
+    if (panel_w <= 0) {
+        return false;
+    }
 
-    tile_width = lumo_shell_max_u32(tile_width, 88);
-    tile_height = lumo_shell_max_u32(tile_height, 88);
+    rect->x = (int)output_width - panel_w - 8;
+    rect->y = 52;
+    rect->width = panel_w;
+    rect->height = (int)output_height - 56;
+    return rect->height > 0;
+}
 
-    rect->x = (int)(side_inset + gap + col * (tile_width + gap));
-    rect->y = (int)(grid_top + gap + row * (tile_height + gap));
-    rect->width = (int)tile_width;
-    rect->height = (int)tile_height;
-    return true;
+static bool lumo_shell_quick_settings_button_geometry(
+    uint32_t output_width,
+    uint32_t output_height,
+    uint32_t button_index,
+    struct lumo_rect *rect
+) {
+    struct lumo_rect panel;
+    int half_button_width;
+    int top_row_y;
+
+    if (rect == NULL || button_index > 2 ||
+            !lumo_shell_quick_settings_panel_geometry(output_width,
+                output_height, &panel)) {
+        return false;
+    }
+
+    half_button_width = (panel.width - 36) / 2;
+    top_row_y = panel.y + 222;
+    rect->height = 28;
+
+    if (button_index == 0) {
+        rect->x = panel.x + 12;
+        rect->y = top_row_y;
+        rect->width = half_button_width;
+        return rect->width > 0;
+    }
+
+    if (button_index == 1) {
+        rect->x = panel.x + 12 + half_button_width + 12;
+        rect->y = top_row_y;
+        rect->width = half_button_width;
+        return rect->width > 0;
+    }
+
+    rect->x = panel.x + 12;
+    rect->y = top_row_y + rect->height + 12;
+    rect->width = panel.width - 24;
+    return rect->width > 0;
 }
 
 const char *lumo_shell_launcher_tile_command(uint32_t tile_index) {
@@ -424,6 +471,16 @@ bool lumo_shell_launcher_close_rect(
 ) {
     return lumo_shell_launcher_close_geometry(output_width, output_height,
         rect);
+}
+
+bool lumo_shell_quick_settings_button_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    uint32_t button_index,
+    struct lumo_rect *rect
+) {
+    return lumo_shell_quick_settings_button_geometry(output_width,
+        output_height, button_index, rect);
 }
 
 bool lumo_shell_gesture_handle_rect(

@@ -126,7 +126,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
     browser->reload_btn = GTK_BUTTON(gtk_button_new_with_label("R"));
     browser->url_bar = GTK_ENTRY(gtk_entry_new());
 
-    gtk_editable_set_text(GTK_EDITABLE(browser->url_bar), LUMO_BROWSER_HOME);
+    gtk_editable_set_text(GTK_EDITABLE(browser->url_bar), "about:lumo");
     gtk_widget_set_hexpand(GTK_WIDGET(browser->url_bar), TRUE);
 
     g_signal_connect(browser->back_btn, "clicked", G_CALLBACK(on_back), browser);
