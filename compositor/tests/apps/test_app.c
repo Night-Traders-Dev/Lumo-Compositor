@@ -85,8 +85,8 @@ static void test_photos_render_thumbnail(void) {
     ctx.photo_thumbnail_heights[0] = 2;
 
     lumo_app_render(&ctx, pixels, width, height);
-    assert(pixels[68 * width + 20] == 0xFF102030u);
-    assert(pixels[68 * width + 120] == 0xFF405060u);
+    assert(pixels[68 * width + 50] == 0xFF102030u);
+    assert(pixels[68 * width + 110] == 0xFF405060u);
 
     free(pixels);
 }

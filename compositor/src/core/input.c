@@ -1120,6 +1120,13 @@ static void lumo_input_touch_point_trigger_edge_action(
                 !wl_list_empty(&compositor->toplevels)) {
             closed_focused_app =
                 lumo_protocol_close_focused_app(compositor);
+            if (!closed_focused_app) {
+                wlr_log(WLR_INFO,
+                    "input: close_focused_app returned false "
+                    "(focused=%p toplevels=%d)",
+                    (void *)compositor->seat->keyboard_state.focused_surface,
+                    !wl_list_empty(&compositor->toplevels));
+            }
             if (closed_focused_app) {
                 /* also hide keyboard if it was showing */
                 if (compositor->keyboard_visible) {

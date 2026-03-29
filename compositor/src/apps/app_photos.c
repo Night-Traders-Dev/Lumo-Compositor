@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-/* scale-blit source image into destination with aspect-fit */
+/* scale-blit source image into the exact destination rectangle */
 static void blit_scaled(uint32_t *dst, uint32_t dw, uint32_t dh,
     int dx, int dy, int dstw, int dsth,
     const uint32_t *src, uint32_t sw, uint32_t sh)
@@ -22,6 +22,30 @@ static void blit_scaled(uint32_t *dst, uint32_t dw, uint32_t dh,
             dst[py * dw + px] = src[sy * sw + sx];
         }
     }
+}
+
+static void blit_scaled_fit(uint32_t *dst, uint32_t dw, uint32_t dh,
+    int dx, int dy, int dstw, int dsth,
+    const uint32_t *src, uint32_t sw, uint32_t sh)
+{
+    int draw_w;
+    int draw_h;
+    int draw_x;
+    int draw_y;
+
+    if (!dst || !src || dstw <= 0 || dsth <= 0 || sw == 0 || sh == 0) return;
+
+    draw_w = dstw;
+    draw_h = (int)((int64_t)dstw * (int64_t)sh / (int64_t)sw);
+    if (draw_h > dsth) {
+        draw_h = dsth;
+        draw_w = (int)((int64_t)dsth * (int64_t)sw / (int64_t)sh);
+    }
+    if (draw_w <= 0 || draw_h <= 0) return;
+
+    draw_x = dx + (dstw - draw_w) / 2;
+    draw_y = dy + (dsth - draw_h) / 2;
+    blit_scaled(dst, dw, dh, draw_x, draw_y, draw_w, draw_h, src, sw, sh);
 }
 
 void lumo_app_render_photos(
@@ -85,7 +109,7 @@ void lumo_app_render_photos(
         lumo_app_draw_text(pixels, width, height, 16, 80, 2,
             theme.text_dim, "NO IMAGES FOUND");
         lumo_app_draw_text(pixels, width, height, 16, 102, 2,
-            theme.text_dim, "PLACE .JPG OR .PNG IN ~/PICTURES");
+            theme.text_dim, "PLACE IMAGES IN ~/PICTURES");
         return;
     }
 
@@ -116,7 +140,7 @@ void lumo_app_render_photos(
         lumo_app_fill_rounded_rect(pixels, width, height, &cell, 10, theme.card_bg);
         if (thumbnail != NULL && thumbnail_width > 0 && thumbnail_height > 0 &&
                 image_rect.width > 0 && image_rect.height > 0) {
-            blit_scaled(pixels, width, height, image_rect.x, image_rect.y,
+            blit_scaled_fit(pixels, width, height, image_rect.x, image_rect.y,
                 image_rect.width, image_rect.height, thumbnail,
                 thumbnail_width, thumbnail_height);
         } else {
@@ -159,7 +183,7 @@ void lumo_app_render_photos(
 
     /* scroll hint */
     if (count > cols * 3) {
-        char scroll_text[16];
+        char scroll_text[32];
         snprintf(scroll_text, sizeof(scroll_text), "SCROLL %d/%d",
             scroll / cols + 1, (count + cols - 1) / cols);
         lumo_app_draw_text(pixels, width, height,
