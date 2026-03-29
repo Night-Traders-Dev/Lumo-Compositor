@@ -41,6 +41,13 @@ struct lumo_app_render_context {
     int scroll_offset;
     bool stopwatch_running;
     uint64_t stopwatch_elapsed_ms;
+    int clock_tab; /* 0=clock 1=alarm 2=stopwatch 3=timer */
+    uint32_t timer_total_sec;
+    uint32_t timer_remaining_sec;
+    bool timer_running;
+    uint32_t alarm_hour;
+    uint32_t alarm_min;
+    bool alarm_enabled;
     int selected_row;
     char notes[8][128];
     int note_count;

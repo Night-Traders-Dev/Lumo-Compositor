@@ -80,6 +80,13 @@ struct lumo_app_client {
     bool stopwatch_running;
     uint64_t stopwatch_start_ms;
     uint64_t stopwatch_accumulated_ms;
+    int clock_tab;
+    uint32_t timer_total_sec;
+    uint64_t timer_start_ms;
+    bool timer_running;
+    uint32_t alarm_hour;
+    uint32_t alarm_min;
+    bool alarm_enabled;
     int selected_row;
     char notes[8][128];
     int note_count;
@@ -486,6 +493,18 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
                 (uint64_t)ts.tv_nsec / 1000000;
             sw_elapsed += now_ms - client->stopwatch_start_ms;
         }
+        /* compute timer remaining */
+        if (client->timer_running && client->timer_start_ms > 0) {
+            struct timespec ts;
+            clock_gettime(CLOCK_MONOTONIC, &ts);
+            uint64_t now_ms = (uint64_t)ts.tv_sec * 1000 +
+                (uint64_t)ts.tv_nsec / 1000000;
+            uint64_t elapsed_sec = (now_ms - client->timer_start_ms) / 1000;
+            if (elapsed_sec >= client->timer_total_sec) {
+                client->timer_running = false;
+                client->timer_total_sec = 0;
+            }
+        }
         struct lumo_app_render_context ctx = {
             .app_id = client->app_id,
             .close_active = client->close_active,
@@ -493,6 +512,13 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             .scroll_offset = client->scroll_offset,
             .stopwatch_running = client->stopwatch_running,
             .stopwatch_elapsed_ms = sw_elapsed,
+            .clock_tab = client->clock_tab,
+            .timer_total_sec = client->timer_total_sec,
+            .timer_remaining_sec = client->timer_total_sec,
+            .timer_running = client->timer_running,
+            .alarm_hour = client->alarm_hour,
+            .alarm_min = client->alarm_min,
+            .alarm_enabled = client->alarm_enabled,
             .selected_row = client->selected_row,
             .note_count = client->note_count,
             .note_editing = client->note_editing,
@@ -954,27 +980,89 @@ static void lumo_app_touch_handle_up(
 
     if (client->app_id == LUMO_APP_CLOCK && client->width > 0 &&
             client->height > 0) {
-        int card = lumo_app_clock_card_at(client->width, client->height,
-            client->touch_down_x, client->touch_down_y);
-        if (card == 1) {
-            struct timespec ts;
-            clock_gettime(CLOCK_MONOTONIC, &ts);
-            uint64_t now_ms = (uint64_t)ts.tv_sec * 1000 +
-                (uint64_t)ts.tv_nsec / 1000000;
-            if (client->stopwatch_running) {
-                client->stopwatch_accumulated_ms +=
-                    now_ms - client->stopwatch_start_ms;
-                client->stopwatch_running = false;
-            } else {
-                client->stopwatch_start_ms = now_ms;
-                client->stopwatch_running = true;
+        int ty = (int)client->touch_down_y;
+        int tx = (int)client->touch_down_x;
+        int tab_w = (int)client->width / 4;
+        int cx = (int)client->width / 2;
+
+        /* tab bar taps (y 48-84) */
+        if (ty >= 48 && ty < 84) {
+            int new_tab = tx / tab_w;
+            if (new_tab >= 0 && new_tab <= 3 &&
+                    new_tab != client->clock_tab) {
+                client->clock_tab = new_tab;
+                (void)lumo_app_client_redraw(client);
             }
-            (void)lumo_app_client_redraw(client);
-        } else if (card == 2) {
-            client->stopwatch_accumulated_ms = 0;
-            client->stopwatch_running = false;
-            client->stopwatch_start_ms = 0;
-            (void)lumo_app_client_redraw(client);
+            return;
+        }
+
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        uint64_t now_ms = (uint64_t)ts.tv_sec * 1000 +
+            (uint64_t)ts.tv_nsec / 1000000;
+
+        if (client->clock_tab == 2) {
+            /* stopwatch: left half = start/stop, right half = reset */
+            if (ty >= 240) {
+                if (tx < cx) {
+                    /* start/stop */
+                    if (client->stopwatch_running) {
+                        client->stopwatch_accumulated_ms +=
+                            now_ms - client->stopwatch_start_ms;
+                        client->stopwatch_running = false;
+                    } else {
+                        client->stopwatch_start_ms = now_ms;
+                        client->stopwatch_running = true;
+                    }
+                } else {
+                    /* reset */
+                    client->stopwatch_accumulated_ms = 0;
+                    client->stopwatch_running = false;
+                    client->stopwatch_start_ms = 0;
+                }
+                (void)lumo_app_client_redraw(client);
+            }
+        } else if (client->clock_tab == 3) {
+            /* timer controls */
+            if (ty >= 230 && ty < 266) {
+                /* +1M or +5M */
+                if (tx < cx) {
+                    client->timer_total_sec += 60;
+                } else {
+                    client->timer_total_sec += 300;
+                }
+                (void)lumo_app_client_redraw(client);
+            } else if (ty >= 280) {
+                if (tx < cx) {
+                    /* start/stop */
+                    if (client->timer_running) {
+                        client->timer_running = false;
+                    } else if (client->timer_total_sec > 0) {
+                        client->timer_start_ms = now_ms;
+                        client->timer_running = true;
+                    }
+                } else {
+                    /* reset */
+                    client->timer_running = false;
+                    client->timer_total_sec = 0;
+                    client->timer_start_ms = 0;
+                }
+                (void)lumo_app_client_redraw(client);
+            }
+        } else if (client->clock_tab == 1) {
+            /* alarm controls */
+            if (ty >= 190 && ty < 226) {
+                /* toggle alarm */
+                client->alarm_enabled = !client->alarm_enabled;
+                (void)lumo_app_client_redraw(client);
+            } else if (ty >= 242) {
+                if (tx < cx) {
+                    client->alarm_hour = (client->alarm_hour + 1) % 24;
+                } else {
+                    client->alarm_min = (client->alarm_min + 5) % 60;
+                }
+                (void)lumo_app_client_redraw(client);
+            }
         }
     }
 
@@ -1712,6 +1800,8 @@ int main(int argc, char **argv) {
         .note_editing = -1,
         .pty_fd = -1,
         .pty_pid = 0,
+        .alarm_hour = 6,
+        .alarm_min = 30,
     };
 
     for (int i = 1; i < argc; i++) {

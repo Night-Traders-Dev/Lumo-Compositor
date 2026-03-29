@@ -1,101 +1,333 @@
 #include "lumo/app_render.h"
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 
+/* hit test: returns tab index (0-3) for tab bar taps,
+ * 10 = stopwatch start/stop, 11 = stopwatch reset,
+ * 20 = timer +1m, 21 = timer +5m, 22 = timer start/stop, 23 = timer reset,
+ * 30 = alarm toggle, 31 = alarm hour+, 32 = alarm min+ */
 int lumo_app_clock_card_at(
     uint32_t width, uint32_t height, double x, double y
 ) {
-    int card1_y = (int)height / 2 + 20;
-    int card2_y = (int)height / 2 + 130;
-    (void)width;
-    if (x < 28.0 || x > (double)width - 28.0) return -1;
-    if (y >= card1_y && y < card1_y + 90) return 1;
-    if (y >= card2_y && y < card2_y + 90) return 2;
+    int tab_w = (int)width / 4;
+    int tab_y = 48;
+    (void)height;
+
+    /* tab bar */
+    if (y >= tab_y && y < tab_y + 36) {
+        int tab = (int)x / tab_w;
+        if (tab >= 0 && tab <= 3) return tab;
+    }
+
+    /* content area actions depend on which tab is active, but
+     * we return generic zones here — the client maps them */
+    int content_y = 96;
+    if (y >= content_y) {
+        int zone = ((int)y - content_y) / 60;
+        int half = (int)x >= (int)width / 2 ? 1 : 0;
+        return 10 + zone * 2 + half;
+    }
     return -1;
+}
+
+static void draw_tab_bar(uint32_t *pixels, uint32_t width, uint32_t height,
+    int active_tab, const struct lumo_app_theme *theme)
+{
+    static const char *tabs[] = {"CLOCK", "ALARM", "STOPWATCH", "TIMER"};
+    int tab_w = (int)width / 4;
+    int tab_y = 48;
+
+    for (int i = 0; i < 4; i++) {
+        int tx = i * tab_w;
+        bool active = (i == active_tab);
+        uint32_t color = active ? theme->accent : theme->text_dim;
+
+        lumo_app_draw_text(pixels, width, height,
+            tx + (tab_w - (int)strlen(tabs[i]) * 12) / 2,
+            tab_y + 10, 2, color, tabs[i]);
+
+        if (active) {
+            struct lumo_rect indicator = {tx + 8, tab_y + 32,
+                tab_w - 16, 3};
+            lumo_app_fill_rounded_rect(pixels, width, height,
+                &indicator, 1, theme->accent);
+        }
+    }
+
+    /* separator */
+    lumo_app_fill_rect(pixels, width, height, 0, tab_y + 36,
+        (int)width, 1, theme->separator);
+}
+
+static void draw_clock_tab(uint32_t *pixels, uint32_t width, uint32_t height,
+    const struct lumo_app_theme *theme)
+{
+    time_t now = time(NULL);
+    struct tm tm_now = {0};
+    char time_buf[16], date_buf[32], day_buf[16], zone_buf[8];
+
+    localtime_r(&now, &tm_now);
+    strftime(time_buf, sizeof(time_buf), "%H:%M:%S", &tm_now);
+    strftime(date_buf, sizeof(date_buf), "%B %d, %Y", &tm_now);
+    strftime(day_buf, sizeof(day_buf), "%A", &tm_now);
+    strftime(zone_buf, sizeof(zone_buf), "%Z", &tm_now);
+
+    int cx = (int)width / 2;
+    int y = 120;
+
+    /* large time */
+    {
+        int tw = (int)strlen(time_buf) * 8 * 6 - 8;
+        lumo_app_draw_text(pixels, width, height,
+            cx - tw / 2, y, 8, theme->accent, time_buf);
+    }
+    y += 70;
+
+    /* day name */
+    {
+        int dw = (int)strlen(day_buf) * 3 * 6 - 3;
+        lumo_app_draw_text(pixels, width, height,
+            cx - dw / 2, y, 3, theme->text, day_buf);
+    }
+    y += 30;
+
+    /* full date */
+    {
+        int dw = (int)strlen(date_buf) * 2 * 6 - 2;
+        lumo_app_draw_text(pixels, width, height,
+            cx - dw / 2, y, 2, theme->text_dim, date_buf);
+    }
+    y += 24;
+
+    /* timezone */
+    {
+        int zw = (int)strlen(zone_buf) * 2 * 6 - 2;
+        lumo_app_draw_text(pixels, width, height,
+            cx - zw / 2, y, 2, theme->text_dim, zone_buf);
+    }
+
+    /* unix timestamp */
+    y += 40;
+    {
+        char unix_buf[32];
+        snprintf(unix_buf, sizeof(unix_buf), "UNIX %ld", (long)now);
+        int uw = (int)strlen(unix_buf) * 2 * 6 - 2;
+        lumo_app_draw_text(pixels, width, height,
+            cx - uw / 2, y, 2, theme->separator, unix_buf);
+    }
+}
+
+static void draw_alarm_tab(uint32_t *pixels, uint32_t width, uint32_t height,
+    const struct lumo_app_render_context *ctx,
+    const struct lumo_app_theme *theme)
+{
+    int cx = (int)width / 2;
+    int y = 110;
+    uint32_t ah = ctx != NULL ? ctx->alarm_hour : 6;
+    uint32_t am = ctx != NULL ? ctx->alarm_min : 30;
+    bool enabled = ctx != NULL ? ctx->alarm_enabled : false;
+    char alarm_buf[8];
+
+    snprintf(alarm_buf, sizeof(alarm_buf), "%02u:%02u", ah, am);
+
+    /* large alarm time */
+    {
+        int tw = (int)strlen(alarm_buf) * 8 * 6 - 8;
+        lumo_app_draw_text(pixels, width, height,
+            cx - tw / 2, y, 8, enabled ? theme->accent : theme->text_dim,
+            alarm_buf);
+    }
+    y += 80;
+
+    /* toggle */
+    {
+        const char *label = enabled ? "ALARM ON" : "ALARM OFF";
+        uint32_t btn_color = enabled ? theme->accent : theme->card_bg;
+        struct lumo_rect btn = {cx - 80, y, 160, 36};
+        lumo_app_fill_rounded_rect(pixels, width, height, &btn, 18,
+            btn_color);
+        lumo_app_draw_text_centered(pixels, width, height, &btn, 2,
+            theme->text, label);
+    }
+    y += 52;
+
+    /* adjust buttons */
+    {
+        struct lumo_rect hr_btn = {cx - 140, y, 120, 36};
+        struct lumo_rect mn_btn = {cx + 20, y, 120, 36};
+        lumo_app_fill_rounded_rect(pixels, width, height, &hr_btn, 12,
+            theme->card_bg);
+        lumo_app_draw_outline(pixels, width, height, &hr_btn, 1,
+            theme->card_stroke);
+        lumo_app_draw_text_centered(pixels, width, height, &hr_btn, 2,
+            theme->text, "HOUR +");
+        lumo_app_fill_rounded_rect(pixels, width, height, &mn_btn, 12,
+            theme->card_bg);
+        lumo_app_draw_outline(pixels, width, height, &mn_btn, 1,
+            theme->card_stroke);
+        lumo_app_draw_text_centered(pixels, width, height, &mn_btn, 2,
+            theme->text, "MIN +");
+    }
+}
+
+static void draw_stopwatch_tab(uint32_t *pixels, uint32_t width,
+    uint32_t height, const struct lumo_app_render_context *ctx,
+    const struct lumo_app_theme *theme)
+{
+    int cx = (int)width / 2;
+    int y = 120;
+    uint64_t ms = ctx != NULL ? ctx->stopwatch_elapsed_ms : 0;
+    bool running = ctx != NULL && ctx->stopwatch_running;
+    uint32_t secs = (uint32_t)(ms / 1000);
+    uint32_t mins = secs / 60;
+    uint32_t hrs = mins / 60;
+    uint32_t centis = (uint32_t)((ms % 1000) / 10);
+    char sw_buf[16];
+
+    snprintf(sw_buf, sizeof(sw_buf), "%02u:%02u:%02u", hrs, mins % 60,
+        secs % 60);
+
+    /* large stopwatch time */
+    {
+        int tw = (int)strlen(sw_buf) * 8 * 6 - 8;
+        lumo_app_draw_text(pixels, width, height,
+            cx - tw / 2, y, 8,
+            running ? theme->accent : theme->text, sw_buf);
+    }
+    y += 70;
+
+    /* centiseconds */
+    {
+        char cs_buf[8];
+        snprintf(cs_buf, sizeof(cs_buf), ".%02u", centis);
+        int cw = (int)strlen(cs_buf) * 4 * 6 - 4;
+        lumo_app_draw_text(pixels, width, height,
+            cx - cw / 2, y, 4, theme->text_dim, cs_buf);
+    }
+    y += 50;
+
+    /* start/stop and reset buttons */
+    {
+        struct lumo_rect start_btn = {cx - 140, y, 120, 40};
+        struct lumo_rect reset_btn = {cx + 20, y, 120, 40};
+        lumo_app_fill_rounded_rect(pixels, width, height, &start_btn, 14,
+            running ? theme->card_bg : theme->accent);
+        lumo_app_draw_text_centered(pixels, width, height, &start_btn, 2,
+            theme->text, running ? "STOP" : "START");
+        lumo_app_fill_rounded_rect(pixels, width, height, &reset_btn, 14,
+            theme->card_bg);
+        lumo_app_draw_outline(pixels, width, height, &reset_btn, 1,
+            theme->card_stroke);
+        lumo_app_draw_text_centered(pixels, width, height, &reset_btn, 2,
+            theme->text, "RESET");
+    }
+}
+
+static void draw_timer_tab(uint32_t *pixels, uint32_t width,
+    uint32_t height, const struct lumo_app_render_context *ctx,
+    const struct lumo_app_theme *theme)
+{
+    int cx = (int)width / 2;
+    int y = 120;
+    uint32_t total = ctx != NULL ? ctx->timer_total_sec : 0;
+    uint32_t remaining = ctx != NULL ? ctx->timer_remaining_sec : 0;
+    bool running = ctx != NULL && ctx->timer_running;
+    uint32_t disp = running ? remaining : total;
+    uint32_t mins = disp / 60;
+    uint32_t secs = disp % 60;
+    char tm_buf[8];
+
+    snprintf(tm_buf, sizeof(tm_buf), "%02u:%02u", mins, secs);
+
+    /* large timer display */
+    {
+        int tw = (int)strlen(tm_buf) * 8 * 6 - 8;
+        lumo_app_draw_text(pixels, width, height,
+            cx - tw / 2, y, 8,
+            running ? theme->accent : theme->text, tm_buf);
+    }
+    y += 80;
+
+    /* progress ring (simplified as a bar) */
+    if (total > 0) {
+        int bar_w = (int)width - 80;
+        int fill_w = running && total > 0
+            ? (int)((uint64_t)remaining * (uint64_t)bar_w / total)
+            : bar_w;
+        struct lumo_rect bar_bg = {40, y, bar_w, 8};
+        struct lumo_rect bar_fill = {40, y, fill_w, 8};
+        lumo_app_fill_rounded_rect(pixels, width, height, &bar_bg, 4,
+            theme->separator);
+        lumo_app_fill_rounded_rect(pixels, width, height, &bar_fill, 4,
+            theme->accent);
+    }
+    y += 30;
+
+    /* preset buttons */
+    {
+        struct lumo_rect btn1 = {cx - 160, y, 70, 36};
+        struct lumo_rect btn5 = {cx - 75, y, 70, 36};
+        lumo_app_fill_rounded_rect(pixels, width, height, &btn1, 12,
+            theme->card_bg);
+        lumo_app_draw_outline(pixels, width, height, &btn1, 1,
+            theme->card_stroke);
+        lumo_app_draw_text_centered(pixels, width, height, &btn1, 2,
+            theme->text, "+1M");
+        lumo_app_fill_rounded_rect(pixels, width, height, &btn5, 12,
+            theme->card_bg);
+        lumo_app_draw_outline(pixels, width, height, &btn5, 1,
+            theme->card_stroke);
+        lumo_app_draw_text_centered(pixels, width, height, &btn5, 2,
+            theme->text, "+5M");
+    }
+    y += 50;
+
+    /* start/stop and reset */
+    {
+        struct lumo_rect start_btn = {cx - 140, y, 120, 40};
+        struct lumo_rect reset_btn = {cx + 20, y, 120, 40};
+        lumo_app_fill_rounded_rect(pixels, width, height, &start_btn, 14,
+            running ? theme->card_bg : theme->accent);
+        lumo_app_draw_text_centered(pixels, width, height, &start_btn, 2,
+            theme->text, running ? "STOP" : "START");
+        lumo_app_fill_rounded_rect(pixels, width, height, &reset_btn, 14,
+            theme->card_bg);
+        lumo_app_draw_outline(pixels, width, height, &reset_btn, 1,
+            theme->card_stroke);
+        lumo_app_draw_text_centered(pixels, width, height, &reset_btn, 2,
+            theme->text, "RESET");
+    }
 }
 
 void lumo_app_render_clock(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels, uint32_t width, uint32_t height
 ) {
-    struct lumo_rect full = {0, 0, (int)width, (int)height};
-    struct lumo_rect close_rect = {0};
-    bool close_active = ctx != NULL ? ctx->close_active : false;
-    uint32_t accent = lumo_app_accent_argb(LUMO_APP_CLOCK);
-    uint32_t bg_top = lumo_app_argb(0xFF, 0x2C, 0x00, 0x1E);
-    uint32_t bg_bottom = lumo_app_argb(0xFF, 0x1D, 0x11, 0x22);
-    uint32_t text_primary = lumo_app_argb(0xFF, 0xFF, 0xFF, 0xFF);
-    uint32_t text_secondary = lumo_app_argb(0xFF, 0xAE, 0xA7, 0x9F);
-    uint32_t panel_fill = lumo_app_argb(0xFF, 0x2C, 0x16, 0x28);
-    uint32_t panel_stroke = lumo_app_argb(0xFF, 0x5E, 0x2C, 0x56);
-    time_t now = time(NULL);
-    struct tm tm_now = {0};
-    char time_buf[16] = {0};
-    char date_buf[32] = {0};
-    int cx = (int)width / 2;
+    struct lumo_app_theme theme;
+    int tab = ctx != NULL ? ctx->clock_tab : 0;
 
-    localtime_r(&now, &tm_now);
-    strftime(time_buf, sizeof(time_buf), "%H:%M:%S", &tm_now);
-    strftime(date_buf, sizeof(date_buf), "%Y-%m-%d", &tm_now);
-
+    lumo_app_theme_get(&theme);
     memset(pixels, 0, (size_t)width * height * 4);
-    lumo_app_fill_gradient(pixels, width, height, &full, bg_top, bg_bottom);
+    lumo_app_draw_background(pixels, width, height);
 
-    {
-        int tw = (int)strlen(time_buf) * 8 * 6 - 8;
-        lumo_app_draw_text(pixels, width, height, cx - tw / 2,
-            (int)height / 4 - 28, 8, accent, time_buf);
-    }
-    {
-        int dw = (int)strlen(date_buf) * 3 * 6 - 3;
-        lumo_app_draw_text(pixels, width, height, cx - dw / 2,
-            (int)height / 4 + 40, 3, text_secondary, date_buf);
-    }
+    /* header */
+    lumo_app_fill_rect(pixels, width, height, 0, 0, (int)width, 48,
+        theme.header_bg);
+    lumo_app_draw_text(pixels, width, height, 16, 16, 3, theme.accent,
+        "CLOCK");
+    lumo_app_fill_rect(pixels, width, height, 0, 47, (int)width, 1,
+        theme.separator);
 
-    {
-        struct lumo_rect alarm_card = {
-            .x = 28, .y = (int)height / 2 + 20,
-            .width = (int)width - 56, .height = 90
-        };
-        lumo_app_fill_rounded_rect(pixels, width, height, &alarm_card, 18,
-            panel_fill);
-        lumo_app_draw_outline(pixels, width, height, &alarm_card, 2,
-            panel_stroke);
-        lumo_app_draw_text(pixels, width, height, alarm_card.x + 20,
-            alarm_card.y + 16, 2, text_secondary, "ALARM");
-        lumo_app_draw_text(pixels, width, height, alarm_card.x + 20,
-            alarm_card.y + 46, 3, text_primary, "06:30 TOMORROW");
-        lumo_app_draw_text(pixels, width, height,
-            alarm_card.x + alarm_card.width - 80,
-            alarm_card.y + 50, 2, text_secondary, "06:30");
-    }
-    {
-        struct lumo_rect timer_card = {
-            .x = 28, .y = (int)height / 2 + 130,
-            .width = (int)width - 56, .height = 90
-        };
-        uint64_t sw_ms = ctx != NULL ? ctx->stopwatch_elapsed_ms : 0;
-        bool sw_run = ctx != NULL && ctx->stopwatch_running;
-        uint32_t sw_secs = (uint32_t)(sw_ms / 1000);
-        uint32_t sw_mins = sw_secs / 60;
-        uint32_t sw_hrs = sw_mins / 60;
-        char sw_buf[16];
-        snprintf(sw_buf, sizeof(sw_buf), "%02u:%02u:%02u",
-            sw_hrs, sw_mins % 60, sw_secs % 60);
+    /* tab bar */
+    draw_tab_bar(pixels, width, height, tab, &theme);
 
-        lumo_app_fill_rounded_rect(pixels, width, height, &timer_card, 18,
-            panel_fill);
-        lumo_app_draw_outline(pixels, width, height, &timer_card, 2,
-            panel_stroke);
-        lumo_app_draw_text(pixels, width, height, timer_card.x + 20,
-            timer_card.y + 16, 2, text_secondary,
-            sw_run ? "STOPWATCH  RUNNING" : "STOPWATCH  TAP TO START");
-        lumo_app_draw_text(pixels, width, height, timer_card.x + 20,
-            timer_card.y + 46, 3, sw_run ? accent : text_primary, sw_buf);
-        lumo_app_draw_text(pixels, width, height,
-            timer_card.x + timer_card.width - 100,
-            timer_card.y + 50, 2, text_secondary, "TAP:RESET");
+    /* tab content */
+    switch (tab) {
+    case 0: draw_clock_tab(pixels, width, height, &theme); break;
+    case 1: draw_alarm_tab(pixels, width, height, ctx, &theme); break;
+    case 2: draw_stopwatch_tab(pixels, width, height, ctx, &theme); break;
+    case 3: draw_timer_tab(pixels, width, height, ctx, &theme); break;
+    default: draw_clock_tab(pixels, width, height, &theme); break;
     }
-
-    /* close button removed — use bottom-edge swipe */
 }
