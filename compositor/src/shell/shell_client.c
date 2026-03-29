@@ -958,14 +958,11 @@ static void lumo_draw_launcher(
 
     /* GNOME 3.x style app grid with search bar */
     {
-        /* adaptive columns: use available width to spread out like GNOME */
+        /* 4-column grid — spread across full width */
         int icon_size = 56;
-        int min_cell = icon_size + 36;
-        int cols = (int)width / min_cell;
-        if (cols > 6) cols = 6;
-        if (cols < 3) cols = 3;
-        int cell_w = ((int)width - 48) / cols; /* fill width with margins */
-        int cell_h = icon_size + 36;
+        int cols = 4;
+        int cell_w = ((int)width - 48) / cols;
+        int cell_h = icon_size + 40;
         int total_rows = ((int)tile_count + cols - 1) / cols;
         int grid_w = cols * cell_w;
         int grid_x_start = ((int)width - grid_w) / 2;

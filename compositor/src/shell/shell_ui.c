@@ -125,15 +125,11 @@ static bool lumo_shell_launcher_geometry(
     uint32_t tile_index,
     struct lumo_rect *rect
 ) {
-    /* GNOME 3.x style — adaptive columns, must match shell_client.c */
+    /* 4-column grid — must match shell_client.c */
     uint32_t icon_size = 56;
-    uint32_t min_cell = icon_size + 36;
-    uint32_t cols = output_width / min_cell;
+    uint32_t cols = 4;
     uint32_t cell_w, cell_h, grid_w, grid_x, grid_y;
     uint32_t row, col, cx;
-
-    if (cols > 6) cols = 6;
-    if (cols < 3) cols = 3;
 
     if (rect == NULL || output_width == 0 || output_height == 0 ||
             tile_index >= lumo_shell_launcher_columns * lumo_shell_launcher_rows) {
@@ -141,7 +137,7 @@ static bool lumo_shell_launcher_geometry(
     }
 
     cell_w = (output_width - 48) / cols;
-    cell_h = icon_size + 36;
+    cell_h = icon_size + 40;
     grid_w = cols * cell_w;
     grid_x = (output_width - grid_w) / 2;
     grid_y = 60 + 40 + 16; /* search bar (40) + padding */
