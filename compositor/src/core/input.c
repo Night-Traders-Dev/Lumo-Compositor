@@ -534,6 +534,7 @@ static void lumo_input_focus_surface(
                         wlr_log(WLR_INFO,
                             "input: auto-show keyboard for %s",
                             tl->xdg_toplevel->app_id);
+                        compositor->keyboard_auto_shown = true;
                         lumo_protocol_set_keyboard_visible(compositor, true);
                     }
                     break;

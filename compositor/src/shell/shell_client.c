@@ -151,9 +151,7 @@ static uint32_t lumo_u32_min(uint32_t lhs, uint32_t rhs) {
     return lhs < rhs ? lhs : rhs;
 }
 
-static uint32_t lumo_u32_max(uint32_t lhs, uint32_t rhs) {
-    return lhs > rhs ? lhs : rhs;
-}
+/* lumo_u32_max removed — unused */
 
 static double lumo_clamp_unit(double value) {
     if (value < 0.0) {
@@ -183,10 +181,7 @@ static double lumo_ease_standard(double value) {
     return 1.0 - u * u * u / 2.0;
 }
 
-/* backward compat alias */
-static double lumo_ease_out_cubic(double value) {
-    return lumo_ease_decelerate(value);
-}
+/* lumo_ease_out_cubic removed — use lumo_ease_decelerate directly */
 
 static uint64_t lumo_now_msec(void) {
     struct timespec now = {0};

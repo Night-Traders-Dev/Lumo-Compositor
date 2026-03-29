@@ -54,6 +54,18 @@ struct lumo_app_theme {
 };
 void lumo_app_theme_get(struct lumo_app_theme *theme);
 
+void lumo_app_render_music(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
+void lumo_app_render_photos(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
+void lumo_app_render_videos(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
 void lumo_app_render_clock(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels, uint32_t width, uint32_t height

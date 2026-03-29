@@ -1638,17 +1638,6 @@ static void lumo_write_volume_pct(uint32_t pct) {
     }
 }
 
-static void lumo_refresh_vol_bright(struct lumo_compositor *compositor) {
-    if (compositor == NULL) return;
-    uint32_t vol = lumo_read_volume_pct();
-    uint32_t bri = lumo_read_brightness_pct();
-    if (vol != compositor->volume_pct || bri != compositor->brightness_pct) {
-        compositor->volume_pct = vol;
-        compositor->brightness_pct = bri;
-        lumo_shell_mark_state_dirty(compositor);
-    }
-}
-
 static void lumo_shell_play_boot_sound(void) {
     /* generate a short two-tone chime WAV in /tmp and play it async */
     pid_t pid = fork();

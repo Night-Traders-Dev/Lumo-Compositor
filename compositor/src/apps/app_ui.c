@@ -428,6 +428,12 @@ void lumo_app_render(
         lumo_app_render_notes(ctx, pixels, width, height); return;
     case LUMO_APP_MESSAGES:
         lumo_app_render_terminal(ctx, pixels, width, height); return;
+    case LUMO_APP_MUSIC:
+        lumo_app_render_music(ctx, pixels, width, height); return;
+    case LUMO_APP_PHOTOS:
+        lumo_app_render_photos(ctx, pixels, width, height); return;
+    case LUMO_APP_VIDEOS:
+        lumo_app_render_videos(ctx, pixels, width, height); return;
     default:
         lumo_app_render_stub(ctx, pixels, width, height); return;
     }

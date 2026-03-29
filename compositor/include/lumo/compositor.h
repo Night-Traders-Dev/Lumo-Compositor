@@ -901,6 +901,7 @@ struct lumo_compositor {
     int weather_code;
     uint32_t volume_pct;
     uint32_t brightness_pct;
+    bool keyboard_auto_shown; /* set when auto-shown by app_id match */
     char toast_message[128];
     uint64_t toast_show_time_ms;
     uint32_t toast_duration_ms;

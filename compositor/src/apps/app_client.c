@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -89,11 +90,106 @@ struct lumo_app_client {
     int pty_line_len;
     char pending_commit[256];
     int pending_commit_len;
+    char media_files[32][64];
+    int media_file_count;
+    int media_selected;
+    bool media_playing;
+    pid_t media_pid;
 };
 
 static bool lumo_app_client_redraw(struct lumo_app_client *client);
 static void lumo_app_notes_save(const struct lumo_app_client *client);
 static void lumo_app_notes_load(struct lumo_app_client *client);
+
+static void lumo_app_scan_media(struct lumo_app_client *client,
+    const char *dir, const char **exts, int ext_count)
+{
+    DIR *d;
+    struct dirent *entry;
+    char path[1200];
+    const char *home = getenv("HOME");
+
+    if (home == NULL) home = "/home/orangepi";
+    snprintf(path, sizeof(path), "%s/%s", home, dir);
+    client->media_file_count = 0;
+    client->media_selected = -1;
+    client->media_playing = false;
+
+    d = opendir(path);
+    if (d == NULL) {
+        /* create the directory if it doesn't exist */
+        (void)mkdir(path, 0755);
+        return;
+    }
+
+    while ((entry = readdir(d)) != NULL &&
+            client->media_file_count < 32) {
+        if (entry->d_name[0] == '.') continue;
+        const char *dot = strrchr(entry->d_name, '.');
+        if (dot == NULL) continue;
+        bool match = false;
+        for (int i = 0; i < ext_count; i++) {
+            if (strcasecmp(dot, exts[i]) == 0) {
+                match = true;
+                break;
+            }
+        }
+        if (match) {
+            strncpy(client->media_files[client->media_file_count],
+                entry->d_name,
+                sizeof(client->media_files[0]) - 1);
+            client->media_files[client->media_file_count]
+                [sizeof(client->media_files[0]) - 1] = '\0';
+            client->media_file_count++;
+        }
+    }
+    closedir(d);
+}
+
+static void lumo_app_media_play(struct lumo_app_client *client,
+    const char *dir)
+{
+    if (client->media_selected < 0 ||
+            client->media_selected >= client->media_file_count) {
+        return;
+    }
+    /* kill previous playback */
+    if (client->media_pid > 0) {
+        kill(client->media_pid, SIGTERM);
+        waitpid(client->media_pid, NULL, WNOHANG);
+        client->media_pid = 0;
+    }
+    char path[1300];
+    const char *home = getenv("HOME");
+    if (home == NULL) home = "/home/orangepi";
+    snprintf(path, sizeof(path), "%s/%s/%s", home, dir,
+        client->media_files[client->media_selected]);
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        setsid();
+        close(STDIN_FILENO);
+        close(STDOUT_FILENO);
+        close(STDERR_FILENO);
+        execlp("mpv", "mpv", "--no-video", "--really-quiet",
+            path, (char *)NULL);
+        _exit(127);
+    }
+    if (pid > 0) {
+        client->media_pid = pid;
+        client->media_playing = true;
+    }
+}
+
+static void lumo_app_media_stop(struct lumo_app_client *client)
+{
+    if (client->media_pid > 0) {
+        kill(client->media_pid, SIGTERM);
+        waitpid(client->media_pid, NULL, WNOHANG);
+        client->media_pid = 0;
+    }
+    client->media_playing = false;
+}
 
 static void lumo_app_term_add_line(struct lumo_app_client *client,
     const char *line)
@@ -398,10 +494,15 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             .term_line_count = client->term_line_count,
             .term_input_len = client->term_input_len,
             .term_menu_open = client->term_menu_open,
+            .media_file_count = client->media_file_count,
+            .media_selected = client->media_selected,
+            .media_playing = client->media_playing,
         };
         memcpy(ctx.notes, client->notes, sizeof(ctx.notes));
         memcpy(ctx.term_lines, client->term_lines, sizeof(ctx.term_lines));
         memcpy(ctx.term_input, client->term_input, sizeof(ctx.term_input));
+        memcpy(ctx.media_files, client->media_files,
+            sizeof(ctx.media_files));
         lumo_app_render(&ctx, buffer->data, client->width, client->height);
     }
     wl_surface_attach(client->surface, buffer->buffer, 0, 0);
@@ -787,6 +888,62 @@ static void lumo_app_touch_handle_up(
             client->term_menu_open = true;
             (void)lumo_app_client_redraw(client);
             return;
+        }
+    }
+
+    /* media apps: tap on list item to select, tap selected to play/pause */
+    if ((client->app_id == LUMO_APP_MUSIC ||
+            client->app_id == LUMO_APP_PHOTOS ||
+            client->app_id == LUMO_APP_VIDEOS) &&
+            client->media_file_count > 0) {
+        int ty = (int)client->touch_down_y;
+        int list_start = (client->media_selected >= 0 &&
+            client->app_id == LUMO_APP_VIDEOS)
+            ? 56 + (int)client->height / 3 + 72 : 144;
+        if (client->app_id == LUMO_APP_PHOTOS) {
+            /* grid: compute cell from touch position */
+            int cols = 3;
+            int pad = 8;
+            int cell_w = ((int)client->width - pad * (cols + 1)) / cols;
+            int cell_h = cell_w * 3 / 4;
+            int col = ((int)client->touch_down_x - pad) / (cell_w + pad);
+            int row = (ty - 56) / (cell_h + pad);
+            int idx = client->scroll_offset + row * cols + col;
+            if (col >= 0 && col < cols && idx >= 0 &&
+                    idx < client->media_file_count) {
+                client->media_selected = idx;
+                (void)lumo_app_client_redraw(client);
+            }
+        } else if (ty >= list_start) {
+            int row_h = (client->app_id == LUMO_APP_MUSIC) ? 36 : 40;
+            int idx = client->scroll_offset +
+                (ty - list_start) / row_h;
+            if (idx >= 0 && idx < client->media_file_count) {
+                if (idx == client->media_selected) {
+                    /* tap selected item: toggle play */
+                    if (client->media_playing) {
+                        lumo_app_media_stop(client);
+                    } else {
+                        const char *dir =
+                            client->app_id == LUMO_APP_MUSIC ? "Music" :
+                            "Videos";
+                        lumo_app_media_play(client, dir);
+                    }
+                } else {
+                    client->media_selected = idx;
+                }
+                (void)lumo_app_client_redraw(client);
+            }
+        } else if (client->media_selected >= 0 && ty < list_start) {
+            /* tap on now playing / preview area: toggle */
+            if (client->media_playing) {
+                lumo_app_media_stop(client);
+            } else {
+                const char *dir =
+                    client->app_id == LUMO_APP_MUSIC ? "Music" : "Videos";
+                lumo_app_media_play(client, dir);
+            }
+            (void)lumo_app_client_redraw(client);
         }
     }
 
@@ -1573,6 +1730,24 @@ int main(int argc, char **argv) {
 
     if (client.app_id == LUMO_APP_NOTES) {
         lumo_app_notes_load(&client);
+    }
+    if (client.app_id == LUMO_APP_MUSIC) {
+        static const char *audio_exts[] = {".mp3", ".wav", ".ogg", ".flac",
+            ".m4a", ".aac"};
+        lumo_app_scan_media(&client, "Music",
+            audio_exts, sizeof(audio_exts) / sizeof(audio_exts[0]));
+    }
+    if (client.app_id == LUMO_APP_PHOTOS) {
+        static const char *image_exts[] = {".jpg", ".jpeg", ".png", ".bmp",
+            ".gif", ".webp"};
+        lumo_app_scan_media(&client, "Pictures",
+            image_exts, sizeof(image_exts) / sizeof(image_exts[0]));
+    }
+    if (client.app_id == LUMO_APP_VIDEOS) {
+        static const char *video_exts[] = {".mp4", ".mkv", ".avi", ".mov",
+            ".webm"};
+        lumo_app_scan_media(&client, "Videos",
+            video_exts, sizeof(video_exts) / sizeof(video_exts[0]));
     }
 
     client.display = wl_display_connect(NULL);

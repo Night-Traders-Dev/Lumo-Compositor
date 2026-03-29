@@ -157,6 +157,12 @@ void lumo_protocol_refresh_keyboard_visibility(
      * text-input-v3 (meaning a text field is focused, not just any
      * toplevel).  Apps that want the OSK must implement text-input. */
 
+    /* don't let refresh hide the keyboard when it was auto-shown
+     * by app_id match — the text-input protocol race makes
+     * current_enabled and pending_enabled unreliable */
+    if (!visible && compositor->keyboard_auto_shown) {
+        return;
+    }
     if (compositor->keyboard_visible && !visible) {
         wlr_log(WLR_INFO,
             "protocol: refresh_keyboard hiding kbd "
@@ -1290,6 +1296,9 @@ void lumo_protocol_set_keyboard_visible(
     }
 
     compositor->keyboard_visible = visible;
+    if (!visible) {
+        compositor->keyboard_auto_shown = false;
+    }
     compositor->keyboard_resize_serial++;
     compositor->keyboard_resize_pending = visible;
     compositor->keyboard_resize_acked = !visible;

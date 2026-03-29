@@ -50,6 +50,11 @@ struct lumo_app_render_context {
     char term_input[82];
     int term_input_len;
     bool term_menu_open;
+    /* media apps */
+    char media_files[32][64];
+    int media_file_count;
+    int media_selected;
+    bool media_playing;
 };
 
 void lumo_app_render(
