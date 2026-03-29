@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.56] - 2026-03-29
+
+- OSK virtual keyboard fallback: when text-input-v3 fails (race condition), OSK keys are sent as real wl_keyboard key events via wlr_seat_keyboard_notify_key(). Terminal, notes, and all apps now receive OSK input reliably.
+- Functional search bar in app drawer: tap "TYPE TO SEARCH..." to activate OSK, type to filter apps by name (case-insensitive substring match), backspace removes characters, search clears when drawer closes.
+- GNOME 3.x style app drawer: 4x3 grid with centered icons, translucent overlay background, search bar at top, adaptive spacing.
+- Functional browser (lumo-browser): standalone GTK4+WebKitGTK 6.0 Wayland client with local start page, URL bar with smart input (auto-https, localhost→http, percent-encoded search), back/forward/reload. Falls back to stub if WebKitGTK unavailable.
+- Functional Photos app: PNG/JPEG decoding via libpng/libjpeg, fullscreen viewer with aspect-fit scaling, 3-column grid with scroll, tap-to-select then tap-to-view.
+- Functional Clock app: 4 tabs (Clock, Alarm, Stopwatch, Timer) with persistent settings via ~/.lumo-clock.
+- Functional Notes app: three-state editing (select→edit→done), blinking cursor, OSK text input via virtual keyboard, backspace support, persistence via ~/.lumo-notes.
+- Fixed input bleed-through: edge tap replays are dropped when a toplevel is focused and the launcher is hidden, preventing tiles behind the active app from receiving accidental touches.
+- Fixed browser binary fallback: launcher tries sibling builddir path, PATH lookup, then lumo-app stub.
+- Fixed browser URL handling: localhost gets http:// prefix, search queries are percent-encoded.
+- Fixed close_focused_app: fallback closes first toplevel when no surface has keyboard focus (GTK fullscreen apps).
+- Fixed weather fetch: poll timeout reduced from 5s to 500ms, weather timer cleaned up on shell stop.
+- Fixed hitbox leak: hitboxes cleared before protocol_started early-return check.
+- Fixed gesture zone: increased to 48-80px height for more reliable bottom-edge swipes.
+- Removed dead code: close button renderer emptied, unused variables suppressed.
+
 ## [0.0.55] - 2026-03-29
 
 - Functional Music app: scans ~/Music for audio files (.mp3/.wav/.ogg/.flac/.m4a), track list with selection, play/pause via mpv, animated progress bar.

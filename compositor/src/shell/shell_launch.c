@@ -835,6 +835,52 @@ static const char *lumo_shell_bridge_commit_osk_text(
                 compositor->toast_message);
             return NULL;
         }
+        /* fallback: if a toplevel is focused, send the key as a
+         * virtual keyboard keypress via wlr_seat. This bypasses
+         * text-input-v3 entirely — the app receives it as a normal
+         * wl_keyboard key event, which the terminal and notes apps
+         * already handle in their keyboard listener. */
+        if (compositor->seat != NULL &&
+                !wl_list_empty(&compositor->toplevels)) {
+            struct wlr_keyboard *kbd =
+                wlr_seat_get_keyboard(compositor->seat);
+            if (kbd != NULL) {
+                /* map OSK text to Linux keycode */
+                static const struct { char ch; uint32_t code; } map[] = {
+                    {'a',30},{'b',48},{'c',46},{'d',32},{'e',18},
+                    {'f',33},{'g',34},{'h',35},{'i',23},{'j',36},
+                    {'k',37},{'l',38},{'m',50},{'n',49},{'o',24},
+                    {'p',25},{'q',16},{'r',19},{'s',31},{'t',20},
+                    {'u',22},{'v',47},{'w',17},{'x',45},{'y',21},
+                    {'z',44},{' ',57},{'\n',28},{',',51},{'.',52},
+                    {'?',53},{'1',2},{'2',3},{'3',4},{'4',5},
+                    {'5',6},{'6',7},{'7',8},{'8',9},{'9',10},
+                    {'0',11},{'-',12},{'=',13},
+                };
+                uint32_t keycode = 0;
+                char ch = text[0];
+                if (ch == '\b') {
+                    keycode = 14; /* KEY_BACKSPACE */
+                } else {
+                    for (size_t i = 0; i < sizeof(map)/sizeof(map[0]); i++) {
+                        if (map[i].ch == ch) {
+                            keycode = map[i].code;
+                            break;
+                        }
+                    }
+                }
+                if (keycode > 0) {
+                    wlr_seat_keyboard_notify_key(compositor->seat,
+                        0, keycode, WL_KEYBOARD_KEY_STATE_PRESSED);
+                    wlr_seat_keyboard_notify_key(compositor->seat,
+                        1, keycode, WL_KEYBOARD_KEY_STATE_RELEASED);
+                    wlr_log(WLR_INFO,
+                        "shell: osk key '%c' sent as keycode %u",
+                        ch > 31 ? ch : '?', keycode);
+                    return NULL;
+                }
+            }
+        }
         if (reason_out != NULL) {
             *reason_out = "text_input_v3";
         }

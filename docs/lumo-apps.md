@@ -2,6 +2,17 @@
 
 All apps are built as a single `lumo-app` binary with `--app <name>` to
 select the app. They use xdg-shell as Wayland clients with SHM rendering.
+The browser is a separate `lumo-browser` binary using GTK4+WebKitGTK.
+
+## OSK Input
+
+The on-screen keyboard sends key presses to apps via a **virtual keyboard
+fallback**. When text-input-v3 protocol fails (common race condition with
+`focused_surface`), the compositor converts OSK characters to Linux keycodes
+and sends them as `wl_keyboard` key events via `wlr_seat_keyboard_notify_key()`.
+Apps receive these in their standard `wl_keyboard` listener.
+
+When the app drawer is showing, OSK keys are routed to the search bar instead.
 
 ## Functional Apps
 
