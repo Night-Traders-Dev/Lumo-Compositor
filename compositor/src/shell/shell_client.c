@@ -958,40 +958,42 @@ static void lumo_draw_launcher(
 
     /* GNOME 3.x style app grid with search bar */
     {
-        int cols = 4;
+        /* adaptive columns: use available width to spread out like GNOME */
         int icon_size = 56;
-        int gap_x = 24;
-        int gap_y = 20;
-        int cell_w = icon_size + 24;
-        int cell_h = icon_size + 30;
+        int min_cell = icon_size + 36;
+        int cols = (int)width / min_cell;
+        if (cols > 6) cols = 6;
+        if (cols < 3) cols = 3;
+        int cell_w = ((int)width - 48) / cols; /* fill width with margins */
+        int cell_h = icon_size + 36;
         int total_rows = ((int)tile_count + cols - 1) / cols;
-        int grid_w = cols * cell_w + (cols - 1) * gap_x;
-        int grid_h = total_rows * (cell_h + gap_y) - gap_y;
+        int grid_w = cols * cell_w;
         int grid_x_start = ((int)width - grid_w) / 2;
-        /* position grid in upper portion, not dead center */
         int search_bar_h = 40;
-        int top_pad = 56 + search_bar_h + 24;
+        int top_pad = 60 + search_bar_h + 16;
         int grid_y_start = top_pad + slide_y;
 
         /* search bar */
         {
-            int bar_w = grid_w > 400 ? 400 : grid_w;
+            int bar_w = (int)width * 2 / 5;
+            if (bar_w < 280) bar_w = 280;
+            if (bar_w > 500) bar_w = 500;
             int bar_x = ((int)width - bar_w) / 2;
-            int bar_y = 56 + slide_y + 4;
+            int bar_y = 54 + slide_y;
             struct lumo_rect search_bg = {bar_x, bar_y, bar_w, search_bar_h};
             lumo_fill_rounded_rect(pixels, width, height, &search_bg, 20,
                 lumo_theme.tile_fill);
             lumo_draw_outline(pixels, width, height, &search_bg, 1,
                 lumo_theme.tile_stroke);
             lumo_draw_text_centered(pixels, width, height, &search_bg, 2,
-                lumo_theme.text_secondary, "SEARCH APPS, FILES, SETTINGS");
+                lumo_theme.text_secondary, "TYPE TO SEARCH...");
         }
 
     for (uint32_t tile_index = 0; tile_index < tile_count; tile_index++) {
         int col = (int)tile_index % cols;
         int row = (int)tile_index / cols;
-        int cx = grid_x_start + col * (cell_w + gap_x) + cell_w / 2;
-        int cy = grid_y_start + row * (cell_h + gap_y);
+        int cx = grid_x_start + col * cell_w + cell_w / 2;
+        int cy = grid_y_start + row * cell_h;
         struct lumo_rect tile_rect;
         struct lumo_rect icon_rect;
         struct lumo_rect label_rect;

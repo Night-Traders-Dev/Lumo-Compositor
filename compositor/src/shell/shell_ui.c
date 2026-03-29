@@ -125,35 +125,33 @@ static bool lumo_shell_launcher_geometry(
     uint32_t tile_index,
     struct lumo_rect *rect
 ) {
-    /* GNOME 3.x style centered grid — must match shell_client.c */
-    uint32_t cols = 4;
+    /* GNOME 3.x style — adaptive columns, must match shell_client.c */
     uint32_t icon_size = 56;
-    uint32_t gap_x = 24;
-    uint32_t gap_y = 20;
-    uint32_t cell_w = icon_size + 24;
-    uint32_t cell_h = icon_size + 30;
-    uint32_t grid_w, grid_h, grid_x, grid_y;
-    uint32_t total_rows, row, col, cx;
+    uint32_t min_cell = icon_size + 36;
+    uint32_t cols = output_width / min_cell;
+    uint32_t cell_w, cell_h, grid_w, grid_x, grid_y;
+    uint32_t row, col, cx;
+
+    if (cols > 6) cols = 6;
+    if (cols < 3) cols = 3;
 
     if (rect == NULL || output_width == 0 || output_height == 0 ||
             tile_index >= lumo_shell_launcher_columns * lumo_shell_launcher_rows) {
         return false;
     }
-    total_rows = (lumo_shell_launcher_columns * lumo_shell_launcher_rows +
-        cols - 1) / cols;
-    grid_w = cols * cell_w + (cols - 1) * gap_x;
-    grid_h = total_rows * (cell_h + gap_y) - gap_y;
+
+    cell_w = (output_width - 48) / cols;
+    cell_h = icon_size + 36;
+    grid_w = cols * cell_w;
     grid_x = (output_width - grid_w) / 2;
-    /* position in upper portion: search bar (40) + padding */
-    grid_y = 56 + 40 + 24;
-    (void)grid_h; /* grid_h used only for centering, not needed here */
+    grid_y = 60 + 40 + 16; /* search bar (40) + padding */
 
     row = tile_index / cols;
     col = tile_index % cols;
-    cx = grid_x + col * (cell_w + gap_x) + cell_w / 2;
+    cx = grid_x + col * cell_w + cell_w / 2;
 
     rect->x = (int)(cx - cell_w / 2);
-    rect->y = (int)(grid_y + row * (cell_h + gap_y));
+    rect->y = (int)(grid_y + row * cell_h);
     rect->width = (int)cell_w;
     rect->height = (int)cell_h;
     return true;
