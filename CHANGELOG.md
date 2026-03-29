@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 - Functional Music app: scans ~/Music for audio files (.mp3/.wav/.ogg/.flac/.m4a), track list with selection, play/pause via mpv, animated progress bar.
 - Functional Photos app: scans ~/Pictures for images (.jpg/.png/.bmp/.gif/.webp), 3-column grid with colored thumbnails, selection highlight, info bar.
+- Photos thumbnails: the grid now renders real decoded thumbnails for PNG, JPEG, BMP, GIF, and WebP images instead of hash-colored placeholders, and the viewer falls back to a generic decoder for non-PNG/JPEG formats.
 - Functional Videos app: scans ~/Videos for video files (.mp4/.mkv/.avi/.mov/.webm), preview area with play button, library list, playback via mpv.
 - Improved swipe gesture reliability: added velocity-based detection (800px/s triggers regardless of distance). Disabled immediate launcher toggle on gesture handle — now uses capture+swipe for both tap (launcher toggle) and swipe (app close).
 - Terminal menu: tap "LUMO TERMINAL" title for centered fullscreen menu with New, Keyboard, Settings, About items.

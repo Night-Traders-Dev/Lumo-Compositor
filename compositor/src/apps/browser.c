@@ -145,13 +145,19 @@ static void activate(GtkApplication *app, gpointer user_data) {
     browser->web_view = WEBKIT_WEB_VIEW(webkit_web_view_new());
     settings = webkit_web_view_get_settings(browser->web_view);
 
-    /* performance: disable heavy features for riscv64 */
+    /* aggressive performance tuning for riscv64 */
     webkit_settings_set_enable_javascript(settings, TRUE);
     webkit_settings_set_enable_smooth_scrolling(settings, FALSE);
     webkit_settings_set_hardware_acceleration_policy(settings,
         WEBKIT_HARDWARE_ACCELERATION_POLICY_NEVER);
-    webkit_settings_set_user_agent_with_application_details(settings,
-        "LumoBrowser", "1.0");
+    webkit_settings_set_enable_media(settings, FALSE);
+    webkit_settings_set_enable_webaudio(settings, FALSE);
+    webkit_settings_set_enable_media_stream(settings, FALSE);
+    webkit_settings_set_enable_webgl(settings, FALSE);
+
+    webkit_settings_set_user_agent(settings,
+        "Mozilla/5.0 (Linux; Mobile) AppleWebKit/605.1 "
+        "(KHTML, like Gecko) LumoBrowser/1.0 Mobile Safari/605.1");
 
     g_signal_connect(browser->web_view, "load-changed",
         G_CALLBACK(on_load_changed), browser);
@@ -160,7 +166,29 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_widget_set_hexpand(GTK_WIDGET(browser->web_view), TRUE);
     gtk_box_append(GTK_BOX(box), GTK_WIDGET(browser->web_view));
 
-    webkit_web_view_load_uri(browser->web_view, LUMO_BROWSER_HOME);
+    /* load a local start page first (instant) — avoids 60s wait for
+     * WebKitGTK network init on slow riscv64 hardware */
+    webkit_web_view_load_html(browser->web_view,
+        "<!DOCTYPE html><html><head>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<style>"
+        "body{background:#2c001e;color:#fff;font-family:sans-serif;"
+        "display:flex;flex-direction:column;align-items:center;"
+        "justify-content:center;height:90vh;margin:0}"
+        "h1{color:#e95420;font-size:2em;margin-bottom:0.2em}"
+        "form{width:80%;max-width:400px}"
+        "input{width:100%;padding:12px;font-size:1.1em;border:2px solid #77216f;"
+        "border-radius:24px;background:#1d0014;color:#fff;text-align:center}"
+        "input:focus{border-color:#e95420;outline:none}"
+        "p{color:#aea79f;font-size:0.8em;margin-top:2em}"
+        "</style></head><body>"
+        "<h1>Lumo Browser</h1>"
+        "<form action='https://lite.duckduckgo.com/lite/' method='get'>"
+        "<input name='q' placeholder='Search the web...' autofocus>"
+        "</form>"
+        "<p>Type a URL in the address bar or search above</p>"
+        "</body></html>",
+        "about:lumo");
 
     gtk_window_present(browser->window);
 }
@@ -170,7 +198,13 @@ int main(int argc, char **argv) {
     LumoBrowser browser = {0};
     int status;
 
-    app = gtk_application_new("com.lumo.browser", G_APPLICATION_DEFAULT_FLAGS);
+    /* reduce WebKit memory and process overhead on riscv64 */
+    setenv("WEBKIT_DISABLE_COMPOSITING_MODE", "1", 0);
+    setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1", 0);
+    setenv("G_SLICE", "always-malloc", 0);
+
+    app = gtk_application_new("com.lumo.browser",
+        G_APPLICATION_DEFAULT_FLAGS);
     g_signal_connect(app, "activate", G_CALLBACK(activate), &browser);
     status = g_application_run(G_APPLICATION(app), argc, argv);
     g_object_unref(app);

@@ -64,6 +64,33 @@ static void test_app_osk_policy(void) {
     assert(!lumo_app_wants_osk(LUMO_APP_SETTINGS, -1));
 }
 
+static void test_photos_render_thumbnail(void) {
+    const uint32_t width = 480;
+    const uint32_t height = 320;
+    uint32_t *pixels = calloc((size_t)width * (size_t)height, sizeof(*pixels));
+    uint32_t thumbnail[4] = {
+        0xFF102030u, 0xFF405060u,
+        0xFF708090u, 0xFFA0B0C0u,
+    };
+    struct lumo_app_render_context ctx = {
+        .app_id = LUMO_APP_PHOTOS,
+        .media_file_count = 1,
+        .media_selected = 0,
+    };
+
+    assert(pixels != NULL);
+    strcpy(ctx.media_files[0], "sample.webp");
+    ctx.photo_thumbnails[0] = thumbnail;
+    ctx.photo_thumbnail_widths[0] = 2;
+    ctx.photo_thumbnail_heights[0] = 2;
+
+    lumo_app_render(&ctx, pixels, width, height);
+    assert(pixels[68 * width + 20] == 0xFF102030u);
+    assert(pixels[68 * width + 120] == 0xFF405060u);
+
+    free(pixels);
+}
+
 static void test_app_render(void) {
     const uint32_t width = 480;
     const uint32_t height = 320;
@@ -106,6 +133,7 @@ int main(void) {
     test_app_launcher_mapping();
     test_app_close_rect();
     test_app_osk_policy();
+    test_photos_render_thumbnail();
     test_app_render();
     return 0;
 }

@@ -7,6 +7,8 @@
 
 #include "lumo/shell.h"
 
+#define LUMO_APP_MEDIA_MAX_FILES 32
+
 enum lumo_app_id {
     LUMO_APP_PHONE = 0,
     LUMO_APP_MESSAGES,
@@ -59,11 +61,14 @@ struct lumo_app_render_context {
     int term_input_len;
     bool term_menu_open;
     /* media apps */
-    char media_files[32][64];
+    char media_files[LUMO_APP_MEDIA_MAX_FILES][64];
     int media_file_count;
     int media_selected;
     bool media_playing;
     bool photo_viewing;
+    uint32_t *photo_thumbnails[LUMO_APP_MEDIA_MAX_FILES];
+    uint32_t photo_thumbnail_widths[LUMO_APP_MEDIA_MAX_FILES];
+    uint32_t photo_thumbnail_heights[LUMO_APP_MEDIA_MAX_FILES];
     uint32_t *photo_pixels;
     uint32_t photo_width;
     uint32_t photo_height;

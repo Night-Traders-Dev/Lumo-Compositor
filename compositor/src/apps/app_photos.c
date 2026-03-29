@@ -60,7 +60,6 @@ void lumo_app_render_photos(
 
         /* filename overlay at bottom */
         if (selected >= 0 && selected < count) {
-            struct lumo_rect info = {0, (int)height - 32, (int)width, 32};
             lumo_app_fill_rect(pixels, width, height, 0,
                 (int)height - 32, (int)width, 32,
                 lumo_app_argb(0xA0, 0x00, 0x00, 0x00));
@@ -107,18 +106,35 @@ void lumo_app_render_photos(
 
         bool is_sel = (i == selected);
         struct lumo_rect cell = {cx, cy, cell_w, cell_h};
+        struct lumo_rect image_rect = {cx + 2, cy + 2, cell_w - 4, cell_h - 22};
+        const uint32_t *thumbnail = ctx != NULL ? ctx->photo_thumbnails[i] : NULL;
+        uint32_t thumbnail_width =
+            ctx != NULL ? ctx->photo_thumbnail_widths[i] : 0;
+        uint32_t thumbnail_height =
+            ctx != NULL ? ctx->photo_thumbnail_heights[i] : 0;
 
-        /* thumbnail placeholder */
-        uint32_t hash = 0;
-        for (int j = 0; ctx->media_files[i][j]; j++)
-            hash = hash * 31 + (uint32_t)ctx->media_files[i][j];
-        uint32_t thumb_r = 0x20 + (hash & 0x3F);
-        uint32_t thumb_g = 0x18 + ((hash >> 6) & 0x3F);
-        uint32_t thumb_b = 0x28 + ((hash >> 12) & 0x3F);
+        lumo_app_fill_rounded_rect(pixels, width, height, &cell, 10, theme.card_bg);
+        if (thumbnail != NULL && thumbnail_width > 0 && thumbnail_height > 0 &&
+                image_rect.width > 0 && image_rect.height > 0) {
+            blit_scaled(pixels, width, height, image_rect.x, image_rect.y,
+                image_rect.width, image_rect.height, thumbnail,
+                thumbnail_width, thumbnail_height);
+        } else {
+            uint32_t hash = 0;
+            for (int j = 0; ctx->media_files[i][j]; j++) {
+                hash = hash * 31 + (uint32_t)ctx->media_files[i][j];
+            }
+            uint32_t thumb_r = 0x20 + (hash & 0x3F);
+            uint32_t thumb_g = 0x18 + ((hash >> 6) & 0x3F);
+            uint32_t thumb_b = 0x28 + ((hash >> 12) & 0x3F);
 
-        lumo_app_fill_rounded_rect(pixels, width, height, &cell, 10,
-            lumo_app_argb(0xFF, (uint8_t)thumb_r, (uint8_t)thumb_g,
-                (uint8_t)thumb_b));
+            lumo_app_fill_rounded_rect(pixels, width, height, &image_rect, 8,
+                lumo_app_argb(0xFF, (uint8_t)thumb_r, (uint8_t)thumb_g,
+                    (uint8_t)thumb_b));
+        }
+
+        lumo_app_fill_rect(pixels, width, height, cx, cy + cell_h - 18,
+            cell_w, 18, 0xE0101014u);
 
         if (is_sel) {
             lumo_app_draw_outline(pixels, width, height, &cell, 2,

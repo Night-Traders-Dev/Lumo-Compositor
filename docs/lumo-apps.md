@@ -43,7 +43,7 @@ select the app. They use xdg-shell as Wayland clients with SHM rendering.
 
 ### Photos
 - Scans `~/Pictures/` for .jpg, .jpeg, .png, .bmp, .gif, .webp
-- 3-column grid with colored thumbnail placeholders
+- 3-column grid with real thumbnails for each discovered image
 - Selection highlight with orange border
 - Info bar showing selected filename
 - Creates `~/Pictures/` if missing

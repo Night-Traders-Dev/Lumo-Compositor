@@ -17,6 +17,7 @@
 #include <sys/stat.h>
 #include <png.h>
 #include <jpeglib.h>
+#include <gdk-pixbuf/gdk-pixbuf.h>
 #include <setjmp.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -100,12 +101,15 @@ struct lumo_app_client {
     int pty_line_len;
     char pending_commit[256];
     int pending_commit_len;
-    char media_files[32][64];
+    char media_files[LUMO_APP_MEDIA_MAX_FILES][64];
     int media_file_count;
     int media_selected;
     bool media_playing;
     pid_t media_pid;
     bool photo_viewing;
+    uint32_t *photo_thumbnails[LUMO_APP_MEDIA_MAX_FILES];
+    uint32_t photo_thumbnail_widths[LUMO_APP_MEDIA_MAX_FILES];
+    uint32_t photo_thumbnail_heights[LUMO_APP_MEDIA_MAX_FILES];
     uint32_t *photo_pixels;
     uint32_t photo_width;
     uint32_t photo_height;
@@ -121,6 +125,42 @@ static void lumo_app_sync_text_input_state(
     bool flush_pending
 );
 
+static void lumo_app_clear_photo_thumbnails(struct lumo_app_client *client) {
+    if (client == NULL) {
+        return;
+    }
+
+    for (size_t i = 0; i < LUMO_APP_MEDIA_MAX_FILES; i++) {
+        if (client->photo_thumbnails[i] != NULL) {
+            free(client->photo_thumbnails[i]);
+            client->photo_thumbnails[i] = NULL;
+        }
+        client->photo_thumbnail_widths[i] = 0;
+        client->photo_thumbnail_heights[i] = 0;
+    }
+}
+
+static bool lumo_app_media_path(
+    const char *directory,
+    const char *filename,
+    char *path,
+    size_t path_size
+) {
+    const char *home = getenv("HOME");
+    int written;
+
+    if (directory == NULL || filename == NULL || path == NULL || path_size == 0) {
+        return false;
+    }
+
+    if (home == NULL || home[0] == '\0') {
+        home = "/home/orangepi";
+    }
+
+    written = snprintf(path, path_size, "%s/%s/%s", home, directory, filename);
+    return written > 0 && (size_t)written < path_size;
+}
+
 static void lumo_app_scan_media(struct lumo_app_client *client,
     const char *dir, const char **exts, int ext_count)
 {
@@ -134,6 +174,9 @@ static void lumo_app_scan_media(struct lumo_app_client *client,
     client->media_file_count = 0;
     client->media_selected = -1;
     client->media_playing = false;
+    if (client->app_id == LUMO_APP_PHOTOS) {
+        lumo_app_clear_photo_thumbnails(client);
+    }
 
     d = opendir(path);
     if (d == NULL) {
@@ -143,7 +186,7 @@ static void lumo_app_scan_media(struct lumo_app_client *client,
     }
 
     while ((entry = readdir(d)) != NULL &&
-            client->media_file_count < 32) {
+            client->media_file_count < (int)LUMO_APP_MEDIA_MAX_FILES) {
         if (entry->d_name[0] == '.') continue;
         const char *dot = strrchr(entry->d_name, '.');
         if (dot == NULL) continue;
@@ -335,6 +378,111 @@ static bool lumo_app_load_jpeg(const char *path, uint32_t **pixels_out,
     return true;
 }
 
+static bool lumo_app_load_pixbuf(
+    const char *path,
+    int max_width,
+    int max_height,
+    uint32_t **pixels_out,
+    uint32_t *w_out,
+    uint32_t *h_out
+) {
+    GdkPixbuf *pixbuf = NULL;
+    GdkPixbuf *oriented = NULL;
+    GError *error = NULL;
+    uint32_t *pixels = NULL;
+    int width;
+    int height;
+    int rowstride;
+    int channels;
+    gboolean has_alpha;
+    guchar *src;
+
+    if (path == NULL || pixels_out == NULL || w_out == NULL || h_out == NULL) {
+        return false;
+    }
+
+    if (max_width > 0 && max_height > 0) {
+        pixbuf = gdk_pixbuf_new_from_file_at_scale(path, max_width, max_height,
+            true, &error);
+    } else {
+        pixbuf = gdk_pixbuf_new_from_file(path, &error);
+    }
+    if (pixbuf == NULL) {
+        if (error != NULL) {
+            g_error_free(error);
+        }
+        return false;
+    }
+
+    oriented = gdk_pixbuf_apply_embedded_orientation(pixbuf);
+    if (oriented != NULL) {
+        g_object_unref(pixbuf);
+        pixbuf = oriented;
+    }
+
+    width = gdk_pixbuf_get_width(pixbuf);
+    height = gdk_pixbuf_get_height(pixbuf);
+    if (width <= 0 || height <= 0 || width > 4096 || height > 4096) {
+        g_object_unref(pixbuf);
+        return false;
+    }
+
+    channels = gdk_pixbuf_get_n_channels(pixbuf);
+    has_alpha = gdk_pixbuf_get_has_alpha(pixbuf);
+    rowstride = gdk_pixbuf_get_rowstride(pixbuf);
+    src = gdk_pixbuf_get_pixels(pixbuf);
+    if (src == NULL || channels < 3 || gdk_pixbuf_get_bits_per_sample(pixbuf) != 8) {
+        g_object_unref(pixbuf);
+        return false;
+    }
+
+    pixels = calloc((size_t)width * (size_t)height, sizeof(uint32_t));
+    if (pixels == NULL) {
+        g_object_unref(pixbuf);
+        return false;
+    }
+
+    for (int y = 0; y < height; y++) {
+        const guchar *row = src + y * rowstride;
+        for (int x = 0; x < width; x++) {
+            const guchar *p = row + x * channels;
+            uint32_t alpha = has_alpha ? p[3] : 0xFFu;
+            pixels[(size_t)y * (size_t)width + (size_t)x] =
+                (alpha << 24) |
+                ((uint32_t)p[0] << 16) |
+                ((uint32_t)p[1] << 8) |
+                (uint32_t)p[2];
+        }
+    }
+
+    g_object_unref(pixbuf);
+    *pixels_out = pixels;
+    *w_out = (uint32_t)width;
+    *h_out = (uint32_t)height;
+    return true;
+}
+
+static void lumo_app_prepare_photo_thumbnails(struct lumo_app_client *client) {
+    char path[1300];
+
+    if (client == NULL) {
+        return;
+    }
+
+    lumo_app_clear_photo_thumbnails(client);
+    for (int i = 0; i < client->media_file_count &&
+            i < (int)LUMO_APP_MEDIA_MAX_FILES; i++) {
+        if (!lumo_app_media_path("Pictures", client->media_files[i], path,
+                sizeof(path))) {
+            continue;
+        }
+        (void)lumo_app_load_pixbuf(path, 192, 144,
+            &client->photo_thumbnails[i],
+            &client->photo_thumbnail_widths[i],
+            &client->photo_thumbnail_heights[i]);
+    }
+}
+
 static bool lumo_app_load_image(struct lumo_app_client *client)
 {
     if (client->media_selected < 0 ||
@@ -342,17 +490,20 @@ static bool lumo_app_load_image(struct lumo_app_client *client)
         return false;
     }
 
-    const char *home = getenv("HOME");
-    if (!home) home = "/home/orangepi";
     char path[1300];
-    snprintf(path, sizeof(path), "%s/Pictures/%s", home,
-        client->media_files[client->media_selected]);
+    if (!lumo_app_media_path("Pictures",
+            client->media_files[client->media_selected], path,
+            sizeof(path))) {
+        return false;
+    }
 
     /* free previous */
     if (client->photo_pixels) {
         free(client->photo_pixels);
         client->photo_pixels = NULL;
     }
+    client->photo_width = 0;
+    client->photo_height = 0;
 
     const char *dot = strrchr(path, '.');
     if (dot && (strcasecmp(dot, ".png") == 0)) {
@@ -363,7 +514,8 @@ static bool lumo_app_load_image(struct lumo_app_client *client)
         return lumo_app_load_jpeg(path, &client->photo_pixels,
             &client->photo_width, &client->photo_height);
     }
-    return false;
+    return lumo_app_load_pixbuf(path, 0, 0, &client->photo_pixels,
+        &client->photo_width, &client->photo_height);
 }
 
 static void lumo_app_term_add_line(struct lumo_app_client *client,
@@ -701,6 +853,12 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
         memcpy(ctx.term_input, client->term_input, sizeof(ctx.term_input));
         memcpy(ctx.media_files, client->media_files,
             sizeof(ctx.media_files));
+        memcpy(ctx.photo_thumbnails, client->photo_thumbnails,
+            sizeof(ctx.photo_thumbnails));
+        memcpy(ctx.photo_thumbnail_widths, client->photo_thumbnail_widths,
+            sizeof(ctx.photo_thumbnail_widths));
+        memcpy(ctx.photo_thumbnail_heights, client->photo_thumbnail_heights,
+            sizeof(ctx.photo_thumbnail_heights));
         lumo_app_render(&ctx, buffer->data, client->width, client->height);
     }
     wl_surface_attach(client->surface, buffer->buffer, 0, 0);
@@ -1092,6 +1250,8 @@ static void lumo_app_touch_handle_up(
                     free(client->photo_pixels);
                     client->photo_pixels = NULL;
                 }
+                client->photo_width = 0;
+                client->photo_height = 0;
                 (void)lumo_app_client_redraw(client);
             } else {
                 /* grid: compute cell from touch position */
@@ -1907,6 +2067,11 @@ static void lumo_app_client_destroy(struct lumo_app_client *client) {
     /* Ensure any active media playback is stopped and its child process is
      * reaped before tearing down the rest of the client state. */
     lumo_app_media_stop(client);
+    lumo_app_clear_photo_thumbnails(client);
+    if (client->photo_pixels != NULL) {
+        free(client->photo_pixels);
+        client->photo_pixels = NULL;
+    }
 
     lumo_app_pty_cleanup(client);
 
@@ -2118,6 +2283,7 @@ int main(int argc, char **argv) {
             ".gif", ".webp"};
         lumo_app_scan_media(&client, "Pictures",
             image_exts, sizeof(image_exts) / sizeof(image_exts[0]));
+        lumo_app_prepare_photo_thumbnails(&client);
     }
     if (client.app_id == LUMO_APP_VIDEOS) {
         static const char *video_exts[] = {".mp4", ".mkv", ".avi", ".mov",

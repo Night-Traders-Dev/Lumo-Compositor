@@ -37,6 +37,7 @@ shell_deps = [
 app_deps = [
   dependency('wayland-client', required: true),
   dependency('wayland-protocols', required: true),
+  dependency('gdk-pixbuf-2.0', required: true),
 ]
 
 libutil = meson.get_compiler('c').find_library('util', required: true)
