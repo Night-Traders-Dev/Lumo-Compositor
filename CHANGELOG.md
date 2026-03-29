@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.55] - 2026-03-29
+
+- Functional Music app: scans ~/Music for audio files (.mp3/.wav/.ogg/.flac/.m4a), track list with selection, play/pause via mpv, animated progress bar.
+- Functional Photos app: scans ~/Pictures for images (.jpg/.png/.bmp/.gif/.webp), 3-column grid with colored thumbnails, selection highlight, info bar.
+- Functional Videos app: scans ~/Videos for video files (.mp4/.mkv/.avi/.mov/.webm), preview area with play button, library list, playback via mpv.
+- Improved swipe gesture reliability: added velocity-based detection (800px/s triggers regardless of distance). Disabled immediate launcher toggle on gesture handle — now uses capture+swipe for both tap (launcher toggle) and swipe (app close).
+- Terminal menu: tap "LUMO TERMINAL" title for centered fullscreen menu with New, Keyboard, Settings, About items.
+- OSK auto-show: keyboard appears automatically when terminal or notes apps get focus, with `keyboard_auto_shown` flag preventing `refresh_keyboard_visibility` from undoing the show.
+- Volume/brightness sliders: switched from ALSA amixer to PipeWire pactl to match GDM system volume. Removed toast from slider changes to prevent launcher surface redraw freeze.
+- Fixed stale header directory on OrangePi (`compositor/lumo/`) that caused build failures by shadowing `compositor/include/lumo/`.
+- Shell startup reliability: state socket connect retries up to 5 times with 200ms delays.
+- Removed unused functions (lumo_u32_max, lumo_ease_out_cubic, lumo_refresh_vol_bright).
+
 ## [0.0.54] - 2026-03-28
 
 - Dynamic theme system: all UI elements (status bar, panels, drawer, app backgrounds) now shift with time-of-day and weather conditions using blended Ubuntu/Sailfish/webOS palettes.

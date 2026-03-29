@@ -79,6 +79,10 @@ static void lumo_notify_ready(void) {
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
     if (socket_path[0] == '@') {
+        /* Abstract socket: the kernel uses the explicit length passed to
+         * sendto() rather than scanning for a NUL terminator, so no null
+         * termination is required after sun_path[0] = '\0'.  The leading
+         * NUL is the abstract-namespace marker, not a string terminator. */
         addr.sun_path[0] = '\0';
         strncpy(addr.sun_path + 1, socket_path + 1, sizeof(addr.sun_path) - 2);
     } else {
@@ -94,6 +98,8 @@ static void lumo_notify_ready(void) {
     } else {
         wlr_log(WLR_INFO, "sd_notify: sent %zd bytes", sent);
     }
+    /* fd is closed unconditionally here — outside the if/else above — so
+     * it is always released whether sendto() succeeds or fails. */
     close(fd);
 }
 

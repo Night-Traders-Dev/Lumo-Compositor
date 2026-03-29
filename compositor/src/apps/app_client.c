@@ -185,7 +185,12 @@ static void lumo_app_media_stop(struct lumo_app_client *client)
 {
     if (client->media_pid > 0) {
         kill(client->media_pid, SIGTERM);
-        waitpid(client->media_pid, NULL, WNOHANG);
+        /* Blocking wait: we just sent SIGTERM and must confirm the child has
+         * exited before clearing media_pid to avoid leaving a zombie.
+         * No race condition is possible here: the app client runs in a
+         * single-threaded poll-based event loop, so media_pid cannot be
+         * modified concurrently. */
+        waitpid(client->media_pid, NULL, 0);
         client->media_pid = 0;
     }
     client->media_playing = false;
@@ -979,6 +984,12 @@ static void lumo_app_touch_handle_up(
             client->touch_down_x, client->touch_down_y);
         if (entry_idx >= 0) {
             int adjusted = entry_idx + client->scroll_offset;
+            /* Path traversal safety: readdir() only returns entries that
+             * exist within the currently open directory; it cannot produce
+             * names that escape the tree (e.g. "../../etc/passwd").
+             * Entries starting with '.' (including "." and "..") are
+             * filtered out below, so browse_path can only move deeper into
+             * the filesystem, never upward past its current position. */
             DIR *dir = opendir(client->browse_path);
             if (dir != NULL) {
                 struct dirent *entry;
@@ -1572,6 +1583,10 @@ static void lumo_app_client_destroy(struct lumo_app_client *client) {
     if (client == NULL) {
         return;
     }
+
+    /* Ensure any active media playback is stopped and its child process is
+     * reaped before tearing down the rest of the client state. */
+    lumo_app_media_stop(client);
 
     lumo_app_pty_cleanup(client);
 

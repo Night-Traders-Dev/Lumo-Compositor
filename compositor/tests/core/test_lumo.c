@@ -333,7 +333,9 @@ static void test_immediate_gesture_handle_toggle_policy(void) {
         .kind = LUMO_HITBOX_EDGE_GESTURE,
     };
 
-    assert(lumo_touch_hitbox_uses_immediate_launcher_toggle(&hitbox));
+    /* immediate toggle is now disabled — gesture handle uses
+     * capture+swipe detection for both tap and swipe */
+    assert(!lumo_touch_hitbox_uses_immediate_launcher_toggle(&hitbox));
 
     hitbox.kind = LUMO_HITBOX_SCRIM;
     assert(!lumo_touch_hitbox_uses_immediate_launcher_toggle(&hitbox));

@@ -954,6 +954,54 @@ static double lumo_input_touch_point_edge_progress(
     }
 }
 
+/* velocity-based gesture detection (px/second) */
+static double lumo_input_touch_point_edge_velocity(
+    const struct lumo_touch_point *point,
+    double lx,
+    double ly,
+    uint32_t time_msec
+) {
+    double dist;
+    uint32_t dt;
+
+    if (point == NULL || time_msec <= point->down_time_msec) {
+        return 0.0;
+    }
+
+    dt = time_msec - point->down_time_msec;
+    if (dt == 0) return 0.0;
+
+    switch (point->capture_edge) {
+    case LUMO_EDGE_TOP:    dist = ly - point->down_ly; break;
+    case LUMO_EDGE_LEFT:   dist = lx - point->down_lx; break;
+    case LUMO_EDGE_RIGHT:  dist = point->down_lx - lx; break;
+    case LUMO_EDGE_BOTTOM: dist = point->down_ly - ly; break;
+    default: return 0.0;
+    }
+
+    if (dist <= 0.0) return 0.0;
+    return dist * 1000.0 / (double)dt; /* px/sec */
+}
+
+/* angle check: swipe must be within 15 degrees of the edge normal.
+ * Android AOSP uses OVERVIEW_MIN_DEGREES = 15. */
+static bool lumo_input_edge_angle_valid(
+    enum lumo_edge_zone edge,
+    double dx, double dy
+) {
+    double primary, orthogonal;
+    switch (edge) {
+    case LUMO_EDGE_BOTTOM: primary = -dy; orthogonal = dx < 0 ? -dx : dx; break;
+    case LUMO_EDGE_TOP:    primary =  dy; orthogonal = dx < 0 ? -dx : dx; break;
+    case LUMO_EDGE_LEFT:   primary =  dx; orthogonal = dy < 0 ? -dy : dy; break;
+    case LUMO_EDGE_RIGHT:  primary = -dx; orthogonal = dy < 0 ? -dy : dy; break;
+    default: return false;
+    }
+    if (primary <= 0.0) return false;
+    /* tan(15deg) = 0.2679 — reject if orthogonal/primary > tan(15) */
+    return orthogonal < primary * 0.268;
+}
+
 static void lumo_input_touch_point_trigger_edge_action(
     struct lumo_compositor *compositor,
     struct lumo_touch_point *point,
@@ -1601,10 +1649,18 @@ static void lumo_input_touch_motion(
         : 24.0;
 
     if (point->captured && point->capture_edge != LUMO_EDGE_NONE &&
-            !point->gesture_triggered &&
-            lumo_input_touch_point_edge_progress(point, lx, ly) >= threshold) {
-        lumo_input_touch_point_trigger_edge_action(compositor, point,
+            !point->gesture_triggered) {
+        double progress = lumo_input_touch_point_edge_progress(point, lx, ly);
+        double velocity = lumo_input_touch_point_edge_velocity(point, lx, ly,
             event->time_msec);
+        double dx = lx - point->down_lx;
+        double dy = ly - point->down_ly;
+        /* trigger on (distance OR velocity) AND angle within 15 deg */
+        if ((progress >= threshold || velocity > 800.0) &&
+                lumo_input_edge_angle_valid(point->capture_edge, dx, dy)) {
+            lumo_input_touch_point_trigger_edge_action(compositor, point,
+                event->time_msec);
+        }
     }
 
     if (!point->captured && point->delivered && point->surface != NULL) {
@@ -1623,10 +1679,18 @@ static void lumo_input_touch_motion(
         lumo_input_touch_sample_append(point, LUMO_TOUCH_SAMPLE_MOTION,
             event->time_msec, lx, ly, target.sx, target.sy);
         if (!point->gesture_triggered &&
-                point->capture_edge != LUMO_EDGE_NONE &&
-                lumo_input_touch_point_edge_progress(point, lx, ly) >= threshold) {
-            lumo_input_touch_point_trigger_edge_action(compositor, point,
+                point->capture_edge != LUMO_EDGE_NONE) {
+            double prog = lumo_input_touch_point_edge_progress(point, lx, ly);
+            double vel = lumo_input_touch_point_edge_velocity(point, lx, ly,
                 event->time_msec);
+            double cdx = lx - point->down_lx;
+            double cdy = ly - point->down_ly;
+            if ((prog >= threshold || vel > 800.0) &&
+                    lumo_input_edge_angle_valid(point->capture_edge,
+                        cdx, cdy)) {
+                lumo_input_touch_point_trigger_edge_action(compositor, point,
+                    event->time_msec);
+            }
         }
 
         lumo_input_maybe_start_gesture_timer(compositor);
@@ -1932,19 +1996,39 @@ static void lumo_input_touch_up(
 
     if (point->captured && !point->delivered) {
         if (!point->gesture_triggered &&
-                point->capture_edge != LUMO_EDGE_NONE &&
-                lumo_input_touch_point_edge_progress(point, point->lx,
-                    point->ly) < (compositor->gesture_threshold > 0.0
-                        ? compositor->gesture_threshold
-                        : 24.0)) {
-            lumo_input_touch_point_trigger_edge_action(compositor, point,
-                event->time_msec);
-            if (lumo_hitbox_is_shell_gesture(point->hitbox)) {
-                wlr_log(WLR_INFO, "input: touch %d tapped gesture handle",
-                    point->touch_id);
-            } else {
-                wlr_log(WLR_INFO, "input: touch %d tapped %s edge",
-                    point->touch_id, lumo_edge_zone_name(point->capture_edge));
+                point->capture_edge != LUMO_EDGE_NONE) {
+            double progress = lumo_input_touch_point_edge_progress(point,
+                point->lx, point->ly);
+            double velocity = lumo_input_touch_point_edge_velocity(point,
+                point->lx, point->ly, event->time_msec);
+            double threshold = compositor->gesture_threshold > 0.0
+                ? compositor->gesture_threshold : 24.0;
+            /* iOS-style projection: where would the finger end up
+             * if it kept moving at current velocity for 150ms? */
+            double projected = progress + velocity * 0.15;
+
+            if (progress < 12.0) {
+                /* very short movement = tap on the edge/handle */
+                lumo_input_touch_point_trigger_edge_action(compositor, point,
+                    event->time_msec);
+                if (lumo_hitbox_is_shell_gesture(point->hitbox)) {
+                    wlr_log(WLR_INFO,
+                        "input: touch %d tapped gesture handle",
+                        point->touch_id);
+                } else {
+                    wlr_log(WLR_INFO, "input: touch %d tapped %s edge",
+                        point->touch_id,
+                        lumo_edge_zone_name(point->capture_edge));
+                }
+            } else if (projected >= threshold) {
+                /* projection says this swipe would have crossed the
+                 * threshold — trigger the gesture (iOS fluid model) */
+                lumo_input_touch_point_trigger_edge_action(compositor, point,
+                    event->time_msec);
+                wlr_log(WLR_INFO,
+                    "input: touch %d projected swipe triggered "
+                    "(prog=%.0f vel=%.0f proj=%.0f)",
+                    point->touch_id, progress, velocity, projected);
             }
         }
 

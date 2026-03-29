@@ -565,7 +565,11 @@ static inline bool lumo_hitbox_is_shell_gesture(
 static inline bool lumo_touch_hitbox_uses_immediate_launcher_toggle(
     const struct lumo_hitbox *hitbox
 ) {
-    return lumo_hitbox_is_shell_gesture(hitbox);
+    /* disabled — gesture handle now uses capture+swipe detection
+     * for both launcher toggle (tap) and app close (swipe).
+     * The tap is handled on touch-up if edge_progress < threshold. */
+    (void)hitbox;
+    return false;
 }
 
 static inline enum lumo_edge_zone lumo_hitbox_edge_zone(

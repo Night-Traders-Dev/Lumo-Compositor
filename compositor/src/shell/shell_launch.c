@@ -809,6 +809,13 @@ static const char *lumo_shell_bridge_commit_osk_text(
     return NULL;
 }
 
+/* Command-injection safety: the `command` / `app_id` values passed here
+ * originate exclusively from lumo_shell_launcher_tile_command(), which
+ * returns compile-time constants from app_catalog.c.  The bridge protocol
+ * only lets the shell client send an activate_target with a validated
+ * target kind and a numeric tile index — no arbitrary string is accepted
+ * from the client.  There is therefore no path for user-supplied input to
+ * reach the execlp() calls below. */
 static void lumo_shell_launch_app(
     struct lumo_compositor *compositor,
     const char *command
@@ -1582,7 +1589,9 @@ static void lumo_write_brightness_pct(uint32_t pct) {
         if (fp) { fprintf(fp, "%d", val); fclose(fp); }
         _exit(0);
     }
-    /* parent returns immediately */
+    /* parent returns immediately; the child is reaped by the compositor's
+     * SIGCHLD handler which calls lumo_shell_reap_children() via
+     * waitpid(-1, ..., WNOHANG) in a loop, covering all untracked forks. */
 }
 
 static uint32_t lumo_read_volume_pct(void) {
@@ -1601,6 +1610,9 @@ static uint32_t lumo_read_volume_pct(void) {
         _exit(127);
     }
     close(pipefd[1]);
+    /* 300 ms blocking poll is acceptable here: lumo_read_volume_pct() is
+     * called exactly once at compositor startup (not on every frame), so
+     * the brief wait does not affect steady-state event-loop latency. */
     struct pollfd pfd = {.fd = pipefd[0], .events = POLLIN};
     if (poll(&pfd, 1, 300) > 0) {
         char buf[512];
@@ -1636,12 +1648,19 @@ static void lumo_write_volume_pct(uint32_t pct) {
             pct_str, (char *)NULL);
         _exit(127);
     }
+    /* child is reaped by the compositor's SIGCHLD handler which calls
+     * lumo_shell_reap_children() via waitpid(-1, ..., WNOHANG) in a loop. */
 }
 
 static void lumo_shell_play_boot_sound(void) {
     /* generate a short two-tone chime WAV in /tmp and play it async */
     pid_t pid = fork();
-    if (pid != 0) return; /* parent returns immediately */
+    if (pid != 0) {
+        /* parent returns immediately; child is reaped by the compositor's
+         * SIGCHLD handler which calls lumo_shell_reap_children() via
+         * waitpid(-1, ..., WNOHANG) in a loop. */
+        return;
+    }
 
     /* child: create a tiny WAV and play it */
     const char *path = "/tmp/lumo-boot.wav";
