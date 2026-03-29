@@ -737,6 +737,8 @@ static struct wlr_text_input_v3 *lumo_shell_bridge_focused_text_input(
     }
 
     focused_surface = compositor->seat->keyboard_state.focused_surface;
+
+    /* first try: exact focused_surface match */
     wl_list_for_each(resource, &compositor->text_input_manager->text_inputs,
             link) {
         struct wlr_text_input_v3 *text_input =
@@ -749,6 +751,29 @@ static struct wlr_text_input_v3 *lumo_shell_bridge_focused_text_input(
         if (text_input->focused_surface == focused_surface &&
                 focused_surface != NULL) {
             return text_input;
+        }
+    }
+
+    /* fallback: find any text-input from the same client as the
+     * focused surface. This handles the race where enter hasn't
+     * been processed but the keyboard was auto-shown by app_id */
+    if (focused_surface != NULL) {
+        wl_list_for_each(resource,
+                &compositor->text_input_manager->text_inputs, link) {
+            struct wlr_text_input_v3 *text_input =
+                wl_resource_get_user_data(resource);
+            if (text_input == NULL || text_input->seat != compositor->seat) {
+                continue;
+            }
+            if (wl_resource_get_client(text_input->resource) ==
+                    wl_resource_get_client(focused_surface->resource)) {
+                /* force set focused_surface so future commits work */
+                if (text_input->focused_surface == NULL) {
+                    wlr_text_input_v3_send_enter(text_input, focused_surface);
+                    wlr_text_input_v3_send_done(text_input);
+                }
+                return text_input;
+            }
         }
     }
 

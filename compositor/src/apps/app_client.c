@@ -1144,13 +1144,26 @@ static void lumo_app_touch_handle_up(
         int row = lumo_app_notes_row_at(client->width, client->height,
             client->touch_down_x, client->touch_down_y);
         if (row >= 0 && row < client->note_count) {
-            client->selected_row = (client->selected_row == row) ? -1 : row;
+            if (client->note_editing == row) {
+                /* tap on editing note = stop editing */
+                client->note_editing = -1;
+            } else if (client->selected_row == row) {
+                /* tap on selected = start editing */
+                client->note_editing = row;
+            } else {
+                /* tap on unselected = select it, stop editing */
+                client->selected_row = row;
+                client->note_editing = -1;
+            }
             (void)lumo_app_client_redraw(client);
         } else if (row == -2) {
             if (client->note_count < 8) {
                 snprintf(client->notes[client->note_count],
-                    sizeof(client->notes[0]), "NOTE %d", client->note_count + 1);
+                    sizeof(client->notes[0]), "");
                 client->note_count++;
+                /* auto-select and edit the new note */
+                client->selected_row = client->note_count - 1;
+                client->note_editing = client->note_count - 1;
                 lumo_app_notes_save(client);
                 (void)lumo_app_client_redraw(client);
             }
@@ -1345,10 +1358,20 @@ static void lumo_app_text_input_delete_surrounding(void *data,
     (void)ti; (void)after;
     if (client == NULL) return;
     /* handle backspace from OSK */
-    if (before > 0 && client->app_id == LUMO_APP_MESSAGES &&
-            client->pty_fd >= 0) {
-        for (uint32_t i = 0; i < before; i++) {
-            lumo_app_term_write(client, "\x7f", 1);
+    if (before > 0) {
+        if (client->app_id == LUMO_APP_MESSAGES && client->pty_fd >= 0) {
+            for (uint32_t i = 0; i < before; i++) {
+                lumo_app_term_write(client, "\x7f", 1);
+            }
+        } else if (client->app_id == LUMO_APP_NOTES &&
+                client->note_editing >= 0 &&
+                client->note_editing < client->note_count) {
+            size_t len = strlen(client->notes[client->note_editing]);
+            for (uint32_t i = 0; i < before && len > 0; i++) {
+                client->notes[client->note_editing][--len] = '\0';
+            }
+            lumo_app_notes_save(client);
+            (void)lumo_app_client_redraw(client);
         }
     }
 }
