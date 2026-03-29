@@ -873,6 +873,22 @@ static void lumo_shell_launch_app(
         }
     }
 
+    /* for non-native commands (e.g. lumo-browser), also try the sibling
+     * builddir path so uninstalled sessions work */
+    if (app_id == NULL && state != NULL && state->binary_path[0] != '\0') {
+        static char ext_path[PATH_MAX];
+        char parent_directory[PATH_MAX];
+        if (lumo_shell_parent_directory(state->binary_path,
+                parent_directory, sizeof(parent_directory)) &&
+                lumo_shell_join_path(ext_path, sizeof(ext_path),
+                    parent_directory, command)) {
+            if (access(ext_path, X_OK) == 0) {
+                binary = ext_path;
+                app_id = NULL; /* use binary directly */
+            }
+        }
+    }
+
     pid = fork();
     if (pid < 0) {
         wlr_log_errno(WLR_ERROR, "shell: failed to fork for app launch");
@@ -884,7 +900,18 @@ static void lumo_shell_launch_app(
         if (app_id != NULL && app_id[0] != '\0') {
             execlp(binary, binary, "--app", app_id, (char *)NULL);
         } else {
+            /* try the resolved path first, fall back to PATH lookup */
+            if (binary != command) {
+                execl(binary, binary, (char *)NULL);
+            }
             execlp(command, command, (char *)NULL);
+            /* if the external binary doesn't exist, fall back to
+             * lumo-app stub so the user sees something */
+            if (strncmp(command, "lumo-", 5) == 0) {
+                const char *fallback_id = command + 5;
+                execlp("lumo-app", "lumo-app", "--app", fallback_id,
+                    (char *)NULL);
+            }
         }
         _exit(127);
     }

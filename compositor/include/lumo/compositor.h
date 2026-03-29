@@ -597,6 +597,26 @@ static inline enum lumo_edge_zone lumo_hitbox_edge_zone(
     return LUMO_EDGE_NONE;
 }
 
+static inline const char *lumo_hitbox_shell_namespace(
+    const struct lumo_hitbox *hitbox
+) {
+    if (hitbox == NULL) {
+        return NULL;
+    }
+
+    switch (hitbox->kind) {
+    case LUMO_HITBOX_OSK_KEY:
+        return "osk";
+    case LUMO_HITBOX_LAUNCHER_TILE:
+    case LUMO_HITBOX_SCRIM:
+        return "launcher";
+    case LUMO_HITBOX_EDGE_GESTURE:
+    case LUMO_HITBOX_CUSTOM:
+    default:
+        return NULL;
+    }
+}
+
 enum lumo_touch_target_kind {
     LUMO_TOUCH_TARGET_NONE = 0,
     LUMO_TOUCH_TARGET_HITBOX,

@@ -58,8 +58,17 @@ select the app. They use xdg-shell as Wayland clients with SHM rendering.
 
 ## Stub Apps
 
-Phone, Browser, Camera, Maps — show app title, subtitle, and card layout
+Phone, Camera, Maps — show app title, subtitle, and card layout
 placeholders. All follow the dynamic time/weather theme.
+
+### Browser
+
+- Standalone `lumo-browser` binary using GTK4 + WebKitGTK 6.0
+- URL bar with smart input: URLs, domains (auto-https), localhost (auto-http), search queries (percent-encoded, DuckDuckGo Lite)
+- Back/Forward/Reload navigation buttons
+- Fullscreen Wayland client, hardware acceleration disabled for riscv64
+- Falls back to `lumo-app --app browser` stub if WebKitGTK not available
+- Built conditionally — only compiled when `webkitgtk-6.0` and `gtk4` deps are present
 
 ## Theme Integration
 

@@ -702,6 +702,52 @@ static void lumo_input_remove_touch_point(
     lumo_input_touch_point_destroy(point);
 }
 
+static struct wlr_surface *lumo_input_shell_surface_for_hitbox(
+    struct lumo_compositor *compositor,
+    const struct lumo_hitbox *hitbox
+) {
+    const char *preferred_namespace;
+    struct lumo_layer_surface *ls;
+
+    if (compositor == NULL) {
+        return NULL;
+    }
+
+    preferred_namespace = lumo_hitbox_shell_namespace(hitbox);
+    if (preferred_namespace != NULL) {
+        wl_list_for_each(ls, &compositor->layer_surfaces, link) {
+            if (ls->layer_surface == NULL ||
+                    ls->layer_surface->surface == NULL ||
+                    ls->layer_surface->namespace == NULL) {
+                continue;
+            }
+            if (strcmp(ls->layer_surface->namespace, preferred_namespace) == 0) {
+                return ls->layer_surface->surface;
+            }
+        }
+    }
+
+    wl_list_for_each(ls, &compositor->layer_surfaces, link) {
+        if (ls->layer_surface != NULL &&
+                ls->layer_surface->surface != NULL &&
+                ls->layer_surface->current.layer ==
+                    ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY) {
+            return ls->layer_surface->surface;
+        }
+    }
+
+    wl_list_for_each(ls, &compositor->layer_surfaces, link) {
+        if (ls->layer_surface != NULL &&
+                ls->layer_surface->surface != NULL &&
+                ls->layer_surface->current.layer ==
+                    ZWLR_LAYER_SHELL_V1_LAYER_TOP) {
+            return ls->layer_surface->surface;
+        }
+    }
+
+    return NULL;
+}
+
 static void lumo_input_replay_touch_point(
     struct lumo_compositor *compositor,
     struct lumo_touch_point *point
@@ -2041,26 +2087,8 @@ static void lumo_input_touch_up(
             wlr_log(WLR_INFO, "input: touch %d gesture completed", point->touch_id);
         } else if (point->hitbox != NULL &&
                 lumo_input_hitbox_is_shell_reserved(point->hitbox)) {
-            struct wlr_surface *shell_surface = NULL;
-            struct lumo_layer_surface *ls;
-            wl_list_for_each(ls, &compositor->layer_surfaces, link) {
-                if (ls->layer_surface != NULL &&
-                        ls->layer_surface->current.layer ==
-                            ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY) {
-                    shell_surface = ls->layer_surface->surface;
-                    break;
-                }
-            }
-            if (shell_surface == NULL) {
-                wl_list_for_each(ls, &compositor->layer_surfaces, link) {
-                    if (ls->layer_surface != NULL &&
-                            ls->layer_surface->current.layer ==
-                                ZWLR_LAYER_SHELL_V1_LAYER_TOP) {
-                        shell_surface = ls->layer_surface->surface;
-                        break;
-                    }
-                }
-            }
+            struct wlr_surface *shell_surface =
+                lumo_input_shell_surface_for_hitbox(compositor, point->hitbox);
             if (shell_surface != NULL) {
                 lumo_input_touch_point_bind_surface(point, shell_surface);
                 lumo_input_replay_touch_point(compositor, point);

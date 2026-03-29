@@ -17,19 +17,45 @@ typedef struct {
     GtkButton *reload_btn;
 } LumoBrowser;
 
+/* percent-encode a string for safe URL query use */
+static void url_encode(const char *src, char *dst, size_t dst_size) {
+    static const char *safe = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~";
+    size_t j = 0;
+    for (size_t i = 0; src[i] && j + 3 < dst_size; i++) {
+        if (strchr(safe, src[i])) {
+            dst[j++] = src[i];
+        } else if (src[i] == ' ') {
+            dst[j++] = '+';
+        } else {
+            snprintf(dst + j, dst_size - j, "%%%02X",
+                (unsigned char)src[i]);
+            j += 3;
+        }
+    }
+    dst[j] = '\0';
+}
+
 static void on_url_activate(GtkEntry *entry, gpointer data) {
     LumoBrowser *browser = data;
     const char *text = gtk_editable_get_text(GTK_EDITABLE(entry));
     if (text == NULL || text[0] == '\0') return;
 
-    char url[2048];
-    if (strstr(text, "://") != NULL || strstr(text, "localhost") != NULL) {
+    char url[4096];
+    if (strstr(text, "://") != NULL) {
+        /* already has scheme */
         snprintf(url, sizeof(url), "%s", text);
+    } else if (strstr(text, "localhost") != NULL) {
+        /* local dev server — add http:// */
+        snprintf(url, sizeof(url), "http://%s", text);
     } else if (strchr(text, '.') != NULL && strchr(text, ' ') == NULL) {
+        /* looks like a domain name */
         snprintf(url, sizeof(url), "https://%s", text);
     } else {
+        /* search query — percent-encode for safety */
+        char encoded[2048];
+        url_encode(text, encoded, sizeof(encoded));
         snprintf(url, sizeof(url),
-            "https://lite.duckduckgo.com/lite/?q=%s", text);
+            "https://lite.duckduckgo.com/lite/?q=%s", encoded);
     }
     webkit_web_view_load_uri(browser->web_view, url);
 }

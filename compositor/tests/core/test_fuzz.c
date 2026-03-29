@@ -344,6 +344,12 @@ static void test_hitbox_helpers(void) {
     assert(strcmp(lumo_hitbox_kind_name(LUMO_HITBOX_SCRIM), "scrim") == 0);
     assert(strcmp(lumo_hitbox_kind_name(LUMO_HITBOX_OSK_KEY),
         "osk-key") == 0);
+    assert(strcmp(lumo_hitbox_shell_namespace(
+        &(struct lumo_hitbox){.kind = LUMO_HITBOX_OSK_KEY}), "osk") == 0);
+    assert(strcmp(lumo_hitbox_shell_namespace(
+        &(struct lumo_hitbox){.kind = LUMO_HITBOX_SCRIM}), "launcher") == 0);
+    assert(lumo_hitbox_shell_namespace(
+        &(struct lumo_hitbox){.kind = LUMO_HITBOX_EDGE_GESTURE}) == NULL);
 
     struct lumo_hitbox hb = {.name = "shell-edge-top",
         .kind = LUMO_HITBOX_EDGE_GESTURE};
