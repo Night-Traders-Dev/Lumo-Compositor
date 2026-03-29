@@ -962,7 +962,7 @@ static void lumo_draw_launcher(
         int icon_size = 56;
         int cols = 4;
         int cell_w = ((int)width - 48) / cols;
-        int cell_h = icon_size + 40;
+        int cell_h = icon_size + 56;
         int total_rows = ((int)tile_count + cols - 1) / cols;
         int grid_w = cols * cell_w;
         int grid_x_start = ((int)width - grid_w) / 2;

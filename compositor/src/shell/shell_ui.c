@@ -137,7 +137,7 @@ static bool lumo_shell_launcher_geometry(
     }
 
     cell_w = (output_width - 48) / cols;
-    cell_h = icon_size + 40;
+    cell_h = icon_size + 56;
     grid_w = cols * cell_w;
     grid_x = (output_width - grid_w) / 2;
     grid_y = 60 + 40 + 16; /* search bar (40) + padding */
