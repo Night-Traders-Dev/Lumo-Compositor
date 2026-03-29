@@ -445,6 +445,7 @@ void lumo_protocol_refresh_shell_hitboxes(struct lumo_compositor *compositor) {
 
     lumo_protocol_clear_shell_hitboxes(compositor);
     if (!lumo_xwayland_collect_workarea(compositor, &workarea)) {
+        wlr_log(WLR_INFO, "protocol: hitbox refresh skipped (no workarea)");
         return;
     }
 
@@ -473,18 +474,25 @@ void lumo_protocol_refresh_shell_hitboxes(struct lumo_compositor *compositor) {
             LUMO_HITBOX_EDGE_GESTURE, true, true);
     }
 
-    if (compositor->keyboard_visible &&
-            lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_OSK,
+    if (compositor->keyboard_visible) {
+        if (lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_OSK,
                 (uint32_t)workarea.width, (uint32_t)workarea.height,
-                &shell_config)) {
-        /* Guard: shell_config.height > workarea.height would wrap rect.y */
-        if (shell_config.height <= (uint32_t)workarea.height) {
+                &shell_config) &&
+                shell_config.height <= (uint32_t)workarea.height) {
             rect.x = workarea.x;
             rect.y = workarea.y + workarea.height - (int)shell_config.height;
             rect.width = workarea.width;
             rect.height = (int)shell_config.height;
             lumo_protocol_register_hitbox(compositor, "shell-osk", &rect,
                 LUMO_HITBOX_OSK_KEY, true, true);
+            wlr_log(WLR_INFO,
+                "protocol: registered shell-osk hitbox at %d,%d %dx%d",
+                rect.x, rect.y, rect.width, rect.height);
+        } else {
+            wlr_log(WLR_INFO,
+                "protocol: keyboard visible but osk hitbox NOT registered "
+                "(workarea=%dx%d)",
+                workarea.width, workarea.height);
         }
     }
 
