@@ -185,7 +185,28 @@ bool lumo_protocol_close_focused_app(struct lumo_compositor *compositor) {
         focused_surface = compositor->seat->pointer_state.focused_surface;
     }
 
-    return lumo_protocol_close_surface_app(compositor, focused_surface);
+    if (focused_surface != NULL) {
+        return lumo_protocol_close_surface_app(compositor, focused_surface);
+    }
+
+    /* fallback: if no surface is focused but toplevels exist,
+     * close the most recently added one. This handles GTK apps
+     * that lose focus during fullscreen transitions. */
+    if (!wl_list_empty(&compositor->toplevels)) {
+        struct lumo_toplevel *tl;
+        wl_list_for_each(tl, &compositor->toplevels, link) {
+            if (tl->xdg_toplevel != NULL) {
+                wlr_log(WLR_INFO,
+                    "protocol: closing unfocused toplevel %s",
+                    tl->xdg_toplevel->title != NULL
+                        ? tl->xdg_toplevel->title : "(unnamed)");
+                wlr_xdg_toplevel_send_close(tl->xdg_toplevel);
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 static void lumo_protocol_text_input_binding_destroy(
