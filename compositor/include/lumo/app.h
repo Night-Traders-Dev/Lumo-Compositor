@@ -49,6 +49,7 @@ struct lumo_app_render_context {
     int term_line_count;
     char term_input[82];
     int term_input_len;
+    bool term_menu_open;
 };
 
 void lumo_app_render(

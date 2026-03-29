@@ -75,6 +75,7 @@ struct lumo_app_client {
     char term_input[82];
     int term_input_len;
     int scroll_offset;
+    bool term_menu_open;
     bool stopwatch_running;
     uint64_t stopwatch_start_ms;
     uint64_t stopwatch_accumulated_ms;
@@ -396,6 +397,7 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             .note_editing = client->note_editing,
             .term_line_count = client->term_line_count,
             .term_input_len = client->term_input_len,
+            .term_menu_open = client->term_menu_open,
         };
         memcpy(ctx.notes, client->notes, sizeof(ctx.notes));
         memcpy(ctx.term_lines, client->term_lines, sizeof(ctx.term_lines));
@@ -715,6 +717,68 @@ static void lumo_app_touch_handle_up(
     /* close button disabled — apps are dismissed via bottom-edge
      * swipe gesture in the compositor, not via a touch target */
     (void)should_close;
+
+    /* terminal menu */
+    if (client->app_id == LUMO_APP_MESSAGES) {
+        if (client->term_menu_open) {
+            /* menu item hit test: 4 items at y=42,62,82,102 */
+            int mx = (int)client->touch_down_x;
+            int my = (int)client->touch_down_y;
+            if (mx >= 12 && mx <= 180) {
+                if (my >= 42 && my < 62) {
+                    /* New — clear terminal */
+                    client->term_line_count = 0;
+                    client->term_input[0] = '\0';
+                    client->term_input_len = 0;
+                    client->term_menu_open = false;
+                    (void)lumo_app_client_redraw(client);
+                    return;
+                } else if (my >= 62 && my < 82) {
+                    /* Keyboard — toggle OSK */
+                    if (client->text_input != NULL) {
+                        if (client->text_input_enabled) {
+                            zwp_text_input_v3_disable(client->text_input);
+                            zwp_text_input_v3_commit(client->text_input);
+                            client->text_input_enabled = false;
+                        } else {
+                            zwp_text_input_v3_enable(client->text_input);
+                            zwp_text_input_v3_set_content_type(
+                                client->text_input,
+                                ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE,
+                                ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_TERMINAL);
+                            zwp_text_input_v3_commit(client->text_input);
+                            client->text_input_enabled = true;
+                        }
+                        fprintf(stderr, "lumo-app: keyboard toggled %s\n",
+                            client->text_input_enabled ? "on" : "off");
+                    }
+                    client->term_menu_open = false;
+                    (void)lumo_app_client_redraw(client);
+                    return;
+                } else if (my >= 82 && my < 102) {
+                    /* Settings — placeholder */
+                    client->term_menu_open = false;
+                    (void)lumo_app_client_redraw(client);
+                    return;
+                } else if (my >= 102 && my < 122) {
+                    /* About — placeholder */
+                    client->term_menu_open = false;
+                    (void)lumo_app_client_redraw(client);
+                    return;
+                }
+            }
+            /* tap outside menu closes it */
+            client->term_menu_open = false;
+            (void)lumo_app_client_redraw(client);
+            return;
+        }
+        /* tap on title "LUMO TERMINAL" opens menu */
+        if (client->touch_down_y < 38 && client->touch_down_x < 200) {
+            client->term_menu_open = true;
+            (void)lumo_app_client_redraw(client);
+            return;
+        }
+    }
 
     if (client->app_id == LUMO_APP_CLOCK && client->width > 0 &&
             client->height > 0) {

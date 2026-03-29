@@ -1608,8 +1608,7 @@ static void lumo_write_brightness_pct(uint32_t pct) {
 }
 
 static uint32_t lumo_read_volume_pct(void) {
-    /* read PCM volume from ALSA mixer — uses a short-lived fork
-     * so the event loop isn't blocked for long */
+    /* read volume from PipeWire/PulseAudio (same as GDM) */
     int pipefd[2];
     int pct = 50;
     if (pipe(pipefd) < 0) return (uint32_t)pct;
@@ -1619,19 +1618,24 @@ static uint32_t lumo_read_volume_pct(void) {
         dup2(pipefd[1], STDOUT_FILENO);
         close(pipefd[1]);
         close(STDERR_FILENO);
-        execlp("amixer", "amixer", "-c", "1", "get", "PCM",
+        execlp("pactl", "pactl", "get-sink-volume", "@DEFAULT_SINK@",
             (char *)NULL);
         _exit(127);
     }
     close(pipefd[1]);
     struct pollfd pfd = {.fd = pipefd[0], .events = POLLIN};
-    if (poll(&pfd, 1, 200) > 0) {
-        char buf[256];
+    if (poll(&pfd, 1, 300) > 0) {
+        char buf[512];
         ssize_t n = read(pipefd[0], buf, sizeof(buf) - 1);
         if (n > 0) {
             buf[n] = '\0';
-            char *b = strstr(buf, "[");
-            if (b && strstr(b, "%]")) sscanf(b, "[%d%%]", &pct);
+            /* format: "Volume: front-left: 22937 /  35% / ..." */
+            char *p = strstr(buf, "/ ");
+            if (p) {
+                p += 2;
+                while (*p == ' ') p++;
+                sscanf(p, "%d%%", &pct);
+            }
         }
     }
     close(pipefd[0]);
@@ -1640,7 +1644,7 @@ static uint32_t lumo_read_volume_pct(void) {
 }
 
 static void lumo_write_volume_pct(uint32_t pct) {
-    /* non-blocking: fork amixer so the event loop isn't stalled */
+    /* non-blocking: fork pactl (PipeWire/PulseAudio) */
     pid_t pid;
     char pct_str[8];
     if (pct > 100) pct = 100;
@@ -1650,11 +1654,10 @@ static void lumo_write_volume_pct(uint32_t pct) {
         close(STDIN_FILENO);
         close(STDOUT_FILENO);
         close(STDERR_FILENO);
-        execlp("amixer", "amixer", "-c", "1", "set", "PCM", pct_str,
-            (char *)NULL);
+        execlp("pactl", "pactl", "set-sink-volume", "@DEFAULT_SINK@",
+            pct_str, (char *)NULL);
         _exit(127);
     }
-    /* parent returns immediately — child reaped by SIGCHLD handler */
 }
 
 static void lumo_refresh_vol_bright(struct lumo_compositor *compositor) {
