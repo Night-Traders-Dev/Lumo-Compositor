@@ -1,0 +1,59 @@
+From: Lumo Compositor <noreply@lumo.dev>
+Subject: [PATCH] render/vulkan: PowerVR BXE-2-32 DRM node fallback
+
+The Imagination PowerVR BXE-2-32 proprietary Vulkan driver (libVK_IMG.so)
+exposes VK_EXT_physical_device_drm but reports renderMajor/Minor = 0,0
+and primaryMajor/Minor = 0,0 despite having a valid /dev/dri/renderD128
+render node.  This causes wlroots to reject the Vulkan device with
+"Physical device is missing both render and primary nodes".
+
+This patch adds two fallbacks:
+
+1. In vulkan_find_drm_phdev(): if no physical device matches the DRM
+   device by major/minor, fall back to the first Vulkan 1.1+ device.
+
+2. In vulkan_open_phdev_drm_fd(): if the device reports no DRM nodes,
+   try opening /dev/dri/renderD128 directly.
+
+Note: this patch alone is NOT sufficient for GPU-accelerated composition
+on SpacemiT X1 due to the split DRM architecture (GPU on card0, display
+on card1).  The linux-dmabuf-v1 feedback assertion fails because the
+render and display devices cannot share DMA-BUFs.  The EGL/GLES2 path
+through Mesa pvr_dri.so is the working solution.
+
+---
+ render/vulkan/vulkan.c | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
+
+diff --git a/render/vulkan/vulkan.c b/render/vulkan/vulkan.c
+index 7cdc44a0..2d85dc2d 100644
+--- a/render/vulkan/vulkan.c
++++ b/render/vulkan/vulkan.c
+@@ -361,6 +361,13 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd)
+ 		}
+ 	}
+
++	/* PowerVR BXE-2-32: driver reports DRM major/minor=0,0.
++	 * Fall back to first Vulkan 1.1+ device. */
++	if (num_phdevs > 0) {
++		wlr_log(WLR_INFO, "No DRM-matching Vulkan device, using first available");
++		return phdevs[0];
++	}
++
+ 	return VK_NULL_HANDLE;
+ }
+
+@@ -382,7 +389,13 @@ int vulkan_open_phdev_drm_fd(VkPhysicalDevice phdev) {
+ 	} else if (drm_props.hasPrimary) {
+ 		devid = makedev(drm_props.primaryMajor, drm_props.primaryMinor);
+ 	} else {
+-		wlr_log(WLR_ERROR, "Physical device is missing both render and primary nodes");
++		/* PowerVR BXE-2-32: open render node directly */
++		wlr_log(WLR_INFO, "No DRM nodes reported, trying /dev/dri/renderD128");
++		int fallback_fd = open("/dev/dri/renderD128", O_RDWR | O_NONBLOCK | O_CLOEXEC);
++		if (fallback_fd >= 0) {
++			return fallback_fd;
++		}
++		wlr_log(WLR_ERROR, "Failed to open /dev/dri/renderD128");
+ 		return -1;
+ 	}
