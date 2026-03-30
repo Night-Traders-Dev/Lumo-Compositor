@@ -4,11 +4,13 @@
 
 Lumo's shell is intentionally mobile-first and touch-first.
 
-The visual direction follows stock Ubuntu's color palette:
+The visual direction uses a dynamic theme engine that blends Ubuntu, Sailfish,
+and webOS palettes across 7 time-of-day periods and 7 weather conditions:
 
 - Ubuntu Orange (`#E95420`) as the primary accent
 - Ubuntu Aubergine (`#2C001E`, `#77216F`) for backgrounds and panels
-- Ubuntu Warm Grey (`#AEA79F`) for secondary text
+- Sailfish and webOS tones mixed in by time-of-day (warm sunrise, cool midday, deep evening, dark night)
+- Weather-aware hue shifts (clear, cloudy, rainy, snowy, stormy, foggy, windy)
 - White for primary text and active elements
 
 The interaction direction blends:
@@ -16,6 +18,7 @@ The interaction direction blends:
 - Ubuntu Touch for the app drawer and on-screen keyboard ergonomics
 - webOS for the mood, motion, depth, and cinematic surface treatment
 - PlayStation 3-5 for the animated procedural background
+- GNOME 3.x for the app drawer grid layout and search
 
 That means the shell should feel:
 
@@ -29,15 +32,16 @@ That means the shell should feel:
 
 ### Launcher
 
-The launcher is a bottom-rising app drawer rather than a desktop grid.
+The launcher is a GNOME 3.x style fullscreen app drawer with a search bar.
 
 Design goals:
 
 - full-output layer surface when active, compact when hidden
-- transparent outer surface with a dark drawer sheet inside it
-- 3-column touch cards with clear labels and generous spacing
+- translucent overlay with a dark drawer sheet
+- 4×3 grid with large touch cards, clear labels, and generous spacing
 - accent color bars and simplified icon blocks instead of debug rectangles
 - bottom gesture trigger acts as a true toggle, and a top-corner close control is always available when the drawer is open
+- search bar at top for live filtering by app name (OSK keys routed to search when drawer is visible)
 
 Current app drawer labels:
 
@@ -92,12 +96,12 @@ Design goals:
 - Ubuntu Touch-inspired row spacing and large thumb targets
 - a dedicated bottom keyboard panel with a visible grabber and strong key contrast
 
-Current keyboard layout:
+Current keyboard layout (33 keys):
 
-- row 1: `Q W E R T Y U I O P`
-- row 2: `A S D F G H J K L`
-- row 3: `Z X C V B N M`
-- row 4: `, . SPACE ? RETURN`
+- row 1: `Q W E R T Y U I O P` (10 keys)
+- row 2: `A S D F G H J K L` (9 keys)
+- row 3: `^ Z X C V B N M ←` (9 keys, shift + backspace)
+- row 4: `, SPACE . ? ↵` (5 keys)
 
 ### Gesture Handle
 
@@ -140,6 +144,8 @@ Contents:
 - Display rotation indicator
 - Session version
 - Device name
+- Volume slider with live control (PipeWire/pactl)
+- Brightness slider with live control (sysfs backlight)
 - RELOAD button (orange) - restarts the compositor session
 - ROTATE button (aubergine) - cycles through 0/90/180/270 degree rotation
 
@@ -153,6 +159,7 @@ Contents:
 - full date (YYYY-MM-DD)
 - day of week name
 - week number
+- weather: temperature (°F), condition, humidity, wind speed (fetched from wttr.in)
 
 ### Animated Background
 
@@ -160,9 +167,10 @@ The background is a full-screen layer surface at the BACKGROUND z-level that ren
 
 Design goals:
 
-- PS3/PS5-inspired flowing wave patterns
-- Ubuntu aubergine/orange palette
+- PS3/PS5-inspired flowing wave patterns with light streaks
+- Dynamic palette blending Ubuntu, Sailfish, and webOS tones
 - time-of-day adaptive colors (warm sunrise mornings, standard midday, deep evening, dark night)
+- weather-aware hue shifts (fetches wttr.in every 5 minutes)
 - low CPU overhead (~10% at 5fps on riscv64)
 - transparent to touch input (empty input region)
 
@@ -184,11 +192,12 @@ Lumo should move like a mobile shell, not like floating desktop widgets.
 
 Current motion rules:
 
-- launcher slide: bottom-up reveal, `140ms` show / `110ms` hide, ease-out
-- keyboard slide: bottom-up reveal, `130ms` show / `100ms` hide, ease-out
+- launcher slide: bottom-up reveal, `350ms` show / `250ms` hide, Material Design ease-in-out / decelerate
+- keyboard slide: bottom-up reveal, `300ms` show / `200ms` hide, Material Design ease-in-out / decelerate
 - hidden launcher and keyboard surfaces compact down to a minimal footprint after the hide animation completes
 - gesture pill and status bar are always visible with no animation
-- background animates at 5fps with time-of-day color shifts
+- background animates at 5fps with time-of-day and weather-aware color shifts
+- toast notifications: Android-style pills with fade-in/out
 
 Animation principles:
 
@@ -209,11 +218,11 @@ Animation principles:
 
 - compositor state remains the source of truth for launcher visibility, keyboard visibility, scrim state, rotation, quick settings, time panel, and gesture thresholds
 - compositor state also owns touch-audit progress and per-device profile persistence
-- shell clients consume that state over the shell bridge protocol (up to 32 fields per state frame)
+- shell clients consume that state over the shell bridge protocol (up to 36 fields per state frame)
 - the shell protocol uses coalesced broadcasts via a dirty flag, flushed once per output frame
 - shell clients use double-buffered SHM rendering to avoid per-frame allocation overhead
 - the OSK is modularized into its own source file
-- native apps are modularized into separate source files per app (app_clock.c, app_files.c, app_settings.c, app_notes.c)
+- native apps are modularized into separate source files per app (app_terminal.c, app_clock.c, app_files.c, app_settings.c, app_notes.c, app_music.c, app_photos.c, app_videos.c)
 - the shared app rendering API lives in app_render.h with common helpers (fill, gradient, rounded rect, text, glyph table)
 - app clients use a poll-based event loop with configurable timeout for periodic redraws (1s for Clock, 5s for Settings)
 - touch on scrim hitboxes is replayed to the overlay layer surface so launcher tiles and panel buttons receive taps

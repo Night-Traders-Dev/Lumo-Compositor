@@ -1,29 +1,16 @@
-# Lumo Compositor Skeleton
+# Lumo Compositor
 
-This directory is the starting point for the wlroots-based compositor core.
+This directory contains the wlroots-based compositor core and all companion
+binaries (shell, apps, browser, screenshot).
 
-It is intentionally small right now, but the source tree is now grouped by
-category so the compositor can keep scaling without turning into one giant
-flat directory:
+The source tree is grouped by category:
 
-- `src/core/` owns backend startup, compositor orchestration, input, output, XWayland, and the main entrypoint
-- `src/apps/` owns native touch-first application clients launched from the drawer
-- `src/protocol/` owns the custom `lumo-shell` protocol and shared shell wire helpers
-- `src/shell/` owns shell launch and the shell-side UI helpers such as launcher and OSK layout
-- `src/tools/` owns standalone utilities such as `lumo-screenshot`
-- `tests/apps/`, `tests/core/`, `tests/shell/`, and `tests/tools/` mirror those runtime categories
-
-The real wlroots integration will come next. This scaffold gives us the module boundary first so shell-client work can move in parallel.
-
-When the implementation lands, this compositor should:
-
-- accept xdg-shell app windows
-- support layer-shell shell surfaces
-- manage output rotation and touch mapping
-- expose shell state to launcher, OSK, bar, and gesture surfaces
-- ship native app clients that match the drawer tiles and run without desktop-environment dependencies
-- forward OSK text into focused text-input-v3 clients before falling back to lower-level keyboard handling
-- keep shared touch-audit geometry and saved device profiles close to the input pipeline so OrangePi bring-up stays debuggable
+- `src/core/` — backend startup, compositor lifecycle, input dispatch, output management, XWayland
+- `src/apps/` — native touch-first application clients (terminal, clock, files, settings, notes, music, photos, videos, browser)
+- `src/protocol/` — xdg-shell/layer-shell management, text-input-v3, bridge protocol parser
+- `src/shell/` — shell launch/supervision, shell client rendering (5 modes), OSK layout, UI geometry
+- `src/tools/` — standalone utilities (lumo-screenshot)
+- `tests/` — 5 test suites mirroring the runtime categories plus fuzz/stress tests
 
 ## Build Toggles
 
@@ -91,8 +78,9 @@ keyboard devices stay available in the direct-display session instead of
 starting a scanout-only backend.
 The current mobile edge behavior reserves:
 
-- top edge for future system surfaces in normal sessions; touch audit entry is kept to debug flows
-- left edge for dismiss or back-style shell actions
+- top-left edge for the time/date panel (clock, date, weather)
+- top-right edge for the quick settings panel (WiFi, display, volume, brightness, reload, rotate)
+- left edge for dismiss or back-style shell actions (cascades: audit → panels → launcher → keyboard)
 - right edge for launcher open
 - bottom gesture handle for launcher toggle
 - bottom-edge upward swipes for focused-app close across native Lumo apps, Wayland toplevels, and XWayland windows
