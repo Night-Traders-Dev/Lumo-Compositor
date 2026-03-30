@@ -559,10 +559,13 @@ void lumo_protocol_refresh_shell_hitboxes(struct lumo_compositor *compositor) {
 }
 
 static void lumo_protocol_teardown_toplevel(struct lumo_toplevel *toplevel) {
+    struct lumo_compositor *compositor;
+
     if (toplevel == NULL) {
         return;
     }
 
+    compositor = toplevel->compositor;
     wl_list_remove(&toplevel->request_maximize.link);
     wl_list_remove(&toplevel->request_fullscreen.link);
     wl_list_remove(&toplevel->request_minimize.link);
@@ -575,6 +578,12 @@ static void lumo_protocol_teardown_toplevel(struct lumo_toplevel *toplevel) {
     wl_list_remove(&toplevel->destroy.link);
     wl_list_remove(&toplevel->link);
     free(toplevel);
+
+    /* hide keyboard when last app toplevel is destroyed */
+    if (compositor != NULL && compositor->keyboard_visible &&
+            wl_list_empty(&compositor->toplevels)) {
+        lumo_protocol_set_keyboard_visible(compositor, false);
+    }
 }
 
 static void lumo_protocol_teardown_popup(struct lumo_popup *popup) {
