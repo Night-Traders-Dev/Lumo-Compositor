@@ -1048,36 +1048,43 @@ static void lumo_draw_status(
         2, accent_color, "LUMO");
 
     {
-        int wifi_bars = 0;
-        /* TODO: cache results to avoid per-frame I/O */
-        FILE *wfp = fopen("/proc/net/wireless", "r");
-        if (wfp != NULL) {
-            char wline[256];
-            while (fgets(wline, sizeof(wline), wfp) != NULL) {
-                char ifn[32] = {0};
-                float quality = 0;
-                float signal = 0;
-                if (sscanf(wline, " %31[^:]: %*d %f %f",
-                        ifn, &quality, &signal) >= 2 &&
-                        ifn[0] != '\0' && ifn[0] != '|') {
-                    if (signal < 0) {
-                        if (signal > -50) wifi_bars = 4;
-                        else if (signal > -60) wifi_bars = 3;
-                        else if (signal > -70) wifi_bars = 2;
-                        else wifi_bars = 1;
-                    } else {
-                        if (quality > 50) wifi_bars = 4;
-                        else if (quality > 35) wifi_bars = 3;
-                        else if (quality > 20) wifi_bars = 2;
-                        else if (quality > 0) wifi_bars = 1;
+        /* cache wifi bars — re-read /proc at most once per 5 seconds */
+        static int cached_wifi_bars = 0;
+        static uint64_t wifi_last_read = 0;
+        uint64_t now_ms = (uint64_t)now;
+        if (now_ms != wifi_last_read &&
+                (wifi_last_read == 0 || now_ms >= wifi_last_read + 5)) {
+            wifi_last_read = now_ms;
+            cached_wifi_bars = 0;
+            FILE *wfp = fopen("/proc/net/wireless", "r");
+            if (wfp != NULL) {
+                char wline[256];
+                while (fgets(wline, sizeof(wline), wfp) != NULL) {
+                    char ifn[32] = {0};
+                    float quality = 0;
+                    float signal = 0;
+                    if (sscanf(wline, " %31[^:]: %*d %f %f",
+                            ifn, &quality, &signal) >= 2 &&
+                            ifn[0] != '\0' && ifn[0] != '|') {
+                        if (signal < 0) {
+                            if (signal > -50) cached_wifi_bars = 4;
+                            else if (signal > -60) cached_wifi_bars = 3;
+                            else if (signal > -70) cached_wifi_bars = 2;
+                            else cached_wifi_bars = 1;
+                        } else {
+                            if (quality > 50) cached_wifi_bars = 4;
+                            else if (quality > 35) cached_wifi_bars = 3;
+                            else if (quality > 20) cached_wifi_bars = 2;
+                            else if (quality > 0) cached_wifi_bars = 1;
+                        }
+                        break;
                     }
-                    break;
                 }
+                fclose(wfp);
             }
-            fclose(wfp);
         }
         lumo_draw_wifi_bars(pixels, width, height,
-            (int)width - 42, bar_height / 2 - 8, wifi_bars,
+            (int)width - 42, bar_height / 2 - 8, cached_wifi_bars,
             accent_color, wifi_dim);
     }
 }
@@ -1160,7 +1167,7 @@ void lumo_theme_update(int weather_code) {
 
 /* ── bokeh ball system ────────────────────────────────────────────── */
 
-#define BOKEH_COUNT 18
+#define BOKEH_COUNT 10
 
 struct bokeh_ball {
     /* base position as fraction of screen (0.0-1.0) */
@@ -1198,23 +1205,22 @@ static const struct bokeh_ball bokeh_particles[BOKEH_COUNT] = {
     { 0.48f, 0.22f, -0.00010f,  0.00017f, 0.06f, 42 },
 };
 
-/* alpha-blend a single pixel: src over dst (premultiplied-style) */
+/* alpha-blend a single pixel: src over dst.
+ * Uses (x * 257 + 256) >> 16 ≈ x / 255 to avoid per-pixel division. */
 static inline uint32_t lumo_blend_pixel(uint32_t dst, uint32_t src_rgb,
                                         uint8_t alpha)
 {
     if (alpha == 0) return dst;
-    uint32_t dr = (dst >> 16) & 0xFF;
-    uint32_t dg = (dst >>  8) & 0xFF;
-    uint32_t db =  dst        & 0xFF;
-    uint32_t sr = (src_rgb >> 16) & 0xFF;
-    uint32_t sg = (src_rgb >>  8) & 0xFF;
-    uint32_t sb =  src_rgb        & 0xFF;
     uint32_t a  = alpha;
     uint32_t ia = 255 - a;
-    uint32_t r  = (sr * a + dr * ia + 127) / 255;
-    uint32_t g  = (sg * a + dg * ia + 127) / 255;
-    uint32_t b  = (sb * a + db * ia + 127) / 255;
-    return 0xFF000000 | (r << 16) | (g << 8) | b;
+    /* blend RB channels together, then G separately — avoids 3 multiplies */
+    uint32_t dst_rb = dst & 0x00FF00FF;
+    uint32_t dst_g  = dst & 0x0000FF00;
+    uint32_t src_rb = src_rgb & 0x00FF00FF;
+    uint32_t src_g  = src_rgb & 0x0000FF00;
+    uint32_t rb = (src_rb * a + dst_rb * ia + 0x00800080) >> 8;
+    uint32_t g  = (src_g  * a + dst_g  * ia + 0x00008000) >> 8;
+    return 0xFF000000 | (rb & 0x00FF00FF) | (g & 0x0000FF00);
 }
 
 /* draw one soft bokeh ball with radial alpha falloff */
@@ -1240,6 +1246,9 @@ static void lumo_draw_bokeh_ball(
     int r2 = radius * radius;
     if (r2 == 0) return;
 
+    /* pre-compute reciprocal to avoid per-pixel division */
+    uint32_t inv_r2 = r2 > 0 ? (255u * 65536u) / (uint32_t)r2 : 0;
+
     for (int y = y0; y <= y1; y++) {
         int dy = y - cy;
         int dy2 = dy * dy;
@@ -1249,12 +1258,15 @@ static void lumo_draw_bokeh_ball(
             int dist2 = dx * dx + dy2;
             if (dist2 >= r2) continue;
 
-            /* smooth radial falloff: alpha = peak * (1 - (d/r)^2)^2 */
-            uint32_t frac = (uint32_t)dist2 * 255 / (uint32_t)r2;
+            /* smooth radial falloff: alpha = peak * (1 - (d/r)^2)^2
+             * Use pre-computed reciprocal: frac = dist2 * 255 / r2
+             * approximated as (dist2 * inv_r2) >> 16 */
+            uint32_t frac = ((uint32_t)dist2 * inv_r2) >> 16;
+            if (frac > 255) frac = 255;
             uint32_t inv  = 255 - frac;
-            uint32_t a    = ((uint32_t)peak_alpha * inv * inv) / (255 * 255);
-            if (a > 255) a = 255;
+            uint32_t a    = ((uint32_t)peak_alpha * inv * inv) >> 16;
             if (a == 0) continue;
+            if (a > 255) a = 255;
 
             row[x] = lumo_blend_pixel(row[x], tint_rgb, (uint8_t)a);
         }
@@ -1294,7 +1306,7 @@ static void lumo_draw_bokeh_layer(
         int cy = (int)(fy * (float)height);
         int radius = (int)(b->radius_frac * (float)height);
         if (radius < 3) radius = 3;
-        if (radius > 80) radius = 80; /* cap for riscv64 perf */
+        if (radius > 50) radius = 50; /* cap for riscv64 perf */
 
         lumo_draw_bokeh_ball(pixels, width, height, cx, cy, radius,
                              tint, b->alpha);

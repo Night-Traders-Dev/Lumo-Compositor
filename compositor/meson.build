@@ -358,5 +358,31 @@ fuzz_test_exe = executable(
 
 test('lumo-fuzz', fuzz_test_exe)
 
+perf_test_sources = files(
+  'src/shell/shell_osk.c',
+  'src/shell/shell_ui.c',
+  'src/shell/shell_draw.c',
+  'src/apps/app_catalog.c',
+  'src/apps/app_ui.c',
+  'src/apps/app_clock.c',
+  'src/apps/app_files.c',
+  'src/apps/app_settings.c',
+  'src/apps/app_notes.c',
+  'src/apps/app_terminal.c',
+  'src/apps/app_music.c',
+  'src/apps/app_photos.c',
+  'src/apps/app_videos.c',
+  'tests/core/test_perf.c',
+)
+
+perf_test_exe = executable(
+  'lumo-perf-tests',
+  perf_test_sources,
+  include_directories: lumo_inc,
+  install: false,
+)
+
+test('lumo-perf', perf_test_exe)
+
 # Add wlroots, wayland-server, libinput, xkbcommon, pixman, libdrm,
 # GBM, libseat, and wayland-protocols once the real backend lands.

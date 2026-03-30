@@ -150,7 +150,7 @@ All notable changes to this project will be documented in this file.
 - Fixed app drawer flash on panel close with instant hide instead of animation.
 - Slowed animated background to reduce scene damage frequency.
 - Applied shell_osk.c header fixes (limits.h, stdint.h).
-- No NPU available on OrangePi RV2 (SpacemiT K1/X1 SoC).
+- No NPU available on OrangePi RV2 (SpacemiT X1 SoC).
 
 ## [0.0.50] - 2026-03-27
 - Switched the entire shell to Ubuntu's stock color palette: aubergine backgrounds, orange accents, warm grey secondary text, and white primary text.

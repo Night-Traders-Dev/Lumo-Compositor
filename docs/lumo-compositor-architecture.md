@@ -156,7 +156,7 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
 
 ## Key Design Decisions
 
-1. **Pixman-only rendering**: No GPU on the SpacemiT K1 SoC. All surfaces
+1. **Pixman-only rendering**: No GPU on the SpacemiT X1 SoC. All surfaces
    rendered in software via SHM buffers.
 
 2. **Bridge protocol over Wayland**: Shell clients communicate state via a

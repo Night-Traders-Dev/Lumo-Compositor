@@ -45,10 +45,34 @@ enum lumo_shell_remote_scrim_state {
     LUMO_SHELL_REMOTE_SCRIM_MODAL,
 };
 
+/* ── per-surface state (one per shell mode in unified process) ────── */
+
+#define LUMO_SHELL_MAX_SURFACES 5
+
+struct lumo_shell_surface_slot {
+    enum lumo_shell_mode mode;
+    struct wl_surface *surface;
+    struct zwlr_layer_surface_v1 *layer_surface;
+    struct lumo_shell_buffer *buffer;
+    struct lumo_shell_buffer *buffers[2];
+    struct lumo_shell_surface_config config;
+    uint32_t configured_width;
+    uint32_t configured_height;
+    bool configured;
+    bool target_visible;
+    bool surface_hidden;
+    bool animation_active;
+    double animation_from;
+    double animation_to;
+    uint64_t animation_started_msec;
+    uint32_t animation_duration_msec;
+    bool dirty;
+};
+
 /* ── client state ─────────────────────────────────────────────────── */
 
 struct lumo_shell_client {
-    enum lumo_shell_mode mode;
+    enum lumo_shell_mode mode;       /* primary mode (legacy single-surface) */
     struct wl_display *display;
     struct wl_registry *registry;
     struct wl_compositor *compositor;
@@ -71,6 +95,11 @@ struct lumo_shell_client {
     uint32_t output_height_hint;
     bool configured;
     bool running;
+
+    /* unified mode: all surfaces in one process */
+    bool unified;
+    int surface_count;
+    struct lumo_shell_surface_slot slots[LUMO_SHELL_MAX_SURFACES];
     bool pointer_pressed;
     bool touch_pressed;
     bool active_target_valid;

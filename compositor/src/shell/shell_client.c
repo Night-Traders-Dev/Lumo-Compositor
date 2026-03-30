@@ -408,7 +408,7 @@ int lumo_shell_client_animation_timeout(
     uint64_t now, end_time;
     if (client == NULL || !client->animation_active) {
         if (client != NULL && client->mode == LUMO_SHELL_MODE_BACKGROUND)
-            return 66;
+            return 200;
         if (client != NULL && client->mode == LUMO_SHELL_MODE_STATUS) {
             if (client->compositor_time_panel_visible) return 1000;
             return 30000;
@@ -601,6 +601,192 @@ static const struct wl_registry_listener lumo_shell_registry_listener = {
     .global_remove = lumo_shell_registry_remove,
 };
 
+/* ── unified mode: per-slot configure listener data ───────────────── */
+
+struct lumo_shell_slot_listener_data {
+    struct lumo_shell_client *client;
+    int slot_index;
+};
+
+static struct lumo_shell_slot_listener_data
+    unified_listener_data[LUMO_SHELL_MAX_SURFACES];
+
+static void lumo_shell_unified_handle_configure(
+    void *data, struct zwlr_layer_surface_v1 *layer_surface,
+    uint32_t serial, uint32_t width, uint32_t height
+) {
+    struct lumo_shell_slot_listener_data *ld = data;
+    struct lumo_shell_client *client;
+    struct lumo_shell_surface_slot *slot;
+    uint32_t draw_width, draw_height;
+    enum lumo_shell_mode saved_mode;
+    struct wl_surface *saved_surface;
+    struct zwlr_layer_surface_v1 *saved_layer;
+    struct lumo_shell_buffer *saved_buf;
+    struct lumo_shell_buffer *saved_bufs[2];
+    struct lumo_shell_surface_config saved_config;
+    uint32_t saved_cw, saved_ch;
+    bool saved_configured;
+
+    if (ld == NULL) return;
+    client = ld->client;
+    if (client == NULL || ld->slot_index < 0 ||
+            ld->slot_index >= client->surface_count)
+        return;
+
+    slot = &client->slots[ld->slot_index];
+    zwlr_layer_surface_v1_ack_configure(layer_surface, serial);
+    draw_width = width != 0 ? width : slot->config.width;
+    draw_height = height != 0 ? height : slot->config.height;
+    if (draw_width == 0 || draw_height == 0) return;
+
+    fprintf(stderr, "lumo-shell: unified %s configure %ux%u\n",
+        lumo_shell_mode_name(slot->mode), draw_width, draw_height);
+
+    if (slot->mode == LUMO_SHELL_MODE_LAUNCHER) {
+        client->output_width_hint = draw_width;
+        client->output_height_hint = draw_height;
+    } else if (client->output_width_hint == 0) {
+        client->output_width_hint = draw_width;
+    }
+
+    /* swap slot state into client for rendering, then restore */
+    saved_mode = client->mode;
+    saved_surface = client->surface;
+    saved_layer = client->layer_surface;
+    saved_buf = client->buffer;
+    saved_bufs[0] = client->buffers[0];
+    saved_bufs[1] = client->buffers[1];
+    saved_config = client->config;
+    saved_cw = client->configured_width;
+    saved_ch = client->configured_height;
+    saved_configured = client->configured;
+
+    client->mode = slot->mode;
+    client->surface = slot->surface;
+    client->layer_surface = slot->layer_surface;
+    client->buffer = slot->buffer;
+    client->buffers[0] = slot->buffers[0];
+    client->buffers[1] = slot->buffers[1];
+    client->config = slot->config;
+    client->configured_width = slot->configured_width;
+    client->configured_height = slot->configured_height;
+    client->configured = slot->configured;
+    client->target_visible = slot->target_visible;
+    client->surface_hidden = slot->surface_hidden;
+    client->animation_active = slot->animation_active;
+    client->animation_from = slot->animation_from;
+    client->animation_to = slot->animation_to;
+    client->animation_started_msec = slot->animation_started_msec;
+    client->animation_duration_msec = slot->animation_duration_msec;
+
+    (void)lumo_shell_draw_buffer(client, draw_width, draw_height);
+
+    /* save back any state changes */
+    slot->buffer = client->buffer;
+    slot->buffers[0] = client->buffers[0];
+    slot->buffers[1] = client->buffers[1];
+    slot->config = client->config;
+    slot->configured_width = client->configured_width;
+    slot->configured_height = client->configured_height;
+    slot->configured = client->configured;
+
+    /* restore */
+    client->mode = saved_mode;
+    client->surface = saved_surface;
+    client->layer_surface = saved_layer;
+    client->buffer = saved_buf;
+    client->buffers[0] = saved_bufs[0];
+    client->buffers[1] = saved_bufs[1];
+    client->config = saved_config;
+    client->configured_width = saved_cw;
+    client->configured_height = saved_ch;
+    client->configured = saved_configured;
+}
+
+static void lumo_shell_unified_handle_closed(
+    void *data, struct zwlr_layer_surface_v1 *layer_surface
+) {
+    struct lumo_shell_slot_listener_data *ld = data;
+    (void)layer_surface;
+    if (ld != NULL && ld->client != NULL && ld->client->display != NULL) {
+        wl_display_disconnect(ld->client->display);
+        ld->client->display = NULL;
+    }
+}
+
+static const struct zwlr_layer_surface_v1_listener
+    lumo_shell_unified_surface_listener = {
+    .configure = lumo_shell_unified_handle_configure,
+    .closed = lumo_shell_unified_handle_closed,
+};
+
+static bool lumo_shell_create_unified_surface(
+    struct lumo_shell_client *client, int slot_idx, enum lumo_shell_mode mode
+) {
+    struct lumo_shell_surface_slot *slot = &client->slots[slot_idx];
+    uint32_t layer;
+
+    slot->mode = mode;
+    slot->target_visible = mode == LUMO_SHELL_MODE_GESTURE ||
+        mode == LUMO_SHELL_MODE_STATUS ||
+        mode == LUMO_SHELL_MODE_BACKGROUND;
+    slot->surface_hidden = !slot->target_visible;
+    slot->animation_active = false;
+    slot->animation_from = slot->target_visible ? 1.0 : 0.0;
+    slot->animation_to = slot->animation_from;
+    slot->animation_duration_msec = 0;
+    slot->dirty = true;
+
+    if (!lumo_shell_surface_bootstrap_config(mode, &slot->config))
+        return false;
+
+    slot->surface = wl_compositor_create_surface(client->compositor);
+    if (slot->surface == NULL) return false;
+
+    if (mode == LUMO_SHELL_MODE_LAUNCHER || mode == LUMO_SHELL_MODE_OSK)
+        layer = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
+    else if (mode == LUMO_SHELL_MODE_BACKGROUND)
+        layer = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
+    else
+        layer = ZWLR_LAYER_SHELL_V1_LAYER_TOP;
+
+    slot->layer_surface = zwlr_layer_shell_v1_get_layer_surface(
+        client->layer_shell, slot->surface, NULL, layer,
+        slot->config.name != NULL ? slot->config.name : "lumo-shell");
+    if (slot->layer_surface == NULL) return false;
+
+    unified_listener_data[slot_idx].client = client;
+    unified_listener_data[slot_idx].slot_index = slot_idx;
+    zwlr_layer_surface_v1_add_listener(slot->layer_surface,
+        &lumo_shell_unified_surface_listener,
+        &unified_listener_data[slot_idx]);
+
+    /* apply initial config */
+    {
+        uint32_t keyboard_interactive;
+        zwlr_layer_surface_v1_set_size(slot->layer_surface,
+            slot->config.width, slot->config.height);
+        zwlr_layer_surface_v1_set_anchor(slot->layer_surface,
+            slot->config.anchor);
+        zwlr_layer_surface_v1_set_exclusive_zone(slot->layer_surface,
+            slot->config.exclusive_zone);
+        zwlr_layer_surface_v1_set_margin(slot->layer_surface,
+            slot->config.margin_top, slot->config.margin_right,
+            slot->config.margin_bottom, slot->config.margin_left);
+        keyboard_interactive = slot->config.keyboard_interactive
+            ? ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE
+            : ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE;
+        zwlr_layer_surface_v1_set_keyboard_interactivity(
+            slot->layer_surface, keyboard_interactive);
+        wl_surface_commit(slot->surface);
+    }
+
+    fprintf(stderr, "lumo-shell: unified surface %s created\n",
+        lumo_shell_mode_name(mode));
+    return true;
+}
+
 /* ── surface creation ─────────────────────────────────────────────── */
 
 static bool lumo_shell_create_surface(struct lumo_shell_client *client) {
@@ -709,7 +895,7 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
 
 static void lumo_shell_print_usage(const char *argv0) {
     fprintf(stderr,
-        "usage: %s [--mode launcher|osk|gesture|status|background]\n",
+        "usage: %s [--mode launcher|osk|gesture|status|background] [--unified]\n",
         argv0);
 }
 
@@ -751,6 +937,10 @@ int main(int argc, char **argv) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             lumo_shell_print_usage(argv[0]); return 0;
         }
+        if (strcmp(argv[i], "--unified") == 0) {
+            client.unified = true;
+            continue;
+        }
         if (strcmp(argv[i], "--mode") == 0 && i + 1 < argc) {
             if (!lumo_shell_parse_mode(argv[++i], &client.mode)) {
                 fprintf(stderr, "lumo-shell: invalid mode '%s'\n", argv[i]);
@@ -784,10 +974,34 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (!lumo_shell_create_surface(&client)) {
-        fprintf(stderr, "lumo-shell: failed to create shell surface\n");
-        wl_display_disconnect(client.display);
-        return 1;
+    if (client.unified) {
+        /* unified mode: create all 5 surfaces in one process */
+        static const enum lumo_shell_mode all_modes[] = {
+            LUMO_SHELL_MODE_BACKGROUND,
+            LUMO_SHELL_MODE_LAUNCHER,
+            LUMO_SHELL_MODE_OSK,
+            LUMO_SHELL_MODE_GESTURE,
+            LUMO_SHELL_MODE_STATUS,
+        };
+        client.surface_count = 5;
+        client.mode = LUMO_SHELL_MODE_LAUNCHER; /* primary for input */
+        for (int i = 0; i < 5; i++) {
+            if (!lumo_shell_create_unified_surface(&client, i,
+                    all_modes[i])) {
+                fprintf(stderr, "lumo-shell: failed to create %s surface\n",
+                    lumo_shell_mode_name(all_modes[i]));
+                wl_display_disconnect(client.display);
+                return 1;
+            }
+        }
+        fprintf(stderr, "lumo-shell: unified mode with %d surfaces\n",
+            client.surface_count);
+    } else {
+        if (!lumo_shell_create_surface(&client)) {
+            fprintf(stderr, "lumo-shell: failed to create shell surface\n");
+            wl_display_disconnect(client.display);
+            return 1;
+        }
     }
 
     client.state_fd = lumo_shell_client_connect_state_socket(&client);

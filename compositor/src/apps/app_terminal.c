@@ -40,15 +40,14 @@ void lumo_app_render_terminal(
 
     /* centered fullscreen menu overlay */
     if (menu_open) {
-        /* dim background */
+        /* dim background — halve each RGB channel using bit mask.
+         * (c >> 1) & 0x7F7F7F7F clears the top bit of each byte
+         * and shifts down, equivalent to dividing each channel by 2.
+         * Then we force alpha back to 0xFF. */
         for (uint32_t py = 38; py < height; py++) {
+            uint32_t *row = pixels + py * width;
             for (uint32_t px = 0; px < width; px++) {
-                uint32_t idx = py * width + px;
-                uint32_t c = pixels[idx];
-                uint32_t r = ((c >> 16) & 0xFF) / 2;
-                uint32_t g = ((c >> 8) & 0xFF) / 2;
-                uint32_t b = (c & 0xFF) / 2;
-                pixels[idx] = (0xFF << 24) | (r << 16) | (g << 8) | b;
+                row[px] = ((row[px] >> 1) & 0x007F7F7F) | 0xFF000000;
             }
         }
 
