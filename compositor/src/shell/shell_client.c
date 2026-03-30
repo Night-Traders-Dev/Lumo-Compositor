@@ -1690,6 +1690,147 @@ static uint32_t bg_cache_hour = 0xFF;
 
 static int bg_cache_weather_code = -1;
 
+/* --- Bokeh ball system --- */
+
+#define BOKEH_COUNT 18
+
+struct bokeh_ball {
+    /* base position as fraction of screen (0.0–1.0) */
+    float base_x;
+    float base_y;
+    /* drift speed in fractions-per-frame */
+    float drift_x;
+    float drift_y;
+    /* radius as fraction of screen height */
+    float radius_frac;
+    /* peak alpha (0–255) */
+    uint8_t alpha;
+};
+
+/* deterministic particle set — hand-tuned for visual balance */
+static const struct bokeh_ball bokeh_particles[BOKEH_COUNT] = {
+    { 0.12f, 0.18f,  0.0008f,  0.0003f, 0.08f, 32 },
+    { 0.85f, 0.25f, -0.0005f,  0.0004f, 0.11f, 24 },
+    { 0.42f, 0.72f,  0.0006f, -0.0002f, 0.06f, 40 },
+    { 0.68f, 0.10f, -0.0003f,  0.0006f, 0.14f, 18 },
+    { 0.25f, 0.55f,  0.0004f,  0.0005f, 0.05f, 48 },
+    { 0.90f, 0.80f, -0.0007f, -0.0003f, 0.09f, 28 },
+    { 0.55f, 0.40f,  0.0002f, -0.0004f, 0.07f, 36 },
+    { 0.08f, 0.88f,  0.0006f, -0.0005f, 0.10f, 22 },
+    { 0.72f, 0.60f, -0.0004f,  0.0002f, 0.13f, 16 },
+    { 0.35f, 0.15f,  0.0005f,  0.0006f, 0.04f, 52 },
+    { 0.50f, 0.90f, -0.0003f, -0.0006f, 0.08f, 30 },
+    { 0.18f, 0.42f,  0.0007f,  0.0001f, 0.06f, 44 },
+    { 0.78f, 0.35f, -0.0006f,  0.0005f, 0.12f, 20 },
+    { 0.60f, 0.75f,  0.0003f, -0.0003f, 0.05f, 50 },
+    { 0.30f, 0.85f, -0.0002f,  0.0004f, 0.09f, 26 },
+    { 0.95f, 0.50f, -0.0005f, -0.0002f, 0.07f, 38 },
+    { 0.15f, 0.65f,  0.0004f,  0.0003f, 0.11f, 20 },
+    { 0.48f, 0.22f, -0.0003f,  0.0005f, 0.06f, 42 },
+};
+
+/* alpha-blend a single pixel: src over dst (premultiplied-style) */
+static inline uint32_t lumo_blend_pixel(uint32_t dst, uint32_t src_rgb,
+                                        uint8_t alpha)
+{
+    if (alpha == 0) return dst;
+    uint32_t dr = (dst >> 16) & 0xFF;
+    uint32_t dg = (dst >>  8) & 0xFF;
+    uint32_t db =  dst        & 0xFF;
+    uint32_t sr = (src_rgb >> 16) & 0xFF;
+    uint32_t sg = (src_rgb >>  8) & 0xFF;
+    uint32_t sb =  src_rgb        & 0xFF;
+    uint32_t a  = alpha;
+    uint32_t ia = 255 - a;
+    uint32_t r  = (sr * a + dr * ia + 127) / 255;
+    uint32_t g  = (sg * a + dg * ia + 127) / 255;
+    uint32_t b  = (sb * a + db * ia + 127) / 255;
+    return 0xFF000000 | (r << 16) | (g << 8) | b;
+}
+
+/* draw one soft bokeh ball with radial alpha falloff */
+static void lumo_draw_bokeh_ball(
+    uint32_t *pixels,
+    uint32_t width,
+    uint32_t height,
+    int cx,
+    int cy,
+    int radius,
+    uint32_t tint_rgb,
+    uint8_t peak_alpha
+) {
+    int x0 = cx - radius;
+    int y0 = cy - radius;
+    int x1 = cx + radius;
+    int y1 = cy + radius;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 >= (int)width)  x1 = (int)width  - 1;
+    if (y1 >= (int)height) y1 = (int)height - 1;
+
+    int r2 = radius * radius;
+    if (r2 == 0) return;
+
+    for (int y = y0; y <= y1; y++) {
+        int dy = y - cy;
+        int dy2 = dy * dy;
+        uint32_t *row = pixels + y * width;
+        for (int x = x0; x <= x1; x++) {
+            int dx = x - cx;
+            int dist2 = dx * dx + dy2;
+            if (dist2 >= r2) continue;
+
+            /* smooth radial falloff: alpha = peak * (1 - (d/r)^2)^2 */
+            uint32_t frac = (uint32_t)dist2 * 255 / (uint32_t)r2;
+            uint32_t inv  = 255 - frac;
+            uint32_t a    = ((uint32_t)peak_alpha * inv * inv) / (255 * 255);
+            if (a > 255) a = 255;
+            if (a == 0) continue;
+
+            row[x] = lumo_blend_pixel(row[x], tint_rgb, (uint8_t)a);
+        }
+    }
+}
+
+/* render all bokeh balls onto the background buffer */
+static void lumo_draw_bokeh_layer(
+    uint32_t *pixels,
+    uint32_t width,
+    uint32_t height,
+    uint32_t frame,
+    uint32_t base_r,
+    uint32_t base_g,
+    uint32_t base_b
+) {
+    /* bokeh tint: lighter version of the base palette */
+    uint32_t tr = base_r + 0x3A > 0xFF ? 0xFF : base_r + 0x3A;
+    uint32_t tg = base_g + 0x2A > 0xFF ? 0xFF : base_g + 0x2A;
+    uint32_t tb = base_b + 0x3E > 0xFF ? 0xFF : base_b + 0x3E;
+    uint32_t tint = (tr << 16) | (tg << 8) | tb;
+
+    for (int i = 0; i < BOKEH_COUNT; i++) {
+        const struct bokeh_ball *b = &bokeh_particles[i];
+
+        /* slow drift — wraps via fmod-style math */
+        float fx = b->base_x + b->drift_x * (float)frame;
+        float fy = b->base_y + b->drift_y * (float)frame;
+
+        /* wrap to [0, 1) */
+        fx = fx - (float)(int)fx;
+        fy = fy - (float)(int)fy;
+        if (fx < 0.0f) fx += 1.0f;
+        if (fy < 0.0f) fy += 1.0f;
+
+        int cx = (int)(fx * (float)width);
+        int cy = (int)(fy * (float)height);
+        int radius = (int)(b->radius_frac * (float)height);
+        if (radius < 3) radius = 3;
+
+        lumo_draw_bokeh_ball(pixels, width, height, cx, cy, radius,
+                             tint, b->alpha);
+    }
+}
+
 static void lumo_draw_animated_bg(
     uint32_t *pixels,
     uint32_t width,
@@ -1709,78 +1850,80 @@ static void lumo_draw_animated_bg(
     localtime_r(&wall_now, &tm_now);
     hour = (uint32_t)tm_now.tm_hour;
 
+    /* palette — always computed (needed for bokeh tint even on cache hit) */
+    uint32_t base_r, base_g, base_b;
+
+    /* Multi-palette time-of-day colors:
+     * Ubuntu (aubergine/orange), Sailfish (teal/petrol blue),
+     * webOS (warm charcoal/slate) blended by time period.
+     *
+     * Dawn/morning  : Sailfish teal-blue → Ubuntu warm purple
+     * Midday        : Ubuntu aubergine core
+     * Afternoon     : webOS warm slate-grey
+     * Sunset        : Ubuntu orange-red warmth
+     * Evening       : Sailfish deep petrol blue
+     * Night         : blend of all three — deep dark */
+    if (hour >= 5 && hour < 7) {
+        /* dawn — Sailfish teal with warm hint */
+        base_r = 0x14; base_g = 0x28; base_b = 0x38;
+    } else if (hour >= 7 && hour < 10) {
+        /* morning — Ubuntu warm purple + Sailfish blue */
+        base_r = 0x30; base_g = 0x10; base_b = 0x28;
+    } else if (hour >= 10 && hour < 14) {
+        /* midday — Ubuntu aubergine core */
+        base_r = 0x2C; base_g = 0x00; base_b = 0x1E;
+    } else if (hour >= 14 && hour < 17) {
+        /* afternoon — webOS warm charcoal */
+        base_r = 0x28; base_g = 0x14; base_b = 0x18;
+    } else if (hour >= 17 && hour < 19) {
+        /* sunset — Ubuntu orange-red warmth */
+        base_r = 0x42; base_g = 0x0C; base_b = 0x16;
+    } else if (hour >= 19 && hour < 21) {
+        /* evening — Sailfish deep petrol */
+        base_r = 0x10; base_g = 0x18; base_b = 0x30;
+    } else {
+        /* night — deep blend of all three */
+        base_r = 0x12; base_g = 0x08; base_b = 0x1A;
+    }
+
+    /* weather hue shift:
+     * 0=clear 1=partly_cloudy 2=cloudy 3=rain 4=storm 5=snow 6=fog */
+    switch (weather_code) {
+    case 1: /* partly cloudy — Sailfish cool blue push */
+        base_g += 0x06; base_b += 0x0A;
+        break;
+    case 2: /* cloudy — webOS grey-slate overlay */
+        base_r = (base_r * 3 + 0x30) / 4;
+        base_g = (base_g * 3 + 0x28) / 4;
+        base_b = (base_b * 3 + 0x28) / 4;
+        break;
+    case 3: /* rain — Sailfish deep teal-blue */
+        base_r = base_r * 2 / 3;
+        base_g += 0x08; base_b += 0x1A;
+        break;
+    case 4: /* storm — deep purple-indigo */
+        base_r = base_r / 2 + 0x08;
+        base_g = base_g / 2;
+        base_b += 0x24;
+        break;
+    case 5: /* snow — Sailfish ice blue-white */
+        base_r += 0x14; base_g += 0x1A; base_b += 0x24;
+        break;
+    case 6: /* fog — webOS warm grey wash */
+        base_r = (base_r + 0x28) / 2;
+        base_g = (base_g + 0x24) / 2;
+        base_b = (base_b + 0x22) / 2;
+        break;
+    default: /* clear — keep time-of-day palette */
+        break;
+    }
+    if (base_r > 0xFF) base_r = 0xFF;
+    if (base_g > 0xFF) base_g = 0xFF;
+    if (base_b > 0xFF) base_b = 0xFF;
+
+    /* rebuild row gradient cache when palette or size changes */
     if (hour != bg_cache_hour || height != bg_cache_height ||
             weather_code != bg_cache_weather_code) {
-        uint32_t base_r, base_g, base_b;
-
-        /* Multi-palette time-of-day colors:
-         * Ubuntu (aubergine/orange), Sailfish (teal/petrol blue),
-         * webOS (warm charcoal/slate) blended by time period.
-         *
-         * Dawn/morning  : Sailfish teal-blue → Ubuntu warm purple
-         * Midday        : Ubuntu aubergine core
-         * Afternoon     : webOS warm slate-grey
-         * Sunset        : Ubuntu orange-red warmth
-         * Evening       : Sailfish deep petrol blue
-         * Night         : blend of all three — deep dark */
-        if (hour >= 5 && hour < 7) {
-            /* dawn — Sailfish teal with warm hint */
-            base_r = 0x14; base_g = 0x28; base_b = 0x38;
-        } else if (hour >= 7 && hour < 10) {
-            /* morning — Ubuntu warm purple + Sailfish blue */
-            base_r = 0x30; base_g = 0x10; base_b = 0x28;
-        } else if (hour >= 10 && hour < 14) {
-            /* midday — Ubuntu aubergine core */
-            base_r = 0x2C; base_g = 0x00; base_b = 0x1E;
-        } else if (hour >= 14 && hour < 17) {
-            /* afternoon — webOS warm charcoal */
-            base_r = 0x28; base_g = 0x14; base_b = 0x18;
-        } else if (hour >= 17 && hour < 19) {
-            /* sunset — Ubuntu orange-red warmth */
-            base_r = 0x42; base_g = 0x0C; base_b = 0x16;
-        } else if (hour >= 19 && hour < 21) {
-            /* evening — Sailfish deep petrol */
-            base_r = 0x10; base_g = 0x18; base_b = 0x30;
-        } else {
-            /* night — deep blend of all three */
-            base_r = 0x12; base_g = 0x08; base_b = 0x1A;
-        }
-
-        /* weather hue shift:
-         * 0=clear 1=partly_cloudy 2=cloudy 3=rain 4=storm 5=snow 6=fog */
-        switch (weather_code) {
-        case 1: /* partly cloudy — Sailfish cool blue push */
-            base_g += 0x06; base_b += 0x0A;
-            break;
-        case 2: /* cloudy — webOS grey-slate overlay */
-            base_r = (base_r * 3 + 0x30) / 4;
-            base_g = (base_g * 3 + 0x28) / 4;
-            base_b = (base_b * 3 + 0x28) / 4;
-            break;
-        case 3: /* rain — Sailfish deep teal-blue */
-            base_r = base_r * 2 / 3;
-            base_g += 0x08; base_b += 0x1A;
-            break;
-        case 4: /* storm — deep purple-indigo */
-            base_r = base_r / 2 + 0x08;
-            base_g = base_g / 2;
-            base_b += 0x24;
-            break;
-        case 5: /* snow — Sailfish ice blue-white */
-            base_r += 0x14; base_g += 0x1A; base_b += 0x24;
-            break;
-        case 6: /* fog — webOS warm grey wash */
-            base_r = (base_r + 0x28) / 2;
-            base_g = (base_g + 0x24) / 2;
-            base_b = (base_b + 0x22) / 2;
-            break;
-        default: /* clear — keep time-of-day palette */
-            break;
-        }
-        if (base_r > 0xFF) base_r = 0xFF;
-        if (base_g > 0xFF) base_g = 0xFF;
-        if (base_b > 0xFF) base_b = 0xFF;
-
         uint32_t max_h = height < 2048 ? height : 2048;
         for (uint32_t y = 0; y < max_h; y++) {
             uint32_t r = base_r + (y * 0x20) / height;
@@ -1840,6 +1983,10 @@ static void lumo_draw_animated_bg(
             }
         }
     }
+
+    /* bokeh balls — soft depth-of-field circles over the gradient */
+    lumo_draw_bokeh_layer(pixels, width, height, frame,
+                          base_r, base_g, base_b);
 }
 
 static void lumo_render_surface(
