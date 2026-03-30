@@ -61,6 +61,9 @@ struct lumo_app_render_context {
     uint32_t alarm_min;
     bool alarm_enabled;
     int selected_row;
+    bool file_info_visible;
+    char file_info_name[256];
+    char file_info_path[1100];
     struct lumo_settings settings;
     char notes[8][128];
     int note_count;
@@ -91,6 +94,12 @@ void lumo_app_render(
     uint32_t height
 );
 int lumo_app_files_entry_at(
+    uint32_t width,
+    uint32_t height,
+    double x,
+    double y
+);
+int lumo_app_files_up_button_at(
     uint32_t width,
     uint32_t height,
     double x,

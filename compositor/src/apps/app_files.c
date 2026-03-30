@@ -1,10 +1,13 @@
 #define _DEFAULT_SOURCE
 #include "lumo/app_render.h"
 #include <dirent.h>
+#include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <time.h>
 
 static const int files_row_height = 52;
 static const int files_header_height = 140;
@@ -22,51 +25,195 @@ int lumo_app_files_entry_at(
     return index;
 }
 
+/* returns: -2 = UP button hit */
+int lumo_app_files_up_button_at(
+    uint32_t width, uint32_t height, double x, double y
+) {
+    (void)height;
+    if (y >= 60.0 && y < 92.0 && x >= (double)width - 120.0 &&
+            x < (double)width - 28.0)
+        return -2;
+    return 0;
+}
+
+static void draw_file_info_overlay(
+    uint32_t *pixels, uint32_t width, uint32_t height,
+    const struct lumo_app_render_context *ctx
+) {
+    struct lumo_app_theme theme;
+    lumo_app_theme_get(&theme);
+
+    /* dim background */
+    for (uint32_t i = 0; i < width * height; i++) {
+        uint32_t c = pixels[i];
+        uint8_t r = (uint8_t)(c >> 16);
+        uint8_t g = (uint8_t)(c >> 8);
+        uint8_t b = (uint8_t)c;
+        pixels[i] = lumo_app_argb(0xFF, r / 2, g / 2, b / 2);
+    }
+
+    /* centered info card */
+    int cw = (int)width - 60;
+    int ch = 320;
+    if (cw > 500) cw = 500;
+    if (ch > (int)height - 60) ch = (int)height - 60;
+    int cx = ((int)width - cw) / 2;
+    int cy = ((int)height - ch) / 2;
+    struct lumo_rect card = { cx, cy, cw, ch };
+    lumo_app_fill_rounded_rect(pixels, width, height, &card, 16,
+        theme.card_bg);
+    lumo_app_draw_outline(pixels, width, height, &card, 1,
+        theme.card_stroke);
+
+    int y = cy + 16;
+    lumo_app_draw_text(pixels, width, height, cx + 16, y, 3,
+        theme.accent, "FILE INFO");
+    y += 28;
+    lumo_app_fill_rect(pixels, width, height, cx + 16, y,
+        cw - 32, 1, theme.separator);
+    y += 12;
+
+    /* file name */
+    lumo_app_draw_text(pixels, width, height, cx + 16, y, 2,
+        theme.text_dim, "NAME");
+    lumo_app_draw_text(pixels, width, height, cx + 110, y, 2,
+        theme.text, ctx->file_info_name);
+    y += 24;
+
+    /* stat the file */
+    struct stat st;
+    if (stat(ctx->file_info_path, &st) == 0) {
+        char buf[128];
+
+        /* size */
+        if (st.st_size < 1024)
+            snprintf(buf, sizeof(buf), "%ld BYTES", (long)st.st_size);
+        else if (st.st_size < 1024 * 1024)
+            snprintf(buf, sizeof(buf), "%.1f KB",
+                (double)st.st_size / 1024.0);
+        else if (st.st_size < (off_t)1024 * 1024 * 1024)
+            snprintf(buf, sizeof(buf), "%.1f MB",
+                (double)st.st_size / (1024.0 * 1024.0));
+        else
+            snprintf(buf, sizeof(buf), "%.2f GB",
+                (double)st.st_size / (1024.0 * 1024.0 * 1024.0));
+        lumo_app_draw_text(pixels, width, height, cx + 16, y, 2,
+            theme.text_dim, "SIZE");
+        lumo_app_draw_text(pixels, width, height, cx + 110, y, 2,
+            theme.text, buf);
+        y += 24;
+
+        /* type */
+        const char *ftype = "FILE";
+        if (S_ISDIR(st.st_mode)) ftype = "DIRECTORY";
+        else if (S_ISLNK(st.st_mode)) ftype = "SYMLINK";
+        else if (S_ISBLK(st.st_mode)) ftype = "BLOCK DEVICE";
+        else if (S_ISCHR(st.st_mode)) ftype = "CHAR DEVICE";
+        else if (S_ISFIFO(st.st_mode)) ftype = "PIPE";
+        else if (S_ISSOCK(st.st_mode)) ftype = "SOCKET";
+        lumo_app_draw_text(pixels, width, height, cx + 16, y, 2,
+            theme.text_dim, "TYPE");
+        lumo_app_draw_text(pixels, width, height, cx + 110, y, 2,
+            theme.text, ftype);
+        y += 24;
+
+        /* permissions */
+        snprintf(buf, sizeof(buf), "%c%c%c%c%c%c%c%c%c %o",
+            (st.st_mode & S_IRUSR) ? 'R' : '-',
+            (st.st_mode & S_IWUSR) ? 'W' : '-',
+            (st.st_mode & S_IXUSR) ? 'X' : '-',
+            (st.st_mode & S_IRGRP) ? 'R' : '-',
+            (st.st_mode & S_IWGRP) ? 'W' : '-',
+            (st.st_mode & S_IXGRP) ? 'X' : '-',
+            (st.st_mode & S_IROTH) ? 'R' : '-',
+            (st.st_mode & S_IWOTH) ? 'W' : '-',
+            (st.st_mode & S_IXOTH) ? 'X' : '-',
+            (unsigned)(st.st_mode & 0777));
+        lumo_app_draw_text(pixels, width, height, cx + 16, y, 2,
+            theme.text_dim, "PERMS");
+        lumo_app_draw_text(pixels, width, height, cx + 110, y, 2,
+            theme.text, buf);
+        y += 24;
+
+        /* owner */
+        struct passwd *pw = getpwuid(st.st_uid);
+        snprintf(buf, sizeof(buf), "%s (%u)",
+            pw != NULL ? pw->pw_name : "?", (unsigned)st.st_uid);
+        lumo_app_draw_text(pixels, width, height, cx + 16, y, 2,
+            theme.text_dim, "OWNER");
+        lumo_app_draw_text(pixels, width, height, cx + 110, y, 2,
+            theme.text, buf);
+        y += 24;
+
+        /* modified */
+        struct tm tm;
+        localtime_r(&st.st_mtime, &tm);
+        strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M", &tm);
+        lumo_app_draw_text(pixels, width, height, cx + 16, y, 2,
+            theme.text_dim, "MODIFIED");
+        lumo_app_draw_text(pixels, width, height, cx + 140, y, 2,
+            theme.text, buf);
+        y += 24;
+
+        /* inode + links */
+        snprintf(buf, sizeof(buf), "INODE %lu  LINKS %lu",
+            (unsigned long)st.st_ino, (unsigned long)st.st_nlink);
+        lumo_app_draw_text(pixels, width, height, cx + 16, y, 2,
+            theme.text_dim, buf);
+    } else {
+        lumo_app_draw_text(pixels, width, height, cx + 16, y, 2,
+            theme.text_dim, "CANNOT STAT FILE");
+    }
+
+    /* dismiss hint */
+    lumo_app_draw_text(pixels, width, height,
+        cx + 16, cy + ch - 28, 2, theme.text_dim, "TAP TO DISMISS");
+}
+
 void lumo_app_render_files(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels, uint32_t width, uint32_t height
 ) {
     struct lumo_rect full = {0, 0, (int)width, (int)height};
-    bool close_active = ctx != NULL ? ctx->close_active : false;
-    const char *browse_path_override = ctx != NULL ? ctx->browse_path : NULL;
     int scroll_off = ctx != NULL ? ctx->scroll_offset : 0;
     int selected = ctx != NULL ? ctx->selected_row : -1;
-    uint32_t accent = lumo_app_accent_argb(LUMO_APP_FILES);
-    uint32_t bg_top = lumo_app_argb(0xFF, 0x2C, 0x00, 0x1E);
-    uint32_t bg_bottom = lumo_app_argb(0xFF, 0x1D, 0x11, 0x22);
-    uint32_t text_primary = lumo_app_argb(0xFF, 0xFF, 0xFF, 0xFF);
-    uint32_t text_secondary = lumo_app_argb(0xFF, 0xAE, 0xA7, 0x9F);
-    uint32_t panel_fill = lumo_app_argb(0xFF, 0x2C, 0x16, 0x28);
-    uint32_t panel_stroke = lumo_app_argb(0xFF, 0x5E, 0x2C, 0x56);
-    uint32_t folder_color = lumo_app_argb(0xFF, 0xE9, 0x54, 0x20);
-    uint32_t file_color = lumo_app_argb(0xFF, 0x77, 0x21, 0x6F);
-    int row_y;
-    DIR *dir;
-    const char *browse_path;
+
+    struct lumo_app_theme theme;
+    lumo_app_theme_get(&theme);
 
     memset(pixels, 0, (size_t)width * height * 4);
-    lumo_app_fill_gradient(pixels, width, height, &full, bg_top, bg_bottom);
+    lumo_app_fill_gradient(pixels, width, height, &full,
+        theme.header_bg, theme.bg);
 
     lumo_app_draw_text(pixels, width, height, 28, 28, 2,
-        text_secondary, "FILE MANAGER");
-    lumo_app_draw_text(pixels, width, height, 28, 60, 4, text_primary,
-        "Files");
+        theme.text_dim, "FILE MANAGER");
+    lumo_app_draw_text(pixels, width, height, 28, 60, 4,
+        theme.text, "Files");
 
-    if (browse_path_override != NULL && browse_path_override[0] != '\0') {
-        browse_path = browse_path_override;
-    } else {
-        browse_path = getenv("HOME");
-        if (browse_path == NULL) browse_path = "/home";
+    const char *browse_path = (ctx != NULL && ctx->browse_path != NULL &&
+        ctx->browse_path[0] != '\0') ? ctx->browse_path : "/home";
+
+    /* path bar */
+    lumo_app_draw_text(pixels, width, height, 28, 108, 2,
+        theme.accent, browse_path);
+
+    /* UP button */
+    {
+        int bx = (int)width - 120;
+        struct lumo_rect up_btn = { bx, 60, 88, 30 };
+        lumo_app_fill_rounded_rect(pixels, width, height, &up_btn, 10,
+            theme.card_bg);
+        lumo_app_draw_outline(pixels, width, height, &up_btn, 1,
+            theme.card_stroke);
+        lumo_app_draw_text_centered(pixels, width, height, &up_btn, 2,
+            theme.accent, "<  UP");
     }
 
-    lumo_app_draw_text(pixels, width, height, 28, 108, 2, accent, browse_path);
-
     lumo_app_fill_rect(pixels, width, height, 28, 130, (int)width - 56, 1,
-        panel_stroke);
+        theme.separator);
 
-    row_y = files_header_height;
-    /* TODO: cache results to avoid per-frame I/O */
-    dir = opendir(browse_path);
+    int row_y = files_header_height;
+    DIR *dir = opendir(browse_path);
     if (dir != NULL) {
         struct dirent *entry;
         int count = 0, skipped = 0, total_visible = 0;
@@ -79,26 +226,31 @@ void lumo_app_render_files(
             if (count >= max_rows) { total_visible++; continue; }
 
             bool is_dir = entry->d_type == DT_DIR;
-            struct lumo_rect row_rect = {28, row_y, (int)width - 56, files_row_height - 4};
+            struct lumo_rect row_rect = {28, row_y,
+                (int)width - 56, files_row_height - 4};
 
             if (selected == total_visible) {
                 lumo_app_fill_rounded_rect(pixels, width, height, &row_rect,
                     10, lumo_app_argb(0xFF, 0x3B, 0x1F, 0x34));
                 lumo_app_draw_outline(pixels, width, height, &row_rect, 1,
-                    lumo_app_argb(0xFF, 0xE9, 0x54, 0x20));
+                    theme.accent);
             } else {
                 lumo_app_fill_rounded_rect(pixels, width, height, &row_rect,
-                    10, panel_fill);
+                    10, theme.card_bg);
             }
 
+            /* icon */
             {
-                struct lumo_rect icon = {row_rect.x + 10, row_rect.y + 10, 20, 20};
+                struct lumo_rect icon = {row_rect.x + 10,
+                    row_rect.y + 10, 20, 20};
                 lumo_app_fill_rounded_rect(pixels, width, height, &icon,
-                    4, is_dir ? folder_color : file_color);
+                    4, is_dir ? theme.accent :
+                    lumo_app_argb(0xFF, 0x77, 0x21, 0x6F));
             }
 
             lumo_app_draw_text(pixels, width, height, row_rect.x + 42,
-                row_rect.y + 12, 2, text_primary, entry->d_name);
+                row_rect.y + 12, 2, theme.text, entry->d_name);
+
             if (!is_dir) {
                 char path_buf[1100];
                 struct stat st;
@@ -106,28 +258,23 @@ void lumo_app_render_files(
                     browse_path, entry->d_name);
                 if (stat(path_buf, &st) == 0) {
                     char size_buf[16];
-                    if (st.st_size < 1024) {
+                    if (st.st_size < 1024)
                         snprintf(size_buf, sizeof(size_buf), "%ldB",
                             (long)st.st_size);
-                    } else if (st.st_size < 1024 * 1024) {
+                    else if (st.st_size < 1024 * 1024)
                         snprintf(size_buf, sizeof(size_buf), "%ldK",
                             (long)(st.st_size / 1024));
-                    } else {
+                    else
                         snprintf(size_buf, sizeof(size_buf), "%ldM",
                             (long)(st.st_size / (1024 * 1024)));
-                    }
                     lumo_app_draw_text(pixels, width, height,
                         row_rect.x + row_rect.width - 80, row_rect.y + 12,
-                        2, text_secondary, size_buf);
-                } else {
-                    lumo_app_draw_text(pixels, width, height,
-                        row_rect.x + row_rect.width - 60, row_rect.y + 12,
-                        2, text_secondary, "FILE");
+                        2, theme.text_dim, size_buf);
                 }
             } else {
                 lumo_app_draw_text(pixels, width, height,
-                    row_rect.x + row_rect.width - 60, row_rect.y + 12,
-                    2, text_secondary, "DIR");
+                    row_rect.x + row_rect.width - 28, row_rect.y + 12,
+                    2, theme.text_dim, ">");
             }
 
             row_y += files_row_height;
@@ -142,17 +289,19 @@ void lumo_app_render_files(
                 scroll_off + 1, scroll_off + count, total_visible);
             lumo_app_draw_text(pixels, width, height,
                 (int)width - 160, (int)height - 40, 2,
-                text_secondary, scroll_buf);
+                theme.text_dim, scroll_buf);
         }
         if (count == 0) {
             lumo_app_draw_text(pixels, width, height, 28, row_y, 2,
-                text_secondary, "EMPTY DIRECTORY");
+                theme.text_dim, "EMPTY DIRECTORY");
         }
     } else {
-        lumo_app_draw_text(pixels, width, height, 28, files_header_height, 2,
-            text_secondary, "CANNOT OPEN DIRECTORY");
+        lumo_app_draw_text(pixels, width, height, 28,
+            files_header_height, 2, theme.text_dim,
+            "CANNOT OPEN DIRECTORY");
     }
 
+    /* storage info */
     {
         struct statvfs st;
         if (statvfs("/", &st) == 0) {
@@ -164,9 +313,11 @@ void lumo_app_render_files(
             snprintf(storage_buf, sizeof(storage_buf),
                 "%lu / %lu MB FREE", free_mb, total_mb);
             lumo_app_draw_text(pixels, width, height, 28,
-                (int)height - 40, 2, text_secondary, storage_buf);
+                (int)height - 40, 2, theme.text_dim, storage_buf);
         }
     }
 
-    /* close button removed — use bottom-edge swipe */
+    /* file info overlay */
+    if (ctx != NULL && ctx->file_info_visible)
+        draw_file_info_overlay(pixels, width, height, ctx);
 }

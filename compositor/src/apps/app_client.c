@@ -92,6 +92,9 @@ struct lumo_app_client {
     uint32_t alarm_min;
     bool alarm_enabled;
     int selected_row;
+    bool file_info_visible;
+    char file_info_name[256];
+    char file_info_path[1100];
     struct lumo_settings settings;
     char notes[8][128];
     int note_count;
@@ -839,6 +842,7 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             .alarm_min = client->alarm_min,
             .alarm_enabled = client->alarm_enabled,
             .selected_row = client->selected_row,
+            .file_info_visible = client->file_info_visible,
             .settings = client->settings,
             .note_count = client->note_count,
             .note_editing = client->note_editing,
@@ -853,6 +857,10 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             .photo_width = client->photo_width,
             .photo_height = client->photo_height,
         };
+        memcpy(ctx.file_info_name, client->file_info_name,
+            sizeof(ctx.file_info_name));
+        memcpy(ctx.file_info_path, client->file_info_path,
+            sizeof(ctx.file_info_path));
         memcpy(ctx.notes, client->notes, sizeof(ctx.notes));
         memcpy(ctx.term_lines, client->term_lines, sizeof(ctx.term_lines));
         memcpy(ctx.term_input, client->term_input, sizeof(ctx.term_input));
@@ -1411,27 +1419,55 @@ static void lumo_app_touch_handle_up(
 
     if (client->app_id == LUMO_APP_FILES && client->width > 0 &&
             client->height > 0) {
+        /* dismiss file info overlay on any tap */
+        if (client->file_info_visible) {
+            client->file_info_visible = false;
+            client->selected_row = -1;
+            (void)lumo_app_client_redraw(client);
+            return;
+        }
+
+        /* UP button */
+        if (lumo_app_files_up_button_at(client->width, client->height,
+                client->touch_down_x, client->touch_down_y) == -2) {
+            char *last_slash = strrchr(client->browse_path, '/');
+            if (last_slash != NULL && last_slash != client->browse_path) {
+                *last_slash = '\0';
+            } else if (last_slash == client->browse_path) {
+                client->browse_path[1] = '\0';
+            }
+            client->scroll_offset = 0;
+            client->selected_row = -1;
+            (void)lumo_app_client_redraw(client);
+            return;
+        }
+
+        /* path bar tap also goes up */
+        if (client->touch_down_y < 130.0 && client->touch_down_y > 100.0 &&
+                client->touch_down_x < (double)client->width - 130.0) {
+            char *last_slash = strrchr(client->browse_path, '/');
+            if (last_slash != NULL && last_slash != client->browse_path) {
+                *last_slash = '\0';
+            } else if (last_slash == client->browse_path) {
+                client->browse_path[1] = '\0';
+            }
+            client->scroll_offset = 0;
+            client->selected_row = -1;
+            (void)lumo_app_client_redraw(client);
+            return;
+        }
+
+        /* file/directory entry tap */
         int entry_idx = lumo_app_files_entry_at(client->width, client->height,
             client->touch_down_x, client->touch_down_y);
         if (entry_idx >= 0) {
             int adjusted = entry_idx + client->scroll_offset;
-            /* Path traversal safety: readdir() only returns entries that
-             * exist within the currently open directory; it cannot produce
-             * names that escape the tree (e.g. "../../etc/passwd").
-             * Entries starting with '.' (including "." and "..") are
-             * filtered out below, so browse_path can only move deeper into
-             * the filesystem, never upward past its current position. */
             DIR *dir = opendir(client->browse_path);
             if (dir != NULL) {
                 struct dirent *entry;
                 int visible = 0;
                 while ((entry = readdir(dir)) != NULL) {
-                    if (entry->d_name[0] == '.') {
-                        continue;
-                    }
-                    /* Explicit guard against directory traversal via
-                     * ".." — already caught above by the dot check,
-                     * but stated here for clarity and defence-in-depth. */
+                    if (entry->d_name[0] == '.') continue;
                     if (strcmp(entry->d_name, "..") == 0) continue;
                     if (visible == adjusted) {
                         if (entry->d_type == DT_DIR) {
@@ -1443,10 +1479,20 @@ static void lumo_app_touch_handle_up(
                                     sizeof(client->browse_path) - plen,
                                     "%s%s", sep, entry->d_name);
                                 client->scroll_offset = 0;
+                                client->selected_row = -1;
                                 (void)lumo_app_client_redraw(client);
                             }
                         } else {
+                            /* show file info overlay */
                             client->selected_row = adjusted;
+                            client->file_info_visible = true;
+                            snprintf(client->file_info_name,
+                                sizeof(client->file_info_name),
+                                "%s", entry->d_name);
+                            snprintf(client->file_info_path,
+                                sizeof(client->file_info_path),
+                                "%s/%s", client->browse_path,
+                                entry->d_name);
                             (void)lumo_app_client_redraw(client);
                         }
                         break;
@@ -1454,20 +1500,6 @@ static void lumo_app_touch_handle_up(
                     visible++;
                 }
                 closedir(dir);
-            }
-        } else if (client->touch_down_y < 130.0 &&
-                client->touch_down_y > 100.0) {
-            char *last_slash = strrchr(client->browse_path, '/');
-            if (last_slash != NULL && last_slash != client->browse_path) {
-                *last_slash = '\0';
-                client->scroll_offset = 0;
-                client->selected_row = -1;
-                (void)lumo_app_client_redraw(client);
-            } else if (last_slash == client->browse_path) {
-                client->browse_path[1] = '\0';
-                client->scroll_offset = 0;
-                client->selected_row = -1;
-                (void)lumo_app_client_redraw(client);
             }
         }
     }
