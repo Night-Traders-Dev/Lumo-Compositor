@@ -96,12 +96,25 @@ Design goals:
 - Ubuntu Touch-inspired row spacing and large thumb targets
 - a dedicated bottom keyboard panel with a visible grabber and strong key contrast
 
-Current keyboard layout (33 keys):
+The OSK has two switchable pages (33 keys each):
 
-- row 1: `Q W E R T Y U I O P` (10 keys)
-- row 2: `A S D F G H J K L` (9 keys)
-- row 3: `^ Z X C V B N M ←` (9 keys, shift + backspace)
-- row 4: `, SPACE . ? ↵` (5 keys)
+**QWERTY page (default):**
+
+- row 1: `q w e r t y u i o p` (10 letter keys, lowercase by default)
+- row 2: `a s d f g h j k l ←` (9 letters + backspace)
+- row 3: `^ z x c v b n m 123` (shift + 7 letters + page toggle)
+- row 4: `. SPACE ENTER v` (period + space + enter + close)
+
+**Symbols page:**
+
+- row 1: `1 2 3 4 5 6 7 8 9 0` (10 number keys)
+- row 2: `@ # $ % & - + ( ) ←` (9 symbols + backspace)
+- row 3: `^ ! ? , ; : ' / ABC` (shift + 7 symbols + page toggle)
+- row 4: `. SPACE ENTER v` (period + space + enter + close)
+
+The shift key (`^`) toggles uppercase/lowercase with one-shot auto-clear.
+The close key (`v`) hides the keyboard.
+Labels show lowercase when shift is off, uppercase when on.
 
 ### Gesture Handle
 
@@ -118,7 +131,7 @@ Design goals:
 Current system-edge roles:
 
 - bottom gesture handle: toggle the launcher drawer
-- bottom edge swipe up: close the currently focused native Lumo app, Wayland app, or XWayland app
+- bottom edge swipe up: close launcher → hide keyboard → close app → open launcher (priority chain)
 - right edge: open the launcher drawer from the side reserve zone
 - left edge: dismiss any open panel, launcher, audit, or keyboard state like a mobile back gesture
 - top-left edge: toggle the time/date panel

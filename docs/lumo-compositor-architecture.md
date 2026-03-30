@@ -34,14 +34,15 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
 - Initializes wlroots renderer and event loop
 - Manages session startup/shutdown
 
-### input.c (~2300 lines)
+### input.c (~2500 lines)
 - Touch coordinate transform with rotation support
 - Priority-based touch dispatch:
-  1. Shell-reserved hitboxes (scrim, OSK keys)
-  2. Edge gesture hitboxes (gesture handle, top edge)
-  3. System edge zones (left, right, bottom)
-  4. Shell surface redirect (invisible launcher → toplevel)
-  5. Normal surface targets (app toplevels)
+  1. System bottom-edge zone (always priority for bottom swipes)
+  2. Shell-reserved hitboxes (OSK keys, launcher scrim)
+  3. Edge gesture hitboxes (gesture handle, top edge)
+  4. System edge zones (left, right, top)
+  5. Shell surface redirect (invisible launcher → toplevel)
+  6. Normal surface targets (app toplevels)
 - Gesture detection with velocity (800px/s), distance (32px), angle (15°),
   and iOS-style projection on release
 - Virtual keyboard fallback for OSK → app key delivery
@@ -83,7 +84,7 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
 - 36 state fields: visibility, rotation, weather, volume, brightness, toast, etc.
 - Request handlers: activate_target, set_keyboard_visible, set_volume,
   set_brightness, show_toast, cycle_rotation, reload_session
-- OSK key routing: text-input-v3 → virtual keyboard fallback → search bar
+- OSK key routing: shift toggle → page toggle → close → text-input-v3 → virtual keyboard fallback → search bar
 - Weather fetcher (fork + curl, 500ms poll timeout)
 - Volume/brightness control (fork + pactl/sysfs, non-blocking)
 - Boot chime (generated WAV, played via aplay)
@@ -95,7 +96,7 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
 - Renderers:
   - **Background**: animated gradient with wave glow and light streaks
   - **Launcher**: GNOME 3.x grid (4×3), search bar with live filtering
-  - **OSK**: Lomiri-style dark charcoal keys (33 keys, 4 rows)
+  - **OSK**: Lomiri-style dark charcoal keys (33 keys, 4 rows, 2 pages: QWERTY + symbols)
   - **Gesture**: subtle opacity gradient pill
   - **Status**: clock, WiFi bars, LUMO branding
   - **Quick settings**: WiFi, display, session, device, volume/brightness sliders, reload/rotate
@@ -104,8 +105,11 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
 - State socket connect with 5-retry, 200ms delay
 
 ### shell_osk.c
-- 33-key QWERTY layout: 10+10+9+4 (with shift, backspace, space, enter)
+
+- 2-page keyboard: QWERTY (letters) and symbols (numbers/punctuation)
+- 33 keys per page: 10+10+9+4 (with shift, backspace, page toggle, close, space, enter)
 - Dynamic key rect calculation for any screen size
+- Page state managed via lumo_shell_osk_toggle_page() / lumo_shell_osk_set_page()
 
 ### shell_ui.c
 - Layout geometry for launcher tiles, gesture handle, status bar, OSK

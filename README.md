@@ -122,7 +122,7 @@ The current reserved edge behavior is:
 - left edge dismisses any open panel, launcher, audit, or keyboard state
 - right edge opens the launcher
 - bottom gesture handle toggles the launcher drawer
-- bottom-edge upward swipes close the currently focused native Lumo app, Wayland app, or XWayland app
+- bottom-edge upward swipe: closes launcher (if open) → hides keyboard (if visible) → closes focused app → opens launcher
 - tapping outside an open panel dismisses it
 
 Touch rotation is corrected dynamically from the active output transform inside
@@ -219,7 +219,7 @@ More detailed notes live in:
 
 ## Status
 
-The project is at v0.0.56 with a functional mobile shell running on OrangePi RV2 hardware.
+The project is at v0.0.57 with a functional mobile shell running on OrangePi RV2 hardware.
 
 Current capabilities:
 
@@ -232,9 +232,10 @@ Current capabilities:
 - status bar with live clock, WiFi signal bars, and LUMO branding
 - quick settings panel with WiFi, display, volume/brightness sliders, session info, reload/rotate
 - time/date panel with large clock, date, weather (temperature, condition, humidity, wind)
-- on-screen keyboard (Lomiri style) with virtual keyboard fallback for reliable input
+- on-screen keyboard (Lomiri style) with shift key, close button, QWERTY + symbols pages, virtual keyboard fallback
+- full uppercase/lowercase bitmap font rendering in both shell and app surfaces
 - functional Browser (GTK4+WebKitGTK, local start page, smart URL bar, percent-encoded search)
-- functional Terminal with real PTY shell (/bin/sh via forkpty), blinking cursor, menu
+- functional Terminal with real PTY shell (/bin/sh via forkpty), blinking cursor, menu, exit closes app
 - functional Clock with 4 tabs (Clock, Alarm, Stopwatch, Timer), persistent settings
 - functional Files with directory browsing, scroll, navigation, file sizes
 - functional Settings with 8 categorized sub-pages
@@ -248,7 +249,7 @@ Current capabilities:
 - double-buffered SHM rendering for shell clients
 - toast notifications (Android-style pills)
 - 5 test suites: compositor, shell, app, screenshot, and fuzz/stress
-- multiple security audits: 30+ issues fixed across all subsystems
+- multiple security audits: 40+ issues fixed across all subsystems
 
 Next milestones:
 

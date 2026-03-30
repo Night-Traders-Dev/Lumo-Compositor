@@ -14,6 +14,39 @@ Apps receive these in their standard `wl_keyboard` listener.
 
 When the app drawer is showing, OSK keys are routed to the search bar instead.
 
+### OSK Layout
+
+The OSK has two pages switchable via a toggle key:
+
+**QWERTY page (default):**
+
+- Row 1: `q w e r t y u i o p`
+- Row 2: `a s d f g h j k l <-`
+- Row 3: `^ z x c v b n m 123`
+- Row 4: `. SPACE ENTER v`
+
+**Symbols page:**
+
+- Row 1: `1 2 3 4 5 6 7 8 9 0`
+- Row 2: `@ # $ % & - + ( ) <-`
+- Row 3: `^ ! ? , ; : ' / ABC`
+- Row 4: `. SPACE ENTER v`
+
+Special keys:
+
+- `^` (shift): toggles uppercase/lowercase, auto-clears after one letter
+- `<-` (backspace): deletes one character
+- `123`/`ABC`: switches between QWERTY and symbols pages
+- `v` (close): hides the on-screen keyboard
+- OSK resets to QWERTY page when hidden
+
+### Case Support
+
+Both the shell and app bitmap fonts have distinct uppercase (A-Z) and
+lowercase (a-z) glyphs. The OSK shows lowercase labels by default and
+uppercase when shift is active. Text typed in the terminal and other apps
+renders with proper case distinction.
+
 ## Functional Apps
 
 ### Terminal (messages)
@@ -22,6 +55,8 @@ When the app drawer is showing, OSK keys are routed to the search bar instead.
 - Menu: tap "LUMO TERMINAL" → New, Keyboard, Settings, About
 - OSK auto-shows on focus
 - Text-input-v3 for OSK key delivery to PTY
+- Shift key support: uppercase letters and shifted symbols (shift+1=!, shift+2=@, etc.)
+- `exit` command closes the terminal app window and returns to desktop
 
 ### Clock
 - Large digital clock (scale 8) with HH:MM:SS

@@ -83,7 +83,7 @@ The current mobile edge behavior reserves:
 - left edge for dismiss or back-style shell actions (cascades: audit → panels → launcher → keyboard)
 - right edge for launcher open
 - bottom gesture handle for launcher toggle
-- bottom-edge upward swipes for focused-app close across native Lumo apps, Wayland toplevels, and XWayland windows
+- bottom-edge upward swipe: close launcher → hide keyboard → close app → open launcher (priority chain, works even when OSK or launcher covers gesture area)
 
 Touch coordinates are corrected from the active output transform inside the
 compositor, which keeps rotated outputs and gesture hitboxes aligned without

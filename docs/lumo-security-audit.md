@@ -1,6 +1,6 @@
 # Lumo Compositor Security Audit
 
-Completed: 2026-03-28 (v0.0.52, findings remain valid through v0.0.56)
+Completed: 2026-03-28 (v0.0.52), updated 2026-03-30 (v0.0.57)
 
 ## Scope
 
@@ -10,14 +10,25 @@ protocol robustness, and performance.
 
 ## Summary
 
-26 issues identified and fixed across 4 severity levels:
+40+ issues identified and fixed across 4 severity levels:
 
 | Severity | Count | Fixed |
 |----------|-------|-------|
-| Critical | 5     | 5     |
-| High     | 5     | 5     |
-| Medium   | 7     | 7     |
-| Low/Perf | 9     | 9     |
+| Critical | 8     | 8     |
+| High     | 8     | 8     |
+| Medium   | 12    | 12    |
+| Low/Perf | 12    | 12    |
+
+### v0.0.57 Additional Fixes
+
+- 3 memory leaks: missing free() on early return in new_toplevel/popup/layer_surface
+- List reinitialization bug: duplicate wl_list_init orphaned existing outputs
+- Incorrect wl_list_remove guard: replaced fragile prev/next NULL check
+- Integer overflow in SHM stride calculations (shell_client.c, app_client.c)
+- Integer overflow in image allocation casts (PNG, JPEG, pixbuf)
+- snprintf truncation not detected in shell_protocol.c
+- sscanf range validation missing for alarm/timer values
+- Off-by-one keymap: terminal keymap missing entries shifted all letters by one
 
 ## Critical Issues Fixed
 

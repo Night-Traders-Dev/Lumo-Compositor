@@ -2,6 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.57] - 2026-03-30
+
+### Codebase Audit & Fixes
+
+- Fixed 3 memory leaks in protocol.c: missing free() on early return in new_toplevel, new_popup, new_layer_surface.
+- Fixed list reinitialization bug in output.c: removed duplicate wl_list_init that orphaned existing outputs.
+- Fixed incorrect wl_list membership check in input.c cleanup path.
+- Added integer overflow protection for stride/size calculations in shell_client.c and app_client.c.
+- Added snprintf truncation detection in shell_protocol.c.
+- Added range validation for sscanf-parsed alarm/timer values in app_client.c.
+- Added hitbox dirty-flag optimization: hitbox refresh skipped in configure_layers when not dirty.
+- Fixed pixbuf rowstride arithmetic to use size_t casts preventing int overflow.
+- Replaced strcpy with strncpy in test_app.c.
+
+### On-Screen Keyboard Overhaul
+
+- Fixed off-by-one keymap bug in app_client.c: terminal keymap was missing \0 entries for Tab, LeftCtrl, LeftShift, and Backslash, causing every letter to map one key to the right.
+- Added `<`, `>`, `^` glyphs to shell bitmap font so backspace (`<-`) and shift (`^`) labels render visibly.
+- Added full lowercase glyph set (a-z) to both shell and app bitmap fonts; removed toupper() so uppercase and lowercase render distinctly.
+- Added shift key toggle: tap shift to enable, next letter commits uppercase then auto-clears. Shift key highlights orange when active. OSK labels switch between lowercase and uppercase.
+- Added shift state broadcast via bridge protocol so shell client can render shift visual feedback.
+- Added shifted keycode support in virtual keyboard path (LEFT_SHIFT press/release wraps letter keycodes).
+- Added full shifted keymap in terminal app (shift+1=!, shift+2=@, etc.).
+
+### OSK Layout Changes
+
+- Replaced `?` key (bottom-right) with close-OSK button (`v` label) that hides the keyboard.
+- Replaced `,` key (row 3) with page toggle (`123`/`ABC`) that switches between QWERTY and symbols.
+- Added symbols page: `1 2 3 4 5 6 7 8 9 0 / @ # $ % & - + ( ) / ^ ! ? , ; : ' / ABC / . SPACE ENTER v`.
+- Added 12 new glyphs to shell font: `! @ # $ % & + ( ) ; '` and `^`.
+- OSK resets to QWERTY page when keyboard is hidden.
+- Extended virtual keycode map with shifted symbols (!@#$%^&*()_+?:).
+
+### Terminal & App Lifecycle
+
+- Terminal `exit` command now closes the app window (sets client.running=false on PTY POLLHUP) instead of showing "[shell exited]".
+- Keyboard auto-hides when last app toplevel is destroyed (added to lumo_protocol_teardown_toplevel).
+
+### Touch Input Fixes
+
+- Fixed OSK/launcher hitbox priority: launcher hitbox now registered before OSK so OSK takes priority in overlap region. Fixes typing in search accidentally opening apps behind the keyboard.
+- Bottom-edge swipe now takes priority over all shell hitboxes: system edge zone detection for LUMO_EDGE_BOTTOM runs before hitbox checks, ensuring swipe-to-close always works even when OSK or launcher covers the gesture area.
+- Simplified bottom-swipe action chain: launcher visible → close launcher + keyboard; keyboard visible → close keyboard; app focused → close app; nothing → open launcher.
+
 ## [0.0.56] - 2026-03-29
 
 - OSK virtual keyboard fallback: when text-input-v3 fails (race condition), OSK keys are sent as real wl_keyboard key events via wlr_seat_keyboard_notify_key(). Terminal, notes, and all apps now receive OSK input reliably.

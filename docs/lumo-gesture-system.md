@@ -8,7 +8,7 @@ captured for gesture detection.
 
 | Edge | Zone | Action |
 |------|------|--------|
-| Bottom | Gesture handle (48-80px) | Tap: toggle launcher. Swipe up: close app |
+| Bottom | Gesture handle (48-80px) | Tap: toggle launcher. Swipe up: close launcher/keyboard/app (priority chain) |
 | Top | Top 32px | Left half: toggle time panel. Right half: toggle quick settings |
 | Left | Left 32px | Dismiss: cascades through audit → panels → launcher → keyboard |
 | Right | Right 32px | Open launcher |
@@ -31,13 +31,26 @@ The gesture handle at the bottom (48-80px tall) uses capture-and-wait:
 Edge tap replays are **dropped** when a toplevel is focused and the launcher
 is hidden, preventing input bleed-through to tiles behind the active app.
 
+## Bottom-Edge Swipe Action Chain
+
+When a bottom-edge swipe is triggered, the compositor evaluates in order:
+
+1. **Launcher visible** → close launcher (and keyboard if showing)
+2. **Keyboard visible** (no launcher) → close keyboard
+3. **App focused** → close focused app
+4. **Nothing to close** → open launcher
+
 ## Touch Dispatch Order
 
-1. Shell-reserved hitboxes (launcher scrim, OSK keys)
-2. Edge gesture hitboxes (gesture handle, top edge)
-3. System edge zones (left, right, bottom edges)
-4. Shell surface redirect (invisible launcher → toplevel)
-5. Normal surface target (app toplevels)
+1. System bottom-edge zone (always takes priority for bottom swipes)
+2. Shell-reserved hitboxes (OSK keys, launcher scrim)
+3. Edge gesture hitboxes (gesture handle, top edge)
+4. System edge zones (left, right, top edges)
+5. Shell surface redirect (invisible launcher → toplevel)
+6. Normal surface target (app toplevels)
+
+The bottom-edge system zone is checked before hitboxes so that swipe-to-close
+works even when the OSK or launcher surface covers the gesture area.
 
 ## Easing Curves
 
