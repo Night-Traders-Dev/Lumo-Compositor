@@ -1130,40 +1130,38 @@ static void lumo_input_touch_point_trigger_edge_action(
         if (compositor->touch_audit_active) {
             lumo_touch_audit_set_active(compositor, false);
         }
-        /* if an app is focused and the launcher is not visible,
-         * the bottom-edge swipe closes the app (like iOS/Android) */
-        if (!compositor->launcher_visible &&
-                !compositor->touch_audit_active &&
+        /* launcher visible: bottom swipe closes it */
+        if (compositor->launcher_visible) {
+            lumo_protocol_set_launcher_visible(compositor, false);
+            if (compositor->keyboard_visible) {
+                lumo_protocol_set_keyboard_visible(compositor, false);
+            }
+            wlr_log(WLR_INFO,
+                "input: touch %d closed launcher from bottom swipe at %u",
+                point->touch_id, time_msec);
+            return;
+        }
+        /* keyboard visible without launcher: bottom swipe hides it */
+        if (compositor->keyboard_visible) {
+            lumo_protocol_set_keyboard_visible(compositor, false);
+            wlr_log(WLR_INFO,
+                "input: touch %d closed keyboard from bottom swipe at %u",
+                point->touch_id, time_msec);
+            return;
+        }
+        /* app focused: bottom swipe closes app */
+        if (!compositor->touch_audit_active &&
                 !wl_list_empty(&compositor->toplevels)) {
             closed_focused_app =
                 lumo_protocol_close_focused_app(compositor);
-            if (!closed_focused_app) {
-                wlr_log(WLR_INFO,
-                    "input: close_focused_app returned false "
-                    "(focused=%p toplevels=%d)",
-                    (void *)compositor->seat->keyboard_state.focused_surface,
-                    !wl_list_empty(&compositor->toplevels));
-            }
             if (closed_focused_app) {
-                /* also hide keyboard if it was showing */
-                if (compositor->keyboard_visible) {
-                    lumo_protocol_set_keyboard_visible(compositor, false);
-                }
                 wlr_log(WLR_INFO,
                     "input: touch %d closed focused app from bottom swipe at %u",
                     point->touch_id, time_msec);
                 return;
             }
         }
-        if (lumo_hitbox_is_shell_gesture(point->hitbox) &&
-                compositor->launcher_visible) {
-            lumo_protocol_set_launcher_visible(compositor, false);
-            wlr_log(WLR_INFO,
-                "input: touch %d toggled %s-edge launcher closed at %u",
-                point->touch_id, lumo_edge_zone_name(point->capture_edge),
-                time_msec);
-            return;
-        }
+        /* nothing to close: open launcher */
         lumo_protocol_set_launcher_visible(compositor, true);
         lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_MODAL);
         wlr_log(WLR_INFO,
@@ -1915,7 +1913,25 @@ static void lumo_input_touch_down(
         return;
     }
 
-    /* --- hitbox checks FIRST (edges, gestures, OSK) --- */
+    /* --- edge gestures take priority over shell hitboxes so that
+     * bottom-swipe always works even when the OSK or launcher covers
+     * the gesture zone --- */
+
+    edge_zone = lumo_input_system_edge_zone(compositor, output, point->lx,
+        point->ly);
+    if (compositor->touch_audit_active && edge_zone != LUMO_EDGE_LEFT) {
+        edge_zone = LUMO_EDGE_NONE;
+    }
+    if (edge_zone == LUMO_EDGE_BOTTOM) {
+        point->capture_edge = edge_zone;
+        lumo_input_touch_point_begin_capture(compositor, point, &target,
+            event->time_msec);
+        lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
+            true, point->lx, point->ly);
+        return;
+    }
+
+    /* --- hitbox checks (edges, gestures, OSK, launcher) --- */
 
     if (lumo_input_hitbox_is_shell_reserved(point->hitbox)) {
         lumo_input_touch_point_begin_capture(compositor, point, &target,
@@ -1936,11 +1952,6 @@ static void lumo_input_touch_down(
         return;
     }
 
-    edge_zone = lumo_input_system_edge_zone(compositor, output, point->lx,
-        point->ly);
-    if (compositor->touch_audit_active && edge_zone != LUMO_EDGE_LEFT) {
-        edge_zone = LUMO_EDGE_NONE;
-    }
     if (edge_zone != LUMO_EDGE_NONE) {
         point->capture_edge = edge_zone;
         lumo_input_touch_point_begin_capture(compositor, point, &target,
