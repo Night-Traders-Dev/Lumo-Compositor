@@ -469,6 +469,220 @@ bool lumo_shell_client_redraw(struct lumo_shell_client *client) {
         client->configured_height);
 }
 
+/* redraw a specific unified slot by swapping its state into the client */
+static bool lumo_shell_redraw_slot(
+    struct lumo_shell_client *client, int slot_idx
+) {
+    struct lumo_shell_surface_slot *slot;
+    enum lumo_shell_mode saved_mode;
+    struct wl_surface *saved_surface;
+    struct zwlr_layer_surface_v1 *saved_layer;
+    struct lumo_shell_buffer *saved_buf, *saved_bufs[2];
+    struct lumo_shell_surface_config saved_config;
+    uint32_t saved_cw, saved_ch;
+    bool saved_configured, saved_tv, saved_sh, saved_aa;
+    double saved_af, saved_at;
+    uint64_t saved_as;
+    uint32_t saved_ad;
+    bool result;
+
+    if (client == NULL || !client->unified ||
+            slot_idx < 0 || slot_idx >= client->surface_count)
+        return false;
+
+    slot = &client->slots[slot_idx];
+    if (!slot->configured || slot->configured_width == 0 ||
+            slot->configured_height == 0)
+        return false;
+
+    /* save */
+    saved_mode = client->mode;
+    saved_surface = client->surface;
+    saved_layer = client->layer_surface;
+    saved_buf = client->buffer;
+    saved_bufs[0] = client->buffers[0];
+    saved_bufs[1] = client->buffers[1];
+    saved_config = client->config;
+    saved_cw = client->configured_width;
+    saved_ch = client->configured_height;
+    saved_configured = client->configured;
+    saved_tv = client->target_visible;
+    saved_sh = client->surface_hidden;
+    saved_aa = client->animation_active;
+    saved_af = client->animation_from;
+    saved_at = client->animation_to;
+    saved_as = client->animation_started_msec;
+    saved_ad = client->animation_duration_msec;
+
+    /* swap in slot state */
+    client->mode = slot->mode;
+    client->surface = slot->surface;
+    client->layer_surface = slot->layer_surface;
+    client->buffer = slot->buffer;
+    client->buffers[0] = slot->buffers[0];
+    client->buffers[1] = slot->buffers[1];
+    client->config = slot->config;
+    client->configured_width = slot->configured_width;
+    client->configured_height = slot->configured_height;
+    client->configured = slot->configured;
+    client->target_visible = slot->target_visible;
+    client->surface_hidden = slot->surface_hidden;
+    client->animation_active = slot->animation_active;
+    client->animation_from = slot->animation_from;
+    client->animation_to = slot->animation_to;
+    client->animation_started_msec = slot->animation_started_msec;
+    client->animation_duration_msec = slot->animation_duration_msec;
+
+    result = lumo_shell_draw_buffer(client, slot->configured_width,
+        slot->configured_height);
+
+    /* save back slot state that rendering may have changed */
+    slot->buffer = client->buffer;
+    slot->buffers[0] = client->buffers[0];
+    slot->buffers[1] = client->buffers[1];
+    slot->config = client->config;
+    slot->configured_width = client->configured_width;
+    slot->configured_height = client->configured_height;
+    slot->configured = client->configured;
+    slot->target_visible = client->target_visible;
+    slot->surface_hidden = client->surface_hidden;
+    slot->animation_active = client->animation_active;
+    slot->animation_from = client->animation_from;
+    slot->animation_to = client->animation_to;
+    slot->animation_started_msec = client->animation_started_msec;
+    slot->animation_duration_msec = client->animation_duration_msec;
+    slot->dirty = false;
+
+    /* restore */
+    client->mode = saved_mode;
+    client->surface = saved_surface;
+    client->layer_surface = saved_layer;
+    client->buffer = saved_buf;
+    client->buffers[0] = saved_bufs[0];
+    client->buffers[1] = saved_bufs[1];
+    client->config = saved_config;
+    client->configured_width = saved_cw;
+    client->configured_height = saved_ch;
+    client->configured = saved_configured;
+    client->target_visible = saved_tv;
+    client->surface_hidden = saved_sh;
+    client->animation_active = saved_aa;
+    client->animation_from = saved_af;
+    client->animation_to = saved_at;
+    client->animation_started_msec = saved_as;
+    client->animation_duration_msec = saved_ad;
+
+    return result;
+}
+
+/* sync state and redraw all unified slots */
+/* swap all per-surface fields from a slot into the client struct */
+static void lumo_shell_swap_slot_in(
+    struct lumo_shell_client *client,
+    const struct lumo_shell_surface_slot *slot
+) {
+    client->mode = slot->mode;
+    client->surface = slot->surface;
+    client->layer_surface = slot->layer_surface;
+    client->buffer = slot->buffer;
+    client->buffers[0] = slot->buffers[0];
+    client->buffers[1] = slot->buffers[1];
+    client->config = slot->config;
+    client->configured_width = slot->configured_width;
+    client->configured_height = slot->configured_height;
+    client->configured = slot->configured;
+    client->target_visible = slot->target_visible;
+    client->surface_hidden = slot->surface_hidden;
+    client->animation_active = slot->animation_active;
+    client->animation_from = slot->animation_from;
+    client->animation_to = slot->animation_to;
+    client->animation_started_msec = slot->animation_started_msec;
+    client->animation_duration_msec = slot->animation_duration_msec;
+}
+
+/* copy all per-surface fields from the client struct back to a slot */
+static void lumo_shell_swap_slot_out(
+    struct lumo_shell_surface_slot *slot,
+    const struct lumo_shell_client *client
+) {
+    slot->surface = client->surface;
+    slot->layer_surface = client->layer_surface;
+    slot->buffer = client->buffer;
+    slot->buffers[0] = client->buffers[0];
+    slot->buffers[1] = client->buffers[1];
+    slot->config = client->config;
+    slot->configured_width = client->configured_width;
+    slot->configured_height = client->configured_height;
+    slot->configured = client->configured;
+    slot->target_visible = client->target_visible;
+    slot->surface_hidden = client->surface_hidden;
+    slot->animation_active = client->animation_active;
+    slot->animation_from = client->animation_from;
+    slot->animation_to = client->animation_to;
+    slot->animation_started_msec = client->animation_started_msec;
+    slot->animation_duration_msec = client->animation_duration_msec;
+    slot->dirty = false;
+}
+
+void lumo_shell_client_redraw_unified(struct lumo_shell_client *client) {
+    /* saved state for the "primary" legacy fields */
+    struct lumo_shell_surface_slot save;
+
+    if (client == NULL || !client->unified) return;
+
+    /* snapshot legacy fields */
+    save.mode = client->mode;
+    save.surface = client->surface;
+    save.layer_surface = client->layer_surface;
+    save.buffer = client->buffer;
+    save.buffers[0] = client->buffers[0];
+    save.buffers[1] = client->buffers[1];
+    save.config = client->config;
+    save.configured_width = client->configured_width;
+    save.configured_height = client->configured_height;
+    save.configured = client->configured;
+    save.target_visible = client->target_visible;
+    save.surface_hidden = client->surface_hidden;
+    save.animation_active = client->animation_active;
+    save.animation_from = client->animation_from;
+    save.animation_to = client->animation_to;
+    save.animation_started_msec = client->animation_started_msec;
+    save.animation_duration_msec = client->animation_duration_msec;
+
+    for (int i = 0; i < client->surface_count; i++) {
+        struct lumo_shell_surface_slot *slot = &client->slots[i];
+
+        lumo_shell_swap_slot_in(client, slot);
+
+        /* sync visibility/animation state for this slot's mode.
+         * Only force layout when the slot is marked dirty (state
+         * change from bridge protocol), not on periodic redraws. */
+        lumo_shell_client_sync_surface_state(client, slot->dirty);
+
+        /* tick animation if active */
+        if (client->animation_active) {
+            if (lumo_now_msec() >= client->animation_started_msec +
+                    client->animation_duration_msec) {
+                client->animation_active = false;
+                if (!client->target_visible)
+                    lumo_shell_client_finish_hide_if_needed(client);
+            }
+        }
+
+        /* render if configured */
+        if (client->configured && client->configured_width > 0 &&
+                client->configured_height > 0) {
+            (void)lumo_shell_draw_buffer(client, client->configured_width,
+                client->configured_height);
+        }
+
+        lumo_shell_swap_slot_out(slot, client);
+    }
+
+    /* restore legacy fields */
+    lumo_shell_swap_slot_in(client, &save);
+}
+
 /* ── Wayland listeners ────────────────────────────────────────────── */
 
 static void lumo_shell_seat_handle_capabilities(
@@ -650,58 +864,33 @@ static void lumo_shell_unified_handle_configure(
         client->output_width_hint = draw_width;
     }
 
-    /* swap slot state into client for rendering, then restore */
-    saved_mode = client->mode;
-    saved_surface = client->surface;
-    saved_layer = client->layer_surface;
-    saved_buf = client->buffer;
-    saved_bufs[0] = client->buffers[0];
-    saved_bufs[1] = client->buffers[1];
-    saved_config = client->config;
-    saved_cw = client->configured_width;
-    saved_ch = client->configured_height;
-    saved_configured = client->configured;
+    {
+        struct lumo_shell_surface_slot save;
+        save.mode = client->mode;
+        save.surface = client->surface;
+        save.layer_surface = client->layer_surface;
+        save.buffer = client->buffer;
+        save.buffers[0] = client->buffers[0];
+        save.buffers[1] = client->buffers[1];
+        save.config = client->config;
+        save.configured_width = client->configured_width;
+        save.configured_height = client->configured_height;
+        save.configured = client->configured;
+        save.target_visible = client->target_visible;
+        save.surface_hidden = client->surface_hidden;
+        save.animation_active = client->animation_active;
+        save.animation_from = client->animation_from;
+        save.animation_to = client->animation_to;
+        save.animation_started_msec = client->animation_started_msec;
+        save.animation_duration_msec = client->animation_duration_msec;
 
-    client->mode = slot->mode;
-    client->surface = slot->surface;
-    client->layer_surface = slot->layer_surface;
-    client->buffer = slot->buffer;
-    client->buffers[0] = slot->buffers[0];
-    client->buffers[1] = slot->buffers[1];
-    client->config = slot->config;
-    client->configured_width = slot->configured_width;
-    client->configured_height = slot->configured_height;
-    client->configured = slot->configured;
-    client->target_visible = slot->target_visible;
-    client->surface_hidden = slot->surface_hidden;
-    client->animation_active = slot->animation_active;
-    client->animation_from = slot->animation_from;
-    client->animation_to = slot->animation_to;
-    client->animation_started_msec = slot->animation_started_msec;
-    client->animation_duration_msec = slot->animation_duration_msec;
+        lumo_shell_swap_slot_in(client, slot);
 
-    (void)lumo_shell_draw_buffer(client, draw_width, draw_height);
+        (void)lumo_shell_draw_buffer(client, draw_width, draw_height);
 
-    /* save back any state changes */
-    slot->buffer = client->buffer;
-    slot->buffers[0] = client->buffers[0];
-    slot->buffers[1] = client->buffers[1];
-    slot->config = client->config;
-    slot->configured_width = client->configured_width;
-    slot->configured_height = client->configured_height;
-    slot->configured = client->configured;
-
-    /* restore */
-    client->mode = saved_mode;
-    client->surface = saved_surface;
-    client->layer_surface = saved_layer;
-    client->buffer = saved_buf;
-    client->buffers[0] = saved_bufs[0];
-    client->buffers[1] = saved_bufs[1];
-    client->config = saved_config;
-    client->configured_width = saved_cw;
-    client->configured_height = saved_ch;
-    client->configured = saved_configured;
+        lumo_shell_swap_slot_out(slot, client);
+        lumo_shell_swap_slot_in(client, &save);
+    }
 }
 
 static void lumo_shell_unified_handle_closed(
@@ -858,7 +1047,24 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
             nfds++;
         }
 
-        timeout_ms = lumo_shell_client_animation_timeout(client);
+        if (client->unified) {
+            /* unified: use the shortest timeout across all slots */
+            timeout_ms = 200; /* background refresh */
+            for (int i = 0; i < client->surface_count; i++) {
+                struct lumo_shell_surface_slot *slot = &client->slots[i];
+                if (slot->animation_active) {
+                    timeout_ms = 33;
+                    break;
+                }
+                if (slot->mode == LUMO_SHELL_MODE_STATUS) {
+                    int st = client->compositor_time_panel_visible
+                        ? 1000 : 30000;
+                    if (st < timeout_ms) timeout_ms = st;
+                }
+            }
+        } else {
+            timeout_ms = lumo_shell_client_animation_timeout(client);
+        }
         poll_result = poll(fds, nfds, timeout_ms);
         if (poll_result < 0) {
             if (errno == EINTR) continue;
@@ -866,10 +1072,14 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
         }
 
         if (poll_result == 0) {
-            if (client->mode == LUMO_SHELL_MODE_STATUS ||
-                    client->mode == LUMO_SHELL_MODE_BACKGROUND)
-                (void)lumo_shell_client_redraw(client);
-            lumo_shell_client_tick_animation(client);
+            if (client->unified) {
+                lumo_shell_client_redraw_unified(client);
+            } else {
+                if (client->mode == LUMO_SHELL_MODE_STATUS ||
+                        client->mode == LUMO_SHELL_MODE_BACKGROUND)
+                    (void)lumo_shell_client_redraw(client);
+                lumo_shell_client_tick_animation(client);
+            }
             continue;
         }
 
@@ -885,8 +1095,17 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
             if (wl_display_dispatch(client->display) == -1) break;
         }
         if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) break;
-        if (client->animation_active)
+        if (client->unified) {
+            /* check if any slot has active animation */
+            for (int i = 0; i < client->surface_count; i++) {
+                if (client->slots[i].animation_active) {
+                    lumo_shell_client_redraw_unified(client);
+                    break;
+                }
+            }
+        } else if (client->animation_active) {
             lumo_shell_client_tick_animation(client);
+        }
     }
     return 0;
 }

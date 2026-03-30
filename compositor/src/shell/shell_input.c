@@ -193,9 +193,20 @@ static void lumo_shell_pointer_handle_enter(
 
     (void)wl_pointer;
     (void)serial;
-    (void)surface;
     if (client == NULL) {
         return;
+    }
+
+    if (client->unified) {
+        for (int i = 0; i < client->surface_count; i++) {
+            struct lumo_shell_surface_slot *slot = &client->slots[i];
+            if (slot->surface == surface) {
+                client->mode = slot->mode;
+                client->configured_width = slot->configured_width;
+                client->configured_height = slot->configured_height;
+                break;
+            }
+        }
     }
 
     client->pointer_x = wl_fixed_to_double(surface_x);
@@ -340,6 +351,20 @@ static void lumo_shell_touch_handle_down(
     client->active_touch_id = id;
     client->pointer_x = wl_fixed_to_double(x);
     client->pointer_y = wl_fixed_to_double(y);
+
+    /* in unified mode, resolve which slot's surface was touched and
+     * swap in that slot's mode/dimensions for target detection */
+    if (client->unified) {
+        for (int i = 0; i < client->surface_count; i++) {
+            struct lumo_shell_surface_slot *slot = &client->slots[i];
+            if (slot->surface == surface) {
+                client->mode = slot->mode;
+                client->configured_width = slot->configured_width;
+                client->configured_height = slot->configured_height;
+                break;
+            }
+        }
+    }
 
     if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
             !client->compositor_launcher_visible &&

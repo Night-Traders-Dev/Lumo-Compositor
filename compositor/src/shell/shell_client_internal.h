@@ -247,6 +247,7 @@ void lumo_shell_send_set_u32(
 /* ── shell_client.c — surface config, buffer mgmt, main ───────────── */
 
 bool lumo_shell_client_redraw(struct lumo_shell_client *client);
+void lumo_shell_client_redraw_unified(struct lumo_shell_client *client);
 void lumo_shell_client_finish_hide_if_needed(
     struct lumo_shell_client *client);
 int lumo_shell_client_animation_timeout(
