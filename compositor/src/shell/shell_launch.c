@@ -818,6 +818,21 @@ static const char *lumo_shell_bridge_commit_osk_text(
         return NULL;
     }
 
+    /* close-OSK key */
+    if (text[0] == '\x1b') {
+        wlr_log(WLR_INFO, "shell: osk close requested");
+        lumo_protocol_set_keyboard_visible(compositor, false);
+        return NULL;
+    }
+
+    /* page toggle key (123/ABC) */
+    if (text[0] == '\x01') {
+        lumo_shell_osk_toggle_page();
+        wlr_log(WLR_INFO, "shell: osk page toggled to %u",
+            lumo_shell_osk_get_page());
+        return NULL;
+    }
+
     /* apply shift: uppercase the letter and auto-clear shift */
     char shifted_buf[2] = {0};
     if (compositor->osk_shift_active && text[0] >= 'a' && text[0] <= 'z') {
@@ -862,16 +877,27 @@ static const char *lumo_shell_bridge_commit_osk_text(
                 wlr_seat_get_keyboard(compositor->seat);
             if (kbd != NULL) {
                 /* map OSK text to Linux keycode */
-                static const struct { char ch; uint32_t code; } map[] = {
-                    {'a',30},{'b',48},{'c',46},{'d',32},{'e',18},
-                    {'f',33},{'g',34},{'h',35},{'i',23},{'j',36},
-                    {'k',37},{'l',38},{'m',50},{'n',49},{'o',24},
-                    {'p',25},{'q',16},{'r',19},{'s',31},{'t',20},
-                    {'u',22},{'v',47},{'w',17},{'x',45},{'y',21},
-                    {'z',44},{' ',57},{'\n',28},{',',51},{'.',52},
-                    {'?',53},{'1',2},{'2',3},{'3',4},{'4',5},
-                    {'5',6},{'6',7},{'7',8},{'8',9},{'9',10},
-                    {'0',11},{'-',12},{'=',13},
+                static const struct { char ch; uint32_t code; bool shift; } map[] = {
+                    {'a',30,false},{'b',48,false},{'c',46,false},
+                    {'d',32,false},{'e',18,false},{'f',33,false},
+                    {'g',34,false},{'h',35,false},{'i',23,false},
+                    {'j',36,false},{'k',37,false},{'l',38,false},
+                    {'m',50,false},{'n',49,false},{'o',24,false},
+                    {'p',25,false},{'q',16,false},{'r',19,false},
+                    {'s',31,false},{'t',20,false},{'u',22,false},
+                    {'v',47,false},{'w',17,false},{'x',45,false},
+                    {'y',21,false},{'z',44,false},{' ',57,false},
+                    {'\n',28,false},{',',51,false},{'.',52,false},
+                    {'/',53,false},{'1',2,false},{'2',3,false},
+                    {'3',4,false},{'4',5,false},{'5',6,false},
+                    {'6',7,false},{'7',8,false},{'8',9,false},
+                    {'9',10,false},{'0',11,false},{'-',12,false},
+                    {'=',13,false},
+                    {'!',2,true},{'@',3,true},{'#',4,true},
+                    {'$',5,true},{'%',6,true},{'^',7,true},
+                    {'&',8,true},{'(',10,true},{')',11,true},
+                    {'+',13,true},{'?',53,true},{';',39,false},
+                    {'\'',40,false},{':',39,true},
                 };
                 uint32_t keycode = 0;
                 char ch = text[0];
@@ -882,8 +908,9 @@ static const char *lumo_shell_bridge_commit_osk_text(
                     keycode = 14; /* KEY_BACKSPACE */
                 } else {
                     for (size_t i = 0; i < sizeof(map)/sizeof(map[0]); i++) {
-                        if (map[i].ch == lower_ch) {
+                        if (map[i].ch == lower_ch || map[i].ch == ch) {
                             keycode = map[i].code;
+                            if (map[i].shift) need_shift = true;
                             break;
                         }
                     }

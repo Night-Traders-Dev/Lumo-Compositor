@@ -35,13 +35,23 @@ static void test_target_kind_parse(void) {
 }
 
 static void test_osk_key_text(void) {
+    /* page 0: alpha */
+    lumo_shell_osk_set_page(0);
     assert(strcmp(lumo_shell_osk_key_text(0), "q") == 0);
     assert(strcmp(lumo_shell_osk_key_text(10), "a") == 0);
     assert(strcmp(lumo_shell_osk_key_text(19), "\b") == 0);  /* backspace */
-    assert(strcmp(lumo_shell_osk_key_text(28), ",") == 0);
+    assert(strcmp(lumo_shell_osk_key_text(28), "\x01") == 0); /* page toggle */
     assert(strcmp(lumo_shell_osk_key_text(30), " ") == 0);   /* space */
     assert(strcmp(lumo_shell_osk_key_text(31), "\n") == 0);  /* enter */
+    assert(strcmp(lumo_shell_osk_key_text(32), "\x1b") == 0); /* close */
     assert(lumo_shell_osk_key_text(33) == NULL);
+    /* page 1: symbols */
+    lumo_shell_osk_set_page(1);
+    assert(strcmp(lumo_shell_osk_key_text(0), "1") == 0);
+    assert(strcmp(lumo_shell_osk_key_text(10), "@") == 0);
+    assert(strcmp(lumo_shell_osk_key_text(22), "?") == 0);
+    assert(strcmp(lumo_shell_osk_key_text(23), ",") == 0);
+    lumo_shell_osk_set_page(0);
 }
 
 static void test_shell_labels(void) {
@@ -49,11 +59,18 @@ static void test_shell_labels(void) {
     assert(strcmp(lumo_shell_launcher_tile_label(11), "SETTINGS") == 0);
     assert(lumo_shell_launcher_tile_label(12) == NULL);
 
+    lumo_shell_osk_set_page(0);
     assert(strcmp(lumo_shell_osk_key_label(0), "Q") == 0);
     assert(strcmp(lumo_shell_osk_key_label(19), "<-") == 0);
+    assert(strcmp(lumo_shell_osk_key_label(28), "123") == 0);
     assert(strcmp(lumo_shell_osk_key_label(30), "SPACE") == 0);
     assert(strcmp(lumo_shell_osk_key_label(31), "ENTER") == 0);
+    assert(strcmp(lumo_shell_osk_key_label(32), "v") == 0);
     assert(lumo_shell_osk_key_label(33) == NULL);
+    lumo_shell_osk_set_page(1);
+    assert(strcmp(lumo_shell_osk_key_label(0), "1") == 0);
+    assert(strcmp(lumo_shell_osk_key_label(28), "ABC") == 0);
+    lumo_shell_osk_set_page(0);
 
     assert(strcmp(lumo_shell_touch_audit_point_name(0), "top-left") == 0);
     assert(strcmp(lumo_shell_touch_audit_point_name(7), "bottom-right") == 0);

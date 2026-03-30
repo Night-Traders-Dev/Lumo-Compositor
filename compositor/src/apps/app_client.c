@@ -1945,18 +1945,22 @@ static void lumo_app_keyboard_key(
             lumo_app_term_write(client, "\n", 1); /* enter */
         } else if (key == 57) {
             lumo_app_term_write(client, " ", 1); /* space */
-        } else if (key >= 2 && key <= 52) {
+        } else if (key >= 2 && key <= 53) {
             static const char keymap[] =
                 "1234567890-="
                 "\0\0qwertyuiop[]\0"
                 "\0asdfghjkl;'\0\0"
                 "\0zxcvbnm,./";
+            static const char shiftmap[] =
+                "!@#$%^&*()_+"
+                "\0\0QWERTYUIOP{}\0"
+                "\0ASDFGHJKL:\"\0\0"
+                "\0ZXCVBNM<>?";
             int idx = (int)key - 2;
+            const char *km = client->shift_held ? shiftmap : keymap;
             if (idx >= 0 && idx < (int)sizeof(keymap) - 1 &&
-                    keymap[idx] != '\0') {
-                char ch = keymap[idx];
-                if (client->shift_held && ch >= 'a' && ch <= 'z')
-                    ch = ch - ('a' - 'A');
+                    km[idx] != '\0') {
+                char ch = km[idx];
                 lumo_app_term_write(client, &ch, 1);
             }
         }
@@ -1980,17 +1984,21 @@ static void lumo_app_keyboard_key(
         client->term_input[0] = '\0';
         client->term_input_len = 0;
         (void)lumo_app_client_redraw(client);
-    } else if (key >= 2 && key <= 52 && client->term_input_len < 78) {
+    } else if (key >= 2 && key <= 53 && client->term_input_len < 78) {
         static const char keymap[] =
             "1234567890-="
             "\0\0qwertyuiop[]\0"
             "\0asdfghjkl;'\0\0"
             "\0zxcvbnm,./";
+        static const char shiftmap[] =
+            "!@#$%^&*()_+"
+            "\0\0QWERTYUIOP{}\0"
+            "\0ASDFGHJKL:\"\0\0"
+            "\0ZXCVBNM<>?";
         int idx = (int)key - 2;
-        if (idx >= 0 && idx < (int)sizeof(keymap) - 1 && keymap[idx] != '\0') {
-            char ch = keymap[idx];
-            if (client->shift_held && ch >= 'a' && ch <= 'z')
-                ch = ch - ('a' - 'A');
+        const char *km = client->shift_held ? shiftmap : keymap;
+        if (idx >= 0 && idx < (int)sizeof(keymap) - 1 && km[idx] != '\0') {
+            char ch = km[idx];
             client->term_input[client->term_input_len++] = ch;
             client->term_input[client->term_input_len] = '\0';
             (void)lumo_app_client_redraw(client);

@@ -1358,6 +1358,8 @@ void lumo_protocol_set_keyboard_visible(
     compositor->keyboard_visible = visible;
     if (!visible) {
         compositor->keyboard_auto_shown = false;
+        compositor->osk_shift_active = false;
+        lumo_shell_osk_set_page(0);
     }
     compositor->keyboard_resize_serial++;
     compositor->keyboard_resize_pending = visible;

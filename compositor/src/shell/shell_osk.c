@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#define LUMO_OSK_PAGE_COUNT 2
+
 static const uint32_t lumo_shell_osk_rows = 4;
 static const uint32_t lumo_shell_osk_row_columns[] = {
     10,
@@ -12,26 +14,36 @@ static const uint32_t lumo_shell_osk_row_columns[] = {
     9,
     4,
 };
-static const char *const lumo_shell_osk_key_texts[] = {
-    /* row 0: numbers/top row */
+
+/* page 0: QWERTY letters */
+static const char *const lumo_shell_osk_texts_alpha[] = {
     "q", "w", "e", "r", "t", "y", "u", "i", "o", "p",
-    /* row 1: middle row - with backspace at end */
     "a", "s", "d", "f", "g", "h", "j", "k", "l", "\b",
-    /* row 2: bottom letters - with shift at start */
-    "", "z", "x", "c", "v", "b", "n", "m", ",",
-    /* row 3: space row */
-    ".", " ", "\n", "?",
+    "", "z", "x", "c", "v", "b", "n", "m", "\x01",
+    ".", " ", "\n", "\x1b",
 };
-static const char *const lumo_shell_osk_key_labels[] = {
-    /* row 0 */
+static const char *const lumo_shell_osk_labels_alpha[] = {
     "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P",
-    /* row 1 */
     "A", "S", "D", "F", "G", "H", "J", "K", "L", "<-",
-    /* row 2 */
-    "^", "Z", "X", "C", "V", "B", "N", "M", ",",
-    /* row 3 */
-    ".", "SPACE", "ENTER", "?",
+    "^", "Z", "X", "C", "V", "B", "N", "M", "123",
+    ".", "SPACE", "ENTER", "v",
 };
+
+/* page 1: numbers and symbols */
+static const char *const lumo_shell_osk_texts_sym[] = {
+    "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
+    "@", "#", "$", "%", "&", "-", "+", "(", ")", "\b",
+    "", "!", "?", ",", ";", ":", "'", "/", "\x01",
+    ".", " ", "\n", "\x1b",
+};
+static const char *const lumo_shell_osk_labels_sym[] = {
+    "1", "2", "3", "4", "5", "6", "7", "8", "9", "0",
+    "@", "#", "$", "%", "&", "-", "+", "(", ")", "<-",
+    "^", "!", "?", ",", ";", ":", "'", "/", "ABC",
+    ".", "SPACE", "ENTER", "v",
+};
+
+static uint32_t lumo_shell_osk_page = 0;
 
 static uint32_t lumo_shell_max_u32(uint32_t lhs, uint32_t rhs) {
     return lhs > rhs ? lhs : rhs;
@@ -80,21 +92,45 @@ static bool lumo_shell_osk_row_col_for_index(
 }
 
 const char *lumo_shell_osk_key_label(uint32_t key_index) {
-    if (key_index >= sizeof(lumo_shell_osk_key_labels) /
-            sizeof(lumo_shell_osk_key_labels[0])) {
+    const char *const *labels = lumo_shell_osk_page == 0
+        ? lumo_shell_osk_labels_alpha : lumo_shell_osk_labels_sym;
+    size_t count = lumo_shell_osk_page == 0
+        ? sizeof(lumo_shell_osk_labels_alpha) / sizeof(lumo_shell_osk_labels_alpha[0])
+        : sizeof(lumo_shell_osk_labels_sym) / sizeof(lumo_shell_osk_labels_sym[0]);
+
+    if (key_index >= count) {
         return NULL;
     }
 
-    return lumo_shell_osk_key_labels[key_index];
+    return labels[key_index];
 }
 
 const char *lumo_shell_osk_key_text(uint32_t key_index) {
-    if (key_index >= sizeof(lumo_shell_osk_key_texts) /
-            sizeof(lumo_shell_osk_key_texts[0])) {
+    const char *const *texts = lumo_shell_osk_page == 0
+        ? lumo_shell_osk_texts_alpha : lumo_shell_osk_texts_sym;
+    size_t count = lumo_shell_osk_page == 0
+        ? sizeof(lumo_shell_osk_texts_alpha) / sizeof(lumo_shell_osk_texts_alpha[0])
+        : sizeof(lumo_shell_osk_texts_sym) / sizeof(lumo_shell_osk_texts_sym[0]);
+
+    if (key_index >= count) {
         return NULL;
     }
 
-    return lumo_shell_osk_key_texts[key_index];
+    return texts[key_index];
+}
+
+void lumo_shell_osk_toggle_page(void) {
+    lumo_shell_osk_page = (lumo_shell_osk_page + 1) % LUMO_OSK_PAGE_COUNT;
+}
+
+void lumo_shell_osk_set_page(uint32_t page) {
+    if (page < LUMO_OSK_PAGE_COUNT) {
+        lumo_shell_osk_page = page;
+    }
+}
+
+uint32_t lumo_shell_osk_get_page(void) {
+    return lumo_shell_osk_page;
 }
 
 size_t lumo_shell_osk_key_count(void) {

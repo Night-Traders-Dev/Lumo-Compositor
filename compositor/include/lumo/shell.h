@@ -170,6 +170,9 @@ bool lumo_shell_surface_bootstrap_config(
 );
 size_t lumo_shell_launcher_tile_count(void);
 size_t lumo_shell_osk_key_count(void);
+void lumo_shell_osk_toggle_page(void);
+void lumo_shell_osk_set_page(uint32_t page);
+uint32_t lumo_shell_osk_get_page(void);
 bool lumo_shell_launcher_tile_rect(
     uint32_t output_width,
     uint32_t output_height,

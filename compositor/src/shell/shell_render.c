@@ -689,7 +689,9 @@ static void lumo_draw_osk(
         bool is_space = label != NULL && strcmp(label, "SPACE") == 0;
         bool is_shift = label != NULL && strcmp(label, "^") == 0;
         bool is_backspace = label != NULL && strcmp(label, "<-") == 0;
-        bool is_special = is_shift || is_backspace;
+        bool is_close = label != NULL && strcmp(label, "v") == 0;
+        bool is_page = commit != NULL && commit[0] == '\x01';
+        bool is_special = is_shift || is_backspace || is_close || is_page;
         int scale = 3;
         uint32_t fill;
         uint32_t border;
@@ -733,7 +735,7 @@ static void lumo_draw_osk(
         lumo_fill_rounded_rect(pixels, width, height, &key_rect, 10, fill);
         lumo_draw_outline(pixels, width, height, &key_rect, 1, border);
 
-        /* show lowercase labels when shift is off */
+        /* show lowercase labels when shift is off (letters only) */
         draw_label = label;
         if (!shift_active && label != NULL && label[0] >= 'A' &&
                 label[0] <= 'Z' && label[1] == '\0') {
