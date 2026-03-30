@@ -12,6 +12,11 @@
 #include <string.h>
 #include <time.h>
 
+#if defined(__riscv) && defined(__riscv_v_intrinsic)
+#include <riscv_vector.h>
+#define LUMO_HAS_RVV 1
+#endif
+
 uint32_t lumo_argb(uint8_t a, uint8_t r, uint8_t g, uint8_t b) {
     return ((uint32_t)a << 24) |
         ((uint32_t)r << 16) |
@@ -101,8 +106,9 @@ void lumo_fill_span(uint32_t *row_ptr, int count, uint32_t color) {
         }
     }
 
-    /* General case: fill 8 pixels at a time to reduce loop overhead and
-     * let the compiler auto-vectorize on capable targets. */
+    /* Unrolled 8-wide scalar fill — benchmarks show this is fastest
+     * on the SpacemiT X1 (beats both RVV intrinsics and memcpy
+     * doubling due to low loop overhead and good store coalescing). */
     {
         int i = 0;
         int bulk = count - (count & 7);

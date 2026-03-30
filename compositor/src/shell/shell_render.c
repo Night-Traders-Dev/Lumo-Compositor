@@ -1491,7 +1491,14 @@ void lumo_render_surface(
         return;
     }
 
-    lumo_clear_pixels(pixels, width, height);
+    /* skip full-buffer clear for modes that overwrite every pixel:
+     * background fills the whole surface with gradient + bokeh,
+     * launcher fills with a fullscreen overlay rect.
+     * Other modes still need the clear for transparency. */
+    if (client->mode != LUMO_SHELL_MODE_BACKGROUND &&
+            client->mode != LUMO_SHELL_MODE_LAUNCHER) {
+        lumo_clear_pixels(pixels, width, height);
+    }
 
     /* update shared theme colors from time-of-day + weather */
     lumo_theme_update(client->weather_code);

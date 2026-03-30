@@ -649,34 +649,50 @@ void lumo_shell_client_redraw_unified(struct lumo_shell_client *client) {
     save.animation_started_msec = client->animation_started_msec;
     save.animation_duration_msec = client->animation_duration_msec;
 
-    for (int i = 0; i < client->surface_count; i++) {
-        struct lumo_shell_surface_slot *slot = &client->slots[i];
+    {
+        uint64_t now = lumo_now_msec();
 
-        lumo_shell_swap_slot_in(client, slot);
+        for (int i = 0; i < client->surface_count; i++) {
+            struct lumo_shell_surface_slot *slot = &client->slots[i];
+            bool needs_render = false;
 
-        /* sync visibility/animation state for this slot's mode.
-         * Only force layout when the slot is marked dirty (state
-         * change from bridge protocol), not on periodic redraws. */
-        lumo_shell_client_sync_surface_state(client, slot->dirty);
+            lumo_shell_swap_slot_in(client, slot);
 
-        /* tick animation if active */
-        if (client->animation_active) {
-            if (lumo_now_msec() >= client->animation_started_msec +
-                    client->animation_duration_msec) {
-                client->animation_active = false;
-                if (!client->target_visible)
-                    lumo_shell_client_finish_hide_if_needed(client);
+            /* sync visibility/animation state for this slot's mode.
+             * Only force layout when the slot is marked dirty (state
+             * change from bridge protocol), not on periodic redraws. */
+            if (slot->dirty) {
+                lumo_shell_client_sync_surface_state(client, true);
+                needs_render = true;
             }
-        }
 
-        /* render if configured */
-        if (client->configured && client->configured_width > 0 &&
-                client->configured_height > 0) {
-            (void)lumo_shell_draw_buffer(client, client->configured_width,
-                client->configured_height);
-        }
+            /* tick animation if active */
+            if (client->animation_active) {
+                if (now >= client->animation_started_msec +
+                        client->animation_duration_msec) {
+                    client->animation_active = false;
+                    if (!client->target_visible)
+                        lumo_shell_client_finish_hide_if_needed(client);
+                }
+                needs_render = true;
+            }
 
-        lumo_shell_swap_slot_out(slot, client);
+            /* periodic surfaces: background animates, status updates clock */
+            if (client->mode == LUMO_SHELL_MODE_BACKGROUND ||
+                    client->mode == LUMO_SHELL_MODE_STATUS) {
+                needs_render = true;
+            }
+
+            /* render only if something changed */
+            if (needs_render && client->configured &&
+                    client->configured_width > 0 &&
+                    client->configured_height > 0) {
+                (void)lumo_shell_draw_buffer(client, client->configured_width,
+                    client->configured_height);
+            }
+
+            lumo_shell_swap_slot_out(slot, client);
+        }
     }
 
     /* restore legacy fields */

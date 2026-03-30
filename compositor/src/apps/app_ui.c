@@ -5,6 +5,11 @@
 #include <string.h>
 #include <time.h>
 
+#if defined(__riscv) && defined(__riscv_v_intrinsic)
+#include <riscv_vector.h>
+#define LUMO_HAS_RVV 1
+#endif
+
 void lumo_app_theme_get(struct lumo_app_theme *theme) {
     time_t now = time(NULL);
     struct tm tm_now;
