@@ -538,13 +538,26 @@ void lumo_protocol_refresh_shell_hitboxes(struct lumo_compositor *compositor) {
     }
 
     if (compositor->keyboard_visible) {
+        /* use output dimensions for OSK hitbox, not workarea — the OSK
+         * surface is anchored to the screen bottom, not the workarea bottom */
+        int out_w = 0, out_h = 0;
+        {
+            struct lumo_output *o;
+            wl_list_for_each(o, &compositor->outputs, link) {
+                if (o->wlr_output != NULL) {
+                    wlr_output_effective_resolution(o->wlr_output, &out_w, &out_h);
+                    break;
+                }
+            }
+        }
+        if (out_w == 0) { out_w = workarea.width; out_h = workarea.height; }
         if (lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_OSK,
-                (uint32_t)workarea.width, (uint32_t)workarea.height,
+                (uint32_t)out_w, (uint32_t)out_h,
                 &shell_config) &&
-                shell_config.height <= (uint32_t)workarea.height) {
-            rect.x = workarea.x;
-            rect.y = workarea.y + workarea.height - (int)shell_config.height;
-            rect.width = workarea.width;
+                shell_config.height <= (uint32_t)out_h) {
+            rect.x = 0;
+            rect.y = out_h - (int)shell_config.height;
+            rect.width = out_w;
             rect.height = (int)shell_config.height;
             lumo_protocol_register_hitbox(compositor, "shell-osk", &rect,
                 LUMO_HITBOX_OSK_KEY, true, true);
