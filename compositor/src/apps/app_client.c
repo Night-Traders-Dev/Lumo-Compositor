@@ -1505,8 +1505,10 @@ static void lumo_app_touch_handle_up(
 
     if (client->app_id == LUMO_APP_SETTINGS && client->width > 0 &&
             client->height > 0) {
-        if (client->selected_row >= 0 && client->touch_down_y < 40.0) {
-            /* back button */
+        if (client->selected_row >= 0 &&
+                client->touch_down_y >= 34.0 && client->touch_down_y < 60.0 &&
+                client->touch_down_x < 200.0) {
+            /* back button — y starts at 38 to avoid 32px top edge zone */
             client->selected_row = -1;
             (void)lumo_app_client_redraw(client);
         } else if (client->selected_row >= 0) {

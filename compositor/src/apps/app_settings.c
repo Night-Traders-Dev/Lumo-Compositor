@@ -3,13 +3,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include <sys/statvfs.h>
 #include <unistd.h>
 
 /* ── layout constants ─────────────────────────────────────────────── */
 
 static const int ROW_H      = 56;
-static const int HEADER_Y   = 80;
+static const int HEADER_Y   = 80;  /* main page content start */
+static const int SUB_Y      = 92;  /* subpage content start (below header+sep) */
 static const int SECTION_H  = 28;
 static const int PAD        = 24;
 
@@ -54,9 +57,11 @@ static void draw_subheader(
     uint32_t *px, uint32_t w, uint32_t h, const char *title
 ) {
     ensure_theme();
-    lumo_app_draw_text(px, w, h, PAD, 14, 2, th.accent, "< BACK");
-    lumo_app_draw_text(px, w, h, PAD, 42, 3, th.text, title);
-    lumo_app_fill_rect(px, w, h, PAD, 72, (int)w - PAD * 2, 1,
+    /* back button starts at y=38 to stay below the 32px top edge zone
+     * so tapping it doesn't trigger the time/quick-settings panel */
+    lumo_app_draw_text(px, w, h, PAD, 38, 2, th.accent, "< BACK");
+    lumo_app_draw_text(px, w, h, PAD, 58, 3, th.text, title);
+    lumo_app_fill_rect(px, w, h, PAD, 82, (int)w - PAD * 2, 1,
         th.separator);
 }
 
@@ -107,35 +112,54 @@ static void draw_bar(
 
 /* ── data helpers ─────────────────────────────────────────────────── */
 
+/* run a command and capture first line of output */
+static void run_cmd(const char *cmd, char *out, size_t outsz) {
+    out[0] = '\0';
+    FILE *fp = popen(cmd, "r");
+    if (!fp) return;
+    if (fgets(out, (int)outsz, fp)) {
+        char *nl = strchr(out, '\n'); if (nl) *nl = '\0';
+    }
+    pclose(fp);
+}
+
 static void get_wifi_info(char *iface, size_t isz,
+                          char *ssid, size_t sidsz,
                           char *status, size_t ssz,
                           char *signal_out, size_t sgsz,
                           char *ip, size_t ipsz)
 {
     snprintf(iface, isz, "NONE");
+    snprintf(ssid, sidsz, "--");
     snprintf(status, ssz, "DISCONNECTED");
     snprintf(signal_out, sgsz, "--");
     snprintf(ip, ipsz, "--");
 
-    /* find wireless interface from /proc/net/wireless */
-    FILE *fp = fopen("/proc/net/wireless", "r");
-    if (!fp) return;
-    char line[256], ifn[32] = {0};
-    float sig = 0;
-    while (fgets(line, sizeof(line), fp)) {
-        if (sscanf(line, " %31[^:]: %*d %*f %f", ifn, &sig) >= 1 &&
-                ifn[0] && ifn[0] != '|') {
-            snprintf(iface, isz, "%s", ifn);
-            break;
+    /* find wireless interface via sysfs */
+    char ifn[32] = {0};
+    DIR *netdir = opendir("/sys/class/net");
+    if (netdir) {
+        struct dirent *ent;
+        while ((ent = readdir(netdir)) != NULL) {
+            if (ent->d_name[0] == '.') continue;
+            char wpath[128];
+            struct stat st;
+            snprintf(wpath, sizeof(wpath), "/sys/class/net/%s/wireless",
+                ent->d_name);
+            if (stat(wpath, &st) == 0 && S_ISDIR(st.st_mode)) {
+                snprintf(ifn, sizeof(ifn), "%s", ent->d_name);
+                break;
+            }
         }
+        closedir(netdir);
     }
-    fclose(fp);
     if (!ifn[0]) return;
+    snprintf(iface, isz, "%s", ifn);
 
-    /* check operstate */
+    /* operstate */
     char path[128];
     snprintf(path, sizeof(path), "/sys/class/net/%s/operstate", ifn);
-    fp = fopen(path, "r");
+    FILE *fp = fopen(path, "r");
     if (fp) {
         char st[32] = {0};
         if (fgets(st, sizeof(st), fp)) {
@@ -148,8 +172,55 @@ static void get_wifi_info(char *iface, size_t isz,
         fclose(fp);
     }
 
-    snprintf(signal_out, sgsz, "%.0f DBM", sig);
-    snprintf(ip, ipsz, "DHCP");
+    /* SSID via nmcli */
+    char cmd_out[128];
+    run_cmd("nmcli -t -f active,ssid dev wifi 2>/dev/null | grep '^yes' | cut -d: -f2",
+        cmd_out, sizeof(cmd_out));
+    if (cmd_out[0])
+        snprintf(ssid, sidsz, "%s", cmd_out);
+
+    /* IP address via hostname -I (first address) */
+    run_cmd("hostname -I 2>/dev/null | awk '{print $1}'",
+        cmd_out, sizeof(cmd_out));
+    if (cmd_out[0])
+        snprintf(ip, ipsz, "%s", cmd_out);
+
+    /* signal from /proc/net/wireless if present */
+    fp = fopen("/proc/net/wireless", "r");
+    if (fp) {
+        char line[256]; char pifn[32] = {0}; float sig = 0;
+        while (fgets(line, sizeof(line), fp)) {
+            if (sscanf(line, " %31[^:]: %*d %*f %f", pifn, &sig) >= 1 &&
+                    pifn[0] && pifn[0] != '|') {
+                snprintf(signal_out, sgsz, "%.0f DBM", sig);
+                break;
+            }
+        }
+        fclose(fp);
+    }
+}
+
+static int get_volume_pct(void) {
+    char out[128];
+    run_cmd("pactl get-sink-volume @DEFAULT_SINK@ 2>/dev/null | grep -oP '\\d+%' | head -1",
+        out, sizeof(out));
+    int v = 0;
+    sscanf(out, "%d", &v);
+    return v > 100 ? 100 : v;
+}
+
+static int get_brightness_pct(void) {
+    /* try sysfs backlight */
+    char cur_s[32] = {0}, max_s[32] = {0};
+    FILE *fp = fopen("/sys/class/backlight/backlight/brightness", "r");
+    if (!fp) fp = fopen("/sys/class/backlight/0/brightness", "r");
+    if (fp) { if (fgets(cur_s, sizeof(cur_s), fp)) {} fclose(fp); }
+    fp = fopen("/sys/class/backlight/backlight/max_brightness", "r");
+    if (!fp) fp = fopen("/sys/class/backlight/0/max_brightness", "r");
+    if (fp) { if (fgets(max_s, sizeof(max_s), fp)) {} fclose(fp); }
+    int cur = atoi(cur_s), mx = atoi(max_s);
+    if (mx > 0) return (cur * 100) / mx;
+    return 50; /* default if no backlight sysfs */
 }
 
 static void get_mem_info(unsigned long *total, unsigned long *avail,
@@ -213,7 +284,7 @@ int lumo_app_settings_toggle_at(
     /* toggles occupy the right portion of the row */
     if (x < (double)width / 2) return -1;
 
-    int base_y = HEADER_Y;
+    int base_y = SUB_Y;
     int info_h = 28;
     int toggle_h = 34;
 
@@ -248,17 +319,44 @@ static void render_network(
     uint32_t *px, uint32_t w, uint32_t h
 ) {
     draw_subheader(px, w, h, "Wi-Fi & Network");
-    int y = HEADER_Y;
-    char iface[64], status[64], sig[32], ip[32];
-    get_wifi_info(iface, sizeof(iface), status, sizeof(status),
-                  sig, sizeof(sig), ip, sizeof(ip));
+    int y = SUB_Y;
+    char iface[64], ssid[64], status[64], sig[32], ip[32];
+    get_wifi_info(iface, sizeof(iface), ssid, sizeof(ssid),
+                  status, sizeof(status), sig, sizeof(sig),
+                  ip, sizeof(ip));
 
     draw_info(px, w, h, y, "STATUS", status); y += 28;
+    draw_info(px, w, h, y, "SSID", ssid); y += 28;
     draw_info(px, w, h, y, "INTERFACE", iface); y += 28;
-    draw_info(px, w, h, y, "SIGNAL", sig); y += 28;
     draw_toggle(px, w, h, y, "WI-FI ENABLED",
         ctx->settings.wifi_enabled); y += 34;
+    draw_info(px, w, h, y, "SIGNAL", sig); y += 28;
     draw_info(px, w, h, y, "IP ADDRESS", ip);
+}
+
+static void draw_slider(
+    uint32_t *px, uint32_t w, uint32_t h,
+    int y, const char *label, int pct
+) {
+    ensure_theme();
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    lumo_app_draw_text(px, w, h, PAD + 8, y, 2, th.text, label);
+    int tx = PAD + 8;
+    int tw = (int)w - PAD * 2 - 16;
+    struct lumo_rect track = { tx, y + 20, tw, 10 };
+    lumo_app_fill_rounded_rect(px, w, h, &track, 5, th.card_stroke);
+    int fw = tw * pct / 100;
+    if (fw > 0) {
+        struct lumo_rect fill = { tx, y + 20, fw, 10 };
+        lumo_app_fill_rounded_rect(px, w, h, &fill, 5, th.accent);
+    }
+    /* knob at current position */
+    int kx = tx + fw - 7;
+    if (kx < tx) kx = tx;
+    struct lumo_rect knob = { kx, y + 16, 14, 18 };
+    lumo_app_fill_rounded_rect(px, w, h, &knob, 7,
+        lumo_app_argb(0xFF, 0xFF, 0xFF, 0xFF));
 }
 
 static void render_display(
@@ -266,7 +364,7 @@ static void render_display(
     uint32_t *px, uint32_t w, uint32_t h
 ) {
     draw_subheader(px, w, h, "Display");
-    int y = HEADER_Y;
+    int y = SUB_Y;
     char buf[64];
     snprintf(buf, sizeof(buf), "%ux%u", w, h);
     draw_info(px, w, h, y, "RESOLUTION", buf); y += 28;
@@ -274,6 +372,12 @@ static void render_display(
     draw_info(px, w, h, y, "RENDERER", "PIXMAN SOFTWARE"); y += 28;
     draw_toggle(px, w, h, y, "AUTO ROTATE",
         ctx->settings.auto_rotate); y += 34;
+    {
+        int bpct = get_brightness_pct();
+        snprintf(buf, sizeof(buf), "BRIGHTNESS  %d%%", bpct);
+        draw_slider(px, w, h, y, buf, bpct);
+    }
+    y += 34;
     draw_info(px, w, h, y, "ROTATION", "USE QUICK SETTINGS");
 }
 
@@ -283,10 +387,17 @@ static void render_sound(
 ) {
     (void)ctx;
     draw_subheader(px, w, h, "Sound");
-    int y = HEADER_Y;
+    int y = SUB_Y;
     draw_info(px, w, h, y, "OUTPUT", "PIPEWIRE"); y += 28;
-    draw_info(px, w, h, y, "VOLUME", "USE QUICK SETTINGS"); y += 28;
-    draw_info(px, w, h, y, "DEVICE", "DEFAULT SINK");
+    draw_info(px, w, h, y, "DEVICE", "DEFAULT SINK"); y += 28;
+    {
+        int vpct = get_volume_pct();
+        char buf[64];
+        snprintf(buf, sizeof(buf), "VOLUME  %d%%", vpct);
+        draw_slider(px, w, h, y, buf, vpct);
+    }
+    y += 34;
+    draw_info(px, w, h, y, "CONTROL", "PACTL / PIPEWIRE");
 }
 
 static void render_storage(
@@ -295,7 +406,7 @@ static void render_storage(
 ) {
     (void)ctx;
     draw_subheader(px, w, h, "Storage");
-    int y = HEADER_Y;
+    int y = SUB_Y;
     char buf[64];
     struct statvfs st;
     if (statvfs("/", &st) == 0) {
@@ -324,7 +435,7 @@ static void render_memory(
 ) {
     (void)ctx;
     draw_subheader(px, w, h, "Memory");
-    int y = HEADER_Y;
+    int y = SUB_Y;
     char buf[64];
     unsigned long total, avail, buffers, cached;
     get_mem_info(&total, &avail, &buffers, &cached);
@@ -347,7 +458,7 @@ static void render_general(
     uint32_t *px, uint32_t w, uint32_t h
 ) {
     draw_subheader(px, w, h, "General");
-    int y = HEADER_Y;
+    int y = SUB_Y;
     char buf[64];
 
     FILE *fp = fopen("/proc/uptime", "r");
@@ -393,7 +504,7 @@ static void render_about(
 ) {
     (void)ctx;
     draw_subheader(px, w, h, "About Device");
-    int y = HEADER_Y;
+    int y = SUB_Y;
     char hostname[64] = "UNKNOWN";
     gethostname(hostname, sizeof(hostname) - 1);
 
@@ -421,7 +532,7 @@ static void render_lumo(
     uint32_t *px, uint32_t w, uint32_t h
 ) {
     draw_subheader(px, w, h, "Lumo");
-    int y = HEADER_Y;
+    int y = SUB_Y;
     draw_info(px, w, h, y, "VERSION", LUMO_VERSION_STRING); y += 28;
     draw_info(px, w, h, y, "BUILD", "MESON + NINJA"); y += 28;
     draw_info(px, w, h, y, "RENDERER", "PIXMAN SOFTWARE"); y += 28;
@@ -437,7 +548,7 @@ static void render_processor(
 ) {
     (void)ctx;
     draw_subheader(px, w, h, "Processor");
-    int y = HEADER_Y;
+    int y = SUB_Y;
     char cpu[64] = "RISCV64";
     int cores = 0;
     FILE *fp = fopen("/proc/cpuinfo", "r");
@@ -502,10 +613,14 @@ void lumo_app_render_settings(
     draw_section(px, w, h, y, "CONNECTIVITY");
     y += SECTION_H;
     {
-        char iface[64], status[64], sig[32], ip[32];
-        get_wifi_info(iface, sizeof(iface), status, sizeof(status),
-                      sig, sizeof(sig), ip, sizeof(ip));
-        snprintf(buf, sizeof(buf), "%s (%s)", status, iface);
+        char iface[64], ssid[64], wstatus[64], sig[32], ip[32];
+        get_wifi_info(iface, sizeof(iface), ssid, sizeof(ssid),
+                      wstatus, sizeof(wstatus), sig, sizeof(sig),
+                      ip, sizeof(ip));
+        if (ssid[0] && strcmp(ssid, "--") != 0)
+            snprintf(buf, sizeof(buf), "%s - %s", wstatus, ssid);
+        else
+            snprintf(buf, sizeof(buf), "%s (%s)", wstatus, iface);
         draw_row(px, w, h, y, "WI-FI", buf);
     }
     y += ROW_H;
