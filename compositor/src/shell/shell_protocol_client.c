@@ -224,6 +224,14 @@ static void lumo_shell_client_apply_state_frame(
         }
     }
 
+    if (lumo_shell_protocol_frame_get_bool(frame, "osk_shift",
+            &bool_value)) {
+        if (client->compositor_osk_shift_active != bool_value) {
+            client->compositor_osk_shift_active = bool_value;
+            changed = true;
+        }
+    }
+
     if (lumo_shell_protocol_frame_get_bool(frame, "quick_settings_visible",
             &bool_value)) {
         if (client->compositor_quick_settings_visible != bool_value) {

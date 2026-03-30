@@ -514,6 +514,10 @@ static bool lumo_shell_bridge_build_state_frame(
             compositor->keyboard_visible)) {
         return false;
     }
+    if (!lumo_shell_protocol_frame_add_bool(frame, "osk_shift",
+            compositor->osk_shift_active)) {
+        return false;
+    }
     if (!lumo_shell_protocol_frame_add_bool(frame, "quick_settings_visible",
             compositor->quick_settings_visible)) {
         return false;
@@ -805,10 +809,22 @@ static const char *lumo_shell_bridge_commit_osk_text(
         return "invalid_index";
     }
 
-    /* shift key (empty text) - ignore for now */
+    /* shift key (empty text) - toggle shift state */
     if (text[0] == '\0') {
-        wlr_log(WLR_INFO, "shell: osk key %u is modifier, ignoring", index);
+        compositor->osk_shift_active = !compositor->osk_shift_active;
+        wlr_log(WLR_INFO, "shell: osk shift %s",
+            compositor->osk_shift_active ? "on" : "off");
+        lumo_shell_mark_state_dirty(compositor);
         return NULL;
+    }
+
+    /* apply shift: uppercase the letter and auto-clear shift */
+    char shifted_buf[2] = {0};
+    if (compositor->osk_shift_active && text[0] >= 'a' && text[0] <= 'z') {
+        shifted_buf[0] = text[0] - ('a' - 'A');
+        text = shifted_buf;
+        compositor->osk_shift_active = false;
+        lumo_shell_mark_state_dirty(compositor);
     }
 
     text_input = lumo_shell_bridge_focused_text_input(compositor);
@@ -859,24 +875,36 @@ static const char *lumo_shell_bridge_commit_osk_text(
                 };
                 uint32_t keycode = 0;
                 char ch = text[0];
+                char lower_ch = (ch >= 'A' && ch <= 'Z')
+                    ? ch + ('a' - 'A') : ch;
+                bool need_shift = ch >= 'A' && ch <= 'Z';
                 if (ch == '\b') {
                     keycode = 14; /* KEY_BACKSPACE */
                 } else {
                     for (size_t i = 0; i < sizeof(map)/sizeof(map[0]); i++) {
-                        if (map[i].ch == ch) {
+                        if (map[i].ch == lower_ch) {
                             keycode = map[i].code;
                             break;
                         }
                     }
                 }
                 if (keycode > 0) {
+                    if (need_shift) {
+                        wlr_seat_keyboard_notify_key(compositor->seat,
+                            0, 42, WL_KEYBOARD_KEY_STATE_PRESSED);
+                    }
                     wlr_seat_keyboard_notify_key(compositor->seat,
                         0, keycode, WL_KEYBOARD_KEY_STATE_PRESSED);
                     wlr_seat_keyboard_notify_key(compositor->seat,
                         1, keycode, WL_KEYBOARD_KEY_STATE_RELEASED);
+                    if (need_shift) {
+                        wlr_seat_keyboard_notify_key(compositor->seat,
+                            1, 42, WL_KEYBOARD_KEY_STATE_RELEASED);
+                    }
                     wlr_log(WLR_INFO,
-                        "shell: osk key '%c' sent as keycode %u",
-                        ch > 31 ? ch : '?', keycode);
+                        "shell: osk key '%c' sent as keycode %u%s",
+                        ch > 31 ? ch : '?', keycode,
+                        need_shift ? " (shifted)" : "");
                     return NULL;
                 }
             }

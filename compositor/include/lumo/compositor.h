@@ -858,6 +858,7 @@ struct lumo_compositor {
     uint32_t keyboard_resize_serial;
     bool keyboard_resize_pending;
     bool keyboard_resize_acked;
+    bool osk_shift_active;
     bool touch_audit_active;
     bool touch_audit_saved;
     uint32_t touch_audit_step;

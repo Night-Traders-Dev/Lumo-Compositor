@@ -87,6 +87,7 @@ struct lumo_shell_client {
     uint32_t compositor_rotation_degrees;
     double compositor_gesture_threshold;
     uint32_t compositor_gesture_timeout_ms;
+    bool compositor_osk_shift_active;
     bool compositor_keyboard_resize_pending;
     bool compositor_keyboard_resize_acked;
     uint32_t compositor_keyboard_resize_serial;

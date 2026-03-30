@@ -646,8 +646,8 @@ static void lumo_draw_osk(
     struct lumo_rect handle_rect;
     size_t key_count = lumo_shell_osk_key_count();
     int translate_y;
+    bool shift_active = client != NULL && client->compositor_osk_shift_active;
 
-    (void)client;
     if (visibility <= 0.0) {
         return;
     }
@@ -687,12 +687,15 @@ static void lumo_draw_osk(
             active_target->index == key_index;
         bool is_enter = label != NULL && strcmp(label, "ENTER") == 0;
         bool is_space = label != NULL && strcmp(label, "SPACE") == 0;
-        bool is_special = label != NULL &&
-            (strcmp(label, "<-") == 0 || strcmp(label, "^") == 0);
+        bool is_shift = label != NULL && strcmp(label, "^") == 0;
+        bool is_backspace = label != NULL && strcmp(label, "<-") == 0;
+        bool is_special = is_shift || is_backspace;
         int scale = 3;
         uint32_t fill;
         uint32_t border;
         uint32_t text_col;
+        char lower_label[2] = {0};
+        const char *draw_label;
 
         if (!lumo_shell_osk_key_rect(width, height, key_index, &key_rect)) {
             continue;
@@ -713,6 +716,10 @@ static void lumo_draw_osk(
             fill = lumo_argb(0xFF, 0x50, 0x50, 0x56);
             border = lumo_argb(0xFF, 0x42, 0x42, 0x48);
             text_col = label_dim;
+        } else if (is_shift && shift_active) {
+            fill = active_fill;
+            border = active_border;
+            text_col = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
         } else if (is_special) {
             fill = special_fill;
             border = key_border;
@@ -726,13 +733,21 @@ static void lumo_draw_osk(
         lumo_fill_rounded_rect(pixels, width, height, &key_rect, 10, fill);
         lumo_draw_outline(pixels, width, height, &key_rect, 1, border);
 
+        /* show lowercase labels when shift is off */
+        draw_label = label;
+        if (!shift_active && label != NULL && label[0] >= 'A' &&
+                label[0] <= 'Z' && label[1] == '\0') {
+            lower_label[0] = label[0] + ('a' - 'A');
+            draw_label = lower_label;
+        }
+
         label_rect = key_rect;
-        if (label != NULL && strlen(label) > 4) {
+        if (draw_label != NULL && strlen(draw_label) > 4) {
             scale = 2;
         }
         lumo_draw_text_centered(pixels, width, height, &label_rect, scale,
             text_col,
-            label != NULL ? label :
+            draw_label != NULL ? draw_label :
             (commit != NULL ? commit : ""));
     }
 }

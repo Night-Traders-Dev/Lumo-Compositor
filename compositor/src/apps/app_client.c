@@ -74,6 +74,7 @@ struct lumo_app_client {
     double touch_down_x;
     double touch_down_y;
     struct wl_keyboard *keyboard;
+    bool shift_held;
     char term_lines[16][82];
     int term_line_count;
     int term_cursor;
@@ -1925,8 +1926,16 @@ static void lumo_app_keyboard_key(
     struct lumo_app_client *client = data;
     (void)kb; (void)serial; (void)time;
 
-    if (client == NULL || state != WL_KEYBOARD_KEY_STATE_PRESSED) return;
+    if (client == NULL) return;
     if (client->app_id != LUMO_APP_MESSAGES) return;
+
+    /* track shift key state */
+    if (key == 42 || key == 54) { /* KEY_LEFTSHIFT / KEY_RIGHTSHIFT */
+        client->shift_held = (state == WL_KEYBOARD_KEY_STATE_PRESSED);
+        return;
+    }
+
+    if (state != WL_KEYBOARD_KEY_STATE_PRESSED) return;
 
     /* PTY mode: forward keystrokes to the shell */
     if (client->pty_fd >= 0) {
@@ -1945,7 +1954,10 @@ static void lumo_app_keyboard_key(
             int idx = (int)key - 2;
             if (idx >= 0 && idx < (int)sizeof(keymap) - 1 &&
                     keymap[idx] != '\0') {
-                lumo_app_term_write(client, &keymap[idx], 1);
+                char ch = keymap[idx];
+                if (client->shift_held && ch >= 'a' && ch <= 'z')
+                    ch = ch - ('a' - 'A');
+                lumo_app_term_write(client, &ch, 1);
             }
         }
         return;
@@ -1971,12 +1983,15 @@ static void lumo_app_keyboard_key(
     } else if (key >= 2 && key <= 52 && client->term_input_len < 78) {
         static const char keymap[] =
             "1234567890-="
-            "\0qwertyuiop[]\0\0"
-            "asdfghjkl;'\0\0\0"
-            "zxcvbnm,./";
+            "\0\0qwertyuiop[]\0"
+            "\0asdfghjkl;'\0\0"
+            "\0zxcvbnm,./";
         int idx = (int)key - 2;
         if (idx >= 0 && idx < (int)sizeof(keymap) - 1 && keymap[idx] != '\0') {
-            client->term_input[client->term_input_len++] = keymap[idx];
+            char ch = keymap[idx];
+            if (client->shift_held && ch >= 'a' && ch <= 'z')
+                ch = ch - ('a' - 'A');
+            client->term_input[client->term_input_len++] = ch;
             client->term_input[client->term_input_len] = '\0';
             (void)lumo_app_client_redraw(client);
         }
@@ -2600,19 +2615,10 @@ int main(int argc, char **argv) {
                 lumo_app_pty_read(&client);
             }
             if (is_terminal && (pfds[1].revents & POLLHUP)) {
-                /* shell exited; is_terminal, nfds, timeout_ms and
-                 * needs_periodic are declared outside the while loop so
-                 * clearing them here correctly persists across subsequent
-                 * loop iterations -- no stale flag risk. */
-                fprintf(stderr, "lumo-app: PTY shell exited\n");
-                lumo_app_term_add_line(&client, "[shell exited]");
-                (void)lumo_app_client_redraw(&client);
+                fprintf(stderr, "lumo-app: PTY shell exited, closing app\n");
                 close(client.pty_fd);
                 client.pty_fd = -1;
-                is_terminal = false;
-                nfds = 1;
-                timeout_ms = -1;
-                needs_periodic = false;
+                client.running = false;
             }
         }
     }
