@@ -1913,16 +1913,23 @@ static void lumo_input_touch_down(
         return;
     }
 
-    /* --- edge gestures take priority over shell hitboxes so that
-     * bottom-swipe always works even when the OSK or launcher covers
-     * the gesture zone --- */
+    /* --- edge gestures: bottom-edge takes priority over OSK/launcher
+     * hitboxes but NOT over the gesture handle hitbox (which has its
+     * own tap/swipe logic) --- */
 
     edge_zone = lumo_input_system_edge_zone(compositor, output, point->lx,
         point->ly);
     if (compositor->touch_audit_active && edge_zone != LUMO_EDGE_LEFT) {
         edge_zone = LUMO_EDGE_NONE;
     }
-    if (edge_zone == LUMO_EDGE_BOTTOM) {
+    if (edge_zone == LUMO_EDGE_BOTTOM &&
+            point->hitbox != NULL &&
+            point->hitbox->kind != LUMO_HITBOX_EDGE_GESTURE &&
+            (point->hitbox->kind == LUMO_HITBOX_OSK_KEY ||
+             point->hitbox->kind == LUMO_HITBOX_SCRIM ||
+             point->hitbox->kind == LUMO_HITBOX_LAUNCHER_TILE)) {
+        /* bottom-edge zone overrides OSK/launcher hitboxes so swipe-
+         * to-close works even when those surfaces cover the bottom */
         point->capture_edge = edge_zone;
         lumo_input_touch_point_begin_capture(compositor, point, &target,
             event->time_msec);

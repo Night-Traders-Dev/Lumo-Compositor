@@ -497,7 +497,6 @@ void lumo_protocol_refresh_shell_hitboxes(struct lumo_compositor *compositor) {
         wlr_log(WLR_INFO, "protocol: hitbox refresh skipped (no workarea)");
         return;
     }
-
     if (lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_GESTURE,
             (uint32_t)workarea.width, (uint32_t)workarea.height,
             &shell_config)) {
@@ -1270,7 +1269,6 @@ void lumo_protocol_set_launcher_visible(
     lumo_shell_state_broadcast_launcher_visible(compositor, visible);
     lumo_shell_state_broadcast_scrim_state(compositor, compositor->scrim_state);
     lumo_protocol_refresh_shell_hitboxes(compositor);
-    compositor->hitboxes_dirty = false;
     lumo_protocol_mark_layers_dirty(compositor);
 }
 
@@ -1400,7 +1398,6 @@ void lumo_protocol_set_keyboard_visible(
     lumo_shell_state_broadcast_keyboard_visible(compositor, visible);
     lumo_shell_state_broadcast_scrim_state(compositor, compositor->scrim_state);
     lumo_protocol_refresh_shell_hitboxes(compositor);
-    compositor->hitboxes_dirty = false;
     lumo_protocol_mark_layers_dirty(compositor);
 }
 
@@ -1467,10 +1464,7 @@ void lumo_protocol_configure_layers(
         output->usable_area_valid = !wlr_box_empty(&full_area);
     }
 
-    if (compositor->hitboxes_dirty) {
-        lumo_protocol_refresh_shell_hitboxes(compositor);
-        compositor->hitboxes_dirty = false;
-    }
+    lumo_protocol_refresh_shell_hitboxes(compositor);
 
     /* wlr_scene_layer_surface_v1_configure re-enables nodes based on
      * surface->mapped.  Re-disable the OSK node when the keyboard is

@@ -302,7 +302,6 @@ void lumo_output_set_rotation(
     }
 
     lumo_protocol_refresh_shell_hitboxes(compositor);
-    compositor->hitboxes_dirty = false;
     lumo_protocol_mark_layers_dirty(compositor);
 
     {
