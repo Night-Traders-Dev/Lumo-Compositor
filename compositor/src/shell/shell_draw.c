@@ -70,6 +70,58 @@ void lumo_clear_pixels(
     memset(pixels, 0, (size_t)width * (size_t)height * sizeof(uint32_t));
 }
 
+/* Fill a horizontal span of pixels with a single color.
+ * This is the innermost hot loop for all rect/rounded/gradient fills. */
+void lumo_fill_span(uint32_t *row_ptr, int count, uint32_t color) {
+    if (count <= 0) {
+        return;
+    }
+
+    /* For short spans, scalar fill is fastest (avoids setup overhead). */
+    if (count <= 8) {
+        for (int i = 0; i < count; i++) {
+            row_ptr[i] = color;
+        }
+        return;
+    }
+
+    /* Use memset for black (all zero bytes) */
+    if (color == 0) {
+        memset(row_ptr, 0, (size_t)count * sizeof(uint32_t));
+        return;
+    }
+
+    /* Check if all 4 bytes are the same — then memset works */
+    {
+        uint8_t b0 = (uint8_t)color;
+        if (b0 == (uint8_t)(color >> 8) && b0 == (uint8_t)(color >> 16) &&
+                b0 == (uint8_t)(color >> 24)) {
+            memset(row_ptr, b0, (size_t)count * sizeof(uint32_t));
+            return;
+        }
+    }
+
+    /* General case: fill 8 pixels at a time to reduce loop overhead and
+     * let the compiler auto-vectorize on capable targets. */
+    {
+        int i = 0;
+        int bulk = count - (count & 7);
+        for (; i < bulk; i += 8) {
+            row_ptr[i]     = color;
+            row_ptr[i + 1] = color;
+            row_ptr[i + 2] = color;
+            row_ptr[i + 3] = color;
+            row_ptr[i + 4] = color;
+            row_ptr[i + 5] = color;
+            row_ptr[i + 6] = color;
+            row_ptr[i + 7] = color;
+        }
+        for (; i < count; i++) {
+            row_ptr[i] = color;
+        }
+    }
+}
+
 void lumo_fill_rect(
     uint32_t *pixels,
     uint32_t width,
@@ -99,9 +151,10 @@ void lumo_fill_rect(
         y1 = (int)height;
     }
 
-    for (int row = y0; row < y1; row++) {
-        for (int col = x0; col < x1; col++) {
-            pixels[row * (int)width + col] = color;
+    {
+        int span = x1 - x0;
+        for (int row = y0; row < y1; row++) {
+            lumo_fill_span(pixels + row * (int)width + x0, span, color);
         }
     }
 }
@@ -114,41 +167,53 @@ void lumo_fill_vertical_gradient(
     uint32_t top_color,
     uint32_t bottom_color
 ) {
-    uint8_t top_a;
-    uint8_t top_r;
-    uint8_t top_g;
-    uint8_t top_b;
-    uint8_t bottom_a;
-    uint8_t bottom_r;
-    uint8_t bottom_g;
-    uint8_t bottom_b;
+    int x0, y0, x1, y1, span, denom;
+    int32_t a, r, g, b, da, dr, dg, db;
 
     if (pixels == NULL || rect == NULL || rect->width <= 0 || rect->height <= 0) {
         return;
     }
 
-    top_a = (uint8_t)(top_color >> 24);
-    top_r = (uint8_t)(top_color >> 16);
-    top_g = (uint8_t)(top_color >> 8);
-    top_b = (uint8_t)top_color;
-    bottom_a = (uint8_t)(bottom_color >> 24);
-    bottom_r = (uint8_t)(bottom_color >> 16);
-    bottom_g = (uint8_t)(bottom_color >> 8);
-    bottom_b = (uint8_t)bottom_color;
+    x0 = rect->x < 0 ? 0 : rect->x;
+    y0 = rect->y < 0 ? 0 : rect->y;
+    x1 = rect->x + rect->width;
+    y1 = rect->y + rect->height;
+    if (x0 >= (int)width || y0 >= (int)height) return;
+    if (x1 > (int)width) x1 = (int)width;
+    if (y1 > (int)height) y1 = (int)height;
+    span = x1 - x0;
+    if (span <= 0) return;
 
-    for (int row = 0; row < rect->height; row++) {
-        double t = rect->height > 1
-            ? (double)row / (double)(rect->height - 1)
-            : 0.0;
-        uint32_t color = lumo_argb(
-            (uint8_t)(top_a + (int)((bottom_a - top_a) * t)),
-            (uint8_t)(top_r + (int)((bottom_r - top_r) * t)),
-            (uint8_t)(top_g + (int)((bottom_g - top_g) * t)),
-            (uint8_t)(top_b + (int)((bottom_b - top_b) * t))
-        );
+    /* 16.16 fixed-point interpolation — no floating point per row */
+    denom = rect->height > 1 ? rect->height - 1 : 1;
+    a = (int32_t)(top_color >> 24) << 16;
+    r = (int32_t)((top_color >> 16) & 0xFF) << 16;
+    g = (int32_t)((top_color >> 8) & 0xFF) << 16;
+    b = (int32_t)(top_color & 0xFF) << 16;
+    da = (((int32_t)(bottom_color >> 24) - (int32_t)(top_color >> 24)) << 16) / denom;
+    dr = (((int32_t)((bottom_color >> 16) & 0xFF) - (int32_t)((top_color >> 16) & 0xFF)) << 16) / denom;
+    dg = (((int32_t)((bottom_color >> 8) & 0xFF) - (int32_t)((top_color >> 8) & 0xFF)) << 16) / denom;
+    db = (((int32_t)(bottom_color & 0xFF) - (int32_t)(top_color & 0xFF)) << 16) / denom;
 
-        lumo_fill_rect(pixels, width, height,
-            rect->x, rect->y + row, rect->width, 1, color);
+    /* advance to first visible row */
+    {
+        int skip = y0 - rect->y;
+        a += da * skip;
+        r += dr * skip;
+        g += dg * skip;
+        b += db * skip;
+    }
+
+    for (int row = y0; row < y1; row++) {
+        uint32_t color = ((uint32_t)(a >> 16) << 24) |
+            ((uint32_t)(r >> 16) << 16) |
+            ((uint32_t)(g >> 16) << 8) |
+            (uint32_t)(b >> 16);
+        lumo_fill_span(pixels + row * (int)width + x0, span, color);
+        a += da;
+        r += dr;
+        g += dg;
+        b += db;
     }
 }
 
@@ -204,8 +269,15 @@ void lumo_fill_rounded_rect(
     int y1;
     int x0;
     int x1;
+    int r2;
 
     if (pixels == NULL || rect == NULL || rect->width <= 0 || rect->height <= 0) {
+        return;
+    }
+
+    if (radius == 0) {
+        lumo_fill_rect(pixels, width, height,
+            rect->x, rect->y, rect->width, rect->height, color);
         return;
     }
 
@@ -213,29 +285,51 @@ void lumo_fill_rounded_rect(
     y0 = rect->y < 0 ? 0 : rect->y;
     x1 = rect->x + rect->width;
     y1 = rect->y + rect->height;
-    if (x1 > (int)width) {
-        x1 = (int)width;
-    }
-    if (y1 > (int)height) {
-        y1 = (int)height;
-    }
+    if (x1 > (int)width) x1 = (int)width;
+    if (y1 > (int)height) y1 = (int)height;
+
+    r2 = (int)(radius * radius);
 
     for (int row = y0; row < y1; row++) {
         int local_y = row - rect->y;
-        bool in_corner_band = local_y < (int)radius ||
-            local_y >= rect->height - (int)radius;
+        int row_x0 = x0;
+        int row_x1 = x1;
 
-        if (!in_corner_band) {
-            for (int col = x0; col < x1; col++) {
-                pixels[row * (int)width + col] = color;
+        /* Only compute corner insets for rows in the corner bands.
+         * Use sqrt-free integer approach: find the horizontal offset
+         * where dy^2 + dx^2 = r^2 → dx = sqrt(r^2 - dy^2). */
+        if (local_y < (int)radius) {
+            int dy = (int)radius - local_y;
+            int dy2 = dy * dy;
+            int dx2 = r2 - dy2;
+            /* integer sqrt via bit scan */
+            int inset = (int)radius;
+            if (dx2 > 0) {
+                int s = 0;
+                while ((s + 1) * (s + 1) <= dx2) s++;
+                inset = (int)radius - s;
             }
-            continue;
+            if (rect->x + inset > row_x0) row_x0 = rect->x + inset;
+            if (rect->x + rect->width - inset < row_x1)
+                row_x1 = rect->x + rect->width - inset;
+        } else if (local_y >= rect->height - (int)radius) {
+            int dy = local_y - (rect->height - (int)radius - 1);
+            int dy2 = dy * dy;
+            int dx2 = r2 - dy2;
+            int inset = (int)radius;
+            if (dx2 > 0) {
+                int s = 0;
+                while ((s + 1) * (s + 1) <= dx2) s++;
+                inset = (int)radius - s;
+            }
+            if (rect->x + inset > row_x0) row_x0 = rect->x + inset;
+            if (rect->x + rect->width - inset < row_x1)
+                row_x1 = rect->x + rect->width - inset;
         }
 
-        for (int col = x0; col < x1; col++) {
-            if (lumo_rounded_rect_contains(rect, (int)radius, col, row)) {
-                pixels[row * (int)width + col] = color;
-            }
+        if (row_x1 > row_x0) {
+            lumo_fill_span(pixels + row * (int)width + row_x0,
+                row_x1 - row_x0, color);
         }
     }
 }
@@ -554,7 +648,7 @@ void lumo_draw_text(
     uint32_t color,
     const char *text
 ) {
-    uint8_t rows[7];
+    uint8_t glyph[7];
     int cursor_x = x;
 
     if (pixels == NULL || text == NULL || scale <= 0) {
@@ -562,16 +656,40 @@ void lumo_draw_text(
     }
 
     for (size_t i = 0; text[i] != '\0'; i++) {
-        lumo_glyph_rows(text[i], rows);
-        for (int row = 0; row < 7; row++) {
-            for (int col = 0; col < 5; col++) {
-                if ((rows[row] & (1u << (4 - col))) == 0) {
+        lumo_glyph_rows(text[i], glyph);
+        for (int grow = 0; grow < 7; grow++) {
+            uint8_t bits = glyph[grow];
+            if (bits == 0) continue;
+
+            int py = y + grow * scale;
+            if (py >= (int)height) break;
+            if (py + scale <= 0) continue;
+
+            /* scan bits left-to-right and merge adjacent set bits
+             * into a single span to reduce fill calls */
+            int col = 0;
+            while (col < 5) {
+                if ((bits & (1u << (4 - col))) == 0) {
+                    col++;
                     continue;
                 }
-                lumo_fill_rect(pixels, width, height,
-                    cursor_x + col * scale,
-                    y + row * scale,
-                    scale, scale, color);
+                int span_start = col;
+                while (col < 5 && (bits & (1u << (4 - col))) != 0) {
+                    col++;
+                }
+                /* span from span_start to col (exclusive) */
+                int px = cursor_x + span_start * scale;
+                int pw = (col - span_start) * scale;
+                for (int sy = 0; sy < scale; sy++) {
+                    int ry = py + sy;
+                    if (ry < 0 || ry >= (int)height) continue;
+                    int cx0 = px < 0 ? 0 : px;
+                    int cx1 = px + pw > (int)width ? (int)width : px + pw;
+                    if (cx1 > cx0) {
+                        lumo_fill_span(pixels + ry * (int)width + cx0,
+                            cx1 - cx0, color);
+                    }
+                }
             }
         }
         cursor_x += 5 * scale + scale;

@@ -149,6 +149,7 @@ double lumo_ease_decelerate(double value);
 double lumo_ease_standard(double value);
 uint64_t lumo_now_msec(void);
 void lumo_clear_pixels(uint32_t *pixels, uint32_t width, uint32_t height);
+void lumo_fill_span(uint32_t *row_ptr, int count, uint32_t color);
 void lumo_fill_rect(
     uint32_t *pixels, uint32_t width, uint32_t height,
     int x, int y, int rect_width, int rect_height, uint32_t color);

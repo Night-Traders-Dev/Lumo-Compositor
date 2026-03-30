@@ -1,7 +1,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.56',
+  version: '0.0.57',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -50,6 +50,25 @@ screenshot_deps = [
 
 add_project_arguments('-DWLR_USE_UNSTABLE', language: 'c')
 add_project_arguments('-D_POSIX_C_SOURCE=200809L', language: 'c')
+
+# Enable RISC-V vector extensions and bitmanip on riscv64 for optimized
+# pixel fill loops.  The SpacemiT K1/X1 (OrangePi RV2) has RVV 1.0
+# with VLEN=256 and Zba/Zbb/Zbs.
+cc = meson.get_compiler('c')
+if host_machine.cpu_family() == 'riscv64'
+  rvv_test = cc.compiles(
+    'void f(void) {}',
+    args: ['-march=rv64gcv_zba_zbb_zbs'],
+    name: 'rv64gcv_zba_zbb_zbs support',
+  )
+  if rvv_test
+    add_project_arguments(
+      '-march=rv64gcv_zba_zbb_zbs',
+      '-ftree-vectorize',
+      language: 'c',
+    )
+  endif
+endif
 add_project_arguments(
   '-DLUMO_ENABLE_XWAYLAND=' + (xwayland_enabled ? '1' : '0'),
   language: 'c',

@@ -1436,9 +1436,8 @@ static void lumo_draw_animated_bg(
             row_color = lumo_argb(0xFF, (uint8_t)r, (uint8_t)g, (uint8_t)b);
         }
 
-        for (uint32_t x = 0; x < width; x++) {
-            row_ptr[x] = row_color;
-        }
+        /* fill entire row with the computed color using optimized span */
+        lumo_fill_span(row_ptr, (int)width, row_color);
 
         if (glow > 12) {
             uint32_t streak_x = (frame + y * 2) % (width + 200);
@@ -1454,9 +1453,8 @@ static void lumo_draw_animated_bg(
                     (uint8_t)nr, (uint8_t)ng, (uint8_t)nb);
                 uint32_t end = streak_x + streak_len;
                 if (end > width) end = width;
-                for (uint32_t sx = streak_x; sx < end; sx++) {
-                    row_ptr[sx] = streak_color;
-                }
+                lumo_fill_span(row_ptr + streak_x,
+                    (int)(end - streak_x), streak_color);
             }
         }
     }
