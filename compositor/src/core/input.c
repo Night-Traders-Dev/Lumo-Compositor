@@ -4,6 +4,7 @@
 #include <string.h>
 #include <time.h>
 
+#include <wlr/interfaces/wlr_keyboard.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_pointer.h>
 #include <wlr/types/wlr_touch.h>
@@ -2249,6 +2250,32 @@ int lumo_input_start(struct lumo_compositor *compositor) {
         return -1;
     }
 
+    /* create a virtual keyboard for OSK key injection — on touchscreen-only
+     * devices there is no physical keyboard, so wlr_seat_get_keyboard()
+     * returns NULL and the virtual keyboard fallback in commit_osk_text
+     * can never fire. This hidden keyboard stays set on the seat so OSK
+     * keys always have a wlr_keyboard to route through. */
+    {
+        static const struct wlr_keyboard_impl osk_kbd_impl = {
+            .name = "lumo-osk-virtual",
+        };
+        compositor->osk_keyboard = calloc(1, sizeof(struct wlr_keyboard));
+        if (compositor->osk_keyboard != NULL) {
+            wlr_keyboard_init(compositor->osk_keyboard, &osk_kbd_impl,
+                "lumo-osk-virtual");
+            struct xkb_keymap *osk_keymap = xkb_keymap_new_from_names(
+                compositor->xkb_context,
+                &(struct xkb_rule_names){ .layout = "us" },
+                XKB_KEYMAP_COMPILE_NO_FLAGS);
+            if (osk_keymap != NULL) {
+                wlr_keyboard_set_keymap(compositor->osk_keyboard, osk_keymap);
+                xkb_keymap_unref(osk_keymap);
+            }
+            wlr_seat_set_keyboard(compositor->seat, compositor->osk_keyboard);
+            wlr_log(WLR_INFO, "input: created virtual OSK keyboard");
+        }
+    }
+
     compositor->cursor = wlr_cursor_create();
     if (compositor->cursor == NULL) {
         wlr_log(WLR_ERROR, "input: failed to create cursor");
@@ -2389,6 +2416,12 @@ void lumo_input_stop(struct lumo_compositor *compositor) {
     if (compositor->cursor_mgr != NULL) {
         wlr_xcursor_manager_destroy(compositor->cursor_mgr);
         compositor->cursor_mgr = NULL;
+    }
+
+    if (compositor->osk_keyboard != NULL) {
+        wlr_keyboard_finish(compositor->osk_keyboard);
+        free(compositor->osk_keyboard);
+        compositor->osk_keyboard = NULL;
     }
 
     if (compositor->seat != NULL) {

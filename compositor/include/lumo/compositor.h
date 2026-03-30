@@ -834,6 +834,7 @@ struct lumo_compositor {
     struct wlr_cursor *cursor;
     struct wlr_xcursor_manager *cursor_mgr;
     struct wlr_seat *seat;
+    struct wlr_keyboard *osk_keyboard; /* virtual kbd for OSK key injection */
     struct xkb_context *xkb_context;
     struct wlr_text_input_manager_v3 *text_input_manager;
     struct wlr_input_method_manager_v2 *input_method_manager;

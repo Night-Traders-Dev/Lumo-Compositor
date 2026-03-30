@@ -2192,13 +2192,15 @@ static void lumo_weather_fetch(struct lumo_compositor *compositor) {
     ssize_t n = 0;
     {
         struct pollfd pfd = { .fd = pipefd[0], .events = POLLIN };
-        /* 500 ms is sufficient for a local/fast curl; longer would stall
-         * the Wayland event loop and cause dropped frames. */
-        int pr = poll(&pfd, 1, 500);
+        /* poll with enough time for wttr.in over WiFi on riscv64.
+         * This blocks the compositor event loop, so we use 3000ms as
+         * a compromise — long enough for most fetches, short enough
+         * to avoid a noticeable UI freeze on the first fetch. */
+        int pr = poll(&pfd, 1, 3000);
         if (pr > 0 && (pfd.revents & POLLIN)) {
             n = read(pipefd[0], buf, sizeof(buf) - 1);
         } else if (pr == 0) {
-            wlr_log(WLR_INFO, "weather: curl timed out after 500ms, skipping");
+            wlr_log(WLR_INFO, "weather: curl timed out after 3000ms, skipping");
         }
     }
     close(pipefd[0]);
