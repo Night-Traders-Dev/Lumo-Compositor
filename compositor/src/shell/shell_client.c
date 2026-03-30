@@ -1707,26 +1707,27 @@ struct bokeh_ball {
     uint8_t alpha;
 };
 
-/* deterministic particle set — hand-tuned for visual balance */
+/* deterministic particle set — hand-tuned for visual balance
+ * drift values scaled for 15fps frame counter */
 static const struct bokeh_ball bokeh_particles[BOKEH_COUNT] = {
-    { 0.12f, 0.18f,  0.0008f,  0.0003f, 0.08f, 32 },
-    { 0.85f, 0.25f, -0.0005f,  0.0004f, 0.11f, 24 },
-    { 0.42f, 0.72f,  0.0006f, -0.0002f, 0.06f, 40 },
-    { 0.68f, 0.10f, -0.0003f,  0.0006f, 0.14f, 18 },
-    { 0.25f, 0.55f,  0.0004f,  0.0005f, 0.05f, 48 },
-    { 0.90f, 0.80f, -0.0007f, -0.0003f, 0.09f, 28 },
-    { 0.55f, 0.40f,  0.0002f, -0.0004f, 0.07f, 36 },
-    { 0.08f, 0.88f,  0.0006f, -0.0005f, 0.10f, 22 },
-    { 0.72f, 0.60f, -0.0004f,  0.0002f, 0.13f, 16 },
-    { 0.35f, 0.15f,  0.0005f,  0.0006f, 0.04f, 52 },
-    { 0.50f, 0.90f, -0.0003f, -0.0006f, 0.08f, 30 },
-    { 0.18f, 0.42f,  0.0007f,  0.0001f, 0.06f, 44 },
-    { 0.78f, 0.35f, -0.0006f,  0.0005f, 0.12f, 20 },
-    { 0.60f, 0.75f,  0.0003f, -0.0003f, 0.05f, 50 },
-    { 0.30f, 0.85f, -0.0002f,  0.0004f, 0.09f, 26 },
-    { 0.95f, 0.50f, -0.0005f, -0.0002f, 0.07f, 38 },
-    { 0.15f, 0.65f,  0.0004f,  0.0003f, 0.11f, 20 },
-    { 0.48f, 0.22f, -0.0003f,  0.0005f, 0.06f, 42 },
+    { 0.12f, 0.18f,  0.00027f,  0.00010f, 0.08f, 32 },
+    { 0.85f, 0.25f, -0.00017f,  0.00013f, 0.11f, 24 },
+    { 0.42f, 0.72f,  0.00020f, -0.00007f, 0.06f, 40 },
+    { 0.68f, 0.10f, -0.00010f,  0.00020f, 0.14f, 18 },
+    { 0.25f, 0.55f,  0.00013f,  0.00017f, 0.05f, 48 },
+    { 0.90f, 0.80f, -0.00023f, -0.00010f, 0.09f, 28 },
+    { 0.55f, 0.40f,  0.00007f, -0.00013f, 0.07f, 36 },
+    { 0.08f, 0.88f,  0.00020f, -0.00017f, 0.10f, 22 },
+    { 0.72f, 0.60f, -0.00013f,  0.00007f, 0.13f, 16 },
+    { 0.35f, 0.15f,  0.00017f,  0.00020f, 0.04f, 52 },
+    { 0.50f, 0.90f, -0.00010f, -0.00020f, 0.08f, 30 },
+    { 0.18f, 0.42f,  0.00023f,  0.00003f, 0.06f, 44 },
+    { 0.78f, 0.35f, -0.00020f,  0.00017f, 0.12f, 20 },
+    { 0.60f, 0.75f,  0.00010f, -0.00010f, 0.05f, 50 },
+    { 0.30f, 0.85f, -0.00007f,  0.00013f, 0.09f, 26 },
+    { 0.95f, 0.50f, -0.00017f, -0.00007f, 0.07f, 38 },
+    { 0.15f, 0.65f,  0.00013f,  0.00010f, 0.11f, 20 },
+    { 0.48f, 0.22f, -0.00010f,  0.00017f, 0.06f, 42 },
 };
 
 /* alpha-blend a single pixel: src over dst (premultiplied-style) */
@@ -1825,6 +1826,7 @@ static void lumo_draw_bokeh_layer(
         int cy = (int)(fy * (float)height);
         int radius = (int)(b->radius_frac * (float)height);
         if (radius < 3) radius = 3;
+        if (radius > 80) radius = 80; /* cap for riscv64 perf */
 
         lumo_draw_bokeh_ball(pixels, width, height, cx, cy, radius,
                              tint, b->alpha);
@@ -1844,7 +1846,7 @@ static void lumo_draw_animated_bg(
     uint32_t hour;
 
     clock_gettime(CLOCK_MONOTONIC, &mono_ts);
-    frame = (uint32_t)(mono_ts.tv_sec * 5 + mono_ts.tv_nsec / 200000000);
+    frame = (uint32_t)(mono_ts.tv_sec * 15 + mono_ts.tv_nsec / 66666666);
 
     wall_now = time(NULL);
     localtime_r(&wall_now, &tm_now);
@@ -1942,7 +1944,7 @@ static void lumo_draw_animated_bg(
             bg_row_cache[2047];
         uint32_t *row_ptr = pixels + y * width;
 
-        uint32_t phase = (y * 3 + frame * 7) % 512;
+        uint32_t phase = (y * 3 + frame * 2) % 512;
         uint32_t wave = phase < 256 ? phase : 511 - phase;
         uint32_t glow = (wave * wave) >> 14;
 
@@ -1964,7 +1966,7 @@ static void lumo_draw_animated_bg(
         }
 
         if (glow > 12) {
-            uint32_t streak_x = (frame * 3 + y * 2) % (width + 200);
+            uint32_t streak_x = (frame + y * 2) % (width + 200);
             if (streak_x < width) {
                 uint8_t sr = (uint8_t)(row_color >> 16);
                 uint8_t sg = (uint8_t)(row_color >> 8);
@@ -2452,7 +2454,7 @@ static int lumo_shell_client_animation_timeout(
 
     if (client == NULL || !client->animation_active) {
         if (client != NULL && client->mode == LUMO_SHELL_MODE_BACKGROUND) {
-            return 2000;
+            return 66; /* ~15fps background — keeps compositor CPU headroom for input */
         }
         if (client != NULL && client->mode == LUMO_SHELL_MODE_STATUS) {
             if (client->compositor_time_panel_visible) {
@@ -2469,8 +2471,8 @@ static int lumo_shell_client_animation_timeout(
         return 0;
     }
 
-    if (end_time - now > 24u) {
-        return 24;
+    if (end_time - now > 33u) {
+        return 33; /* ~30fps animation tick */
     }
 
     return (int)(end_time - now);
