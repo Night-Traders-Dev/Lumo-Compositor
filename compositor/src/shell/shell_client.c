@@ -1501,6 +1501,7 @@ static void lumo_draw_quick_settings_panel(
             struct lumo_rect reload_btn = {0};
             struct lumo_rect rotate_btn = {0};
             struct lumo_rect screenshot_btn = {0};
+            struct lumo_rect settings_btn = {0};
 
             (void)row_y;
             (void)lumo_shell_quick_settings_button_rect(width, height, 0,
@@ -1509,18 +1510,25 @@ static void lumo_draw_quick_settings_panel(
                 &rotate_btn);
             (void)lumo_shell_quick_settings_button_rect(width, height, 2,
                 &screenshot_btn);
+            (void)lumo_shell_quick_settings_button_rect(width, height, 3,
+                &settings_btn);
+            /* icons: use symbolic chars for compact display */
             lumo_fill_rounded_rect(pixels, width, height, &reload_btn,
                 8, accent);
             lumo_draw_text_centered(pixels, width, height, &reload_btn, 2,
-                value_color, "RELOAD");
+                value_color, "(.) RELOAD");
             lumo_fill_rounded_rect(pixels, width, height, &rotate_btn,
                 8, lumo_argb(0xFF, 0x77, 0x21, 0x6F));
             lumo_draw_text_centered(pixels, width, height, &rotate_btn, 2,
-                value_color, "ROTATE");
+                value_color, "[>  ROTATE");
             lumo_fill_rounded_rect(pixels, width, height, &screenshot_btn,
                 8, lumo_argb(0xFF, 0x1E, 0x68, 0x5B));
             lumo_draw_text_centered(pixels, width, height, &screenshot_btn, 2,
-                value_color, "SCREENSHOT");
+                value_color, "[] CAPTURE");
+            lumo_fill_rounded_rect(pixels, width, height, &settings_btn,
+                8, lumo_argb(0xFF, 0x3A, 0x3A, 0x5E));
+            lumo_draw_text_centered(pixels, width, height, &settings_btn, 2,
+                value_color, "{} SETTINGS");
         }
     }
 }
@@ -2807,6 +2815,11 @@ static int lumo_shell_status_button_hit(
             lumo_rect_contains(&button_rect, x, y)) {
         return 3;
     }
+    if (lumo_shell_quick_settings_button_rect(client->configured_width,
+            client->configured_height, 3, &button_rect) &&
+            lumo_rect_contains(&button_rect, x, y)) {
+        return 6; /* settings button */
+    }
     return 0;
 }
 
@@ -3696,6 +3709,21 @@ static void lumo_shell_touch_handle_up(
             uint32_t pct = lumo_shell_slider_pct_from_touch(client,
                 client->pointer_x);
             lumo_shell_send_set_u32(client, "set_brightness", "pct", pct);
+            return;
+        }
+        if (btn == 6) {
+            /* open settings app — send activate_target for settings tile */
+            struct lumo_shell_protocol_frame frame;
+            if (lumo_shell_protocol_frame_init(&frame,
+                    LUMO_SHELL_PROTOCOL_FRAME_REQUEST, "activate_target",
+                    client->next_request_id++)) {
+                lumo_shell_protocol_frame_add_string(&frame, "kind", "tile");
+                lumo_shell_protocol_frame_add_u32(&frame, "index", 11);
+                lumo_shell_protocol_frame_add_string(&frame, "mode",
+                    "launcher");
+                (void)lumo_shell_client_send_frame(client, &frame);
+            }
+            fprintf(stderr, "lumo-shell: settings button pressed\n");
             return;
         }
     }

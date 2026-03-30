@@ -312,6 +312,34 @@ int lumo_app_settings_toggle_at(
     return -1;
 }
 
+/* action hit test: buttons and slider drags */
+int lumo_app_settings_action_at(
+    uint32_t width, uint32_t height,
+    double x, double y, int subpage
+) {
+    (void)height;
+    switch (subpage) {
+    case 1: /* Display */
+        /* rotate button: y = SUB_Y + 28*4 + 34*1 + 34 + 28 = roughly SUB_Y+186 */
+        if (y >= SUB_Y + 28 * 3 + 34 + 34 + 28 &&
+                y < SUB_Y + 28 * 3 + 34 + 34 + 28 + 32 &&
+                x >= PAD + 8 && x < PAD + 128)
+            return 100; /* rotate */
+        /* brightness slider: y around SUB_Y + 28*3 + 34 */
+        if (y >= SUB_Y + 28 * 3 + 34 && y < SUB_Y + 28 * 3 + 34 + 30 &&
+                x >= PAD && x < (double)width - PAD)
+            return 102; /* brightness slider */
+        break;
+    case 2: /* Sound */
+        /* volume slider: y around SUB_Y + 28*2 */
+        if (y >= SUB_Y + 28 * 2 && y < SUB_Y + 28 * 2 + 30 &&
+                x >= PAD && x < (double)width - PAD)
+            return 101; /* volume slider */
+        break;
+    }
+    return -1;
+}
+
 /* ── subpage renderers ────────────────────────────────────────────── */
 
 static void render_network(
@@ -359,6 +387,33 @@ static void draw_slider(
         lumo_app_argb(0xFF, 0xFF, 0xFF, 0xFF));
 }
 
+static const char *get_current_rotation(void) {
+    static char rot[16] = "0";
+    const char *home = getenv("HOME");
+    if (!home) return rot;
+    char path[256];
+    snprintf(path, sizeof(path), "%s/.lumo-rotation", home);
+    FILE *fp = fopen(path, "r");
+    if (fp) {
+        if (fgets(rot, sizeof(rot), fp)) {
+            char *nl = strchr(rot, '\n'); if (nl) *nl = '\0';
+        }
+        fclose(fp);
+    }
+    if (strcmp(rot, "normal") == 0) snprintf(rot, sizeof(rot), "0");
+    return rot;
+}
+
+static void draw_button(
+    uint32_t *px, uint32_t w, uint32_t h,
+    int x, int y, int bw, int bh, const char *label, uint32_t color
+) {
+    struct lumo_rect r = { x, y, bw, bh };
+    lumo_app_fill_rounded_rect(px, w, h, &r, 10, color);
+    lumo_app_draw_text_centered(px, w, h, &r, 2,
+        lumo_app_argb(0xFF, 0xFF, 0xFF, 0xFF), label);
+}
+
 static void render_display(
     const struct lumo_app_render_context *ctx,
     uint32_t *px, uint32_t w, uint32_t h
@@ -378,7 +433,14 @@ static void render_display(
         draw_slider(px, w, h, y, buf, bpct);
     }
     y += 34;
-    draw_info(px, w, h, y, "ROTATION", "USE QUICK SETTINGS");
+    {
+        const char *rot = get_current_rotation();
+        snprintf(buf, sizeof(buf), "%s DEG", rot);
+        draw_info(px, w, h, y, "ROTATION", buf);
+    }
+    y += 28;
+    ensure_theme();
+    draw_button(px, w, h, PAD + 8, y, 120, 32, "ROTATE", th.accent);
 }
 
 static void render_sound(

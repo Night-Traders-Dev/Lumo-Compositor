@@ -2078,14 +2078,29 @@ static void lumo_input_touch_up(
             double projected = progress + velocity * 0.15;
 
             if (progress < 12.0) {
-                /* very short movement = tap on the edge/handle */
-                lumo_input_touch_point_trigger_edge_action(compositor, point,
-                    event->time_msec);
+                /* very short movement = tap on the edge/handle.
+                 * suppress top-edge taps when a toplevel is focused
+                 * to prevent accidental panel triggers from apps */
+                bool suppress = false;
+                if (point->capture_edge == LUMO_EDGE_TOP &&
+                        !wl_list_empty(&compositor->toplevels) &&
+                        !compositor->launcher_visible &&
+                        !compositor->time_panel_visible &&
+                        !compositor->quick_settings_visible) {
+                    suppress = true;
+                    wlr_log(WLR_INFO,
+                        "input: touch %d top-edge tap suppressed "
+                        "(app focused)", point->touch_id);
+                }
+                if (!suppress) {
+                    lumo_input_touch_point_trigger_edge_action(compositor,
+                        point, event->time_msec);
+                }
                 if (lumo_hitbox_is_shell_gesture(point->hitbox)) {
                     wlr_log(WLR_INFO,
                         "input: touch %d tapped gesture handle",
                         point->touch_id);
-                } else {
+                } else if (!suppress) {
                     wlr_log(WLR_INFO, "input: touch %d tapped %s edge",
                         point->touch_id,
                         lumo_edge_zone_name(point->capture_edge));

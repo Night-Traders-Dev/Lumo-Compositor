@@ -192,7 +192,7 @@ static bool lumo_shell_quick_settings_button_geometry(
     int half_button_width;
     int top_row_y;
 
-    if (rect == NULL || button_index > 2 ||
+    if (rect == NULL || button_index > 3 ||
             !lumo_shell_quick_settings_panel_geometry(output_width,
                 output_height, &panel)) {
         return false;
@@ -202,22 +202,12 @@ static bool lumo_shell_quick_settings_button_geometry(
     top_row_y = panel.y + 222;
     rect->height = 28;
 
-    if (button_index == 0) {
-        rect->x = panel.x + 12;
-        rect->y = top_row_y;
-        rect->width = half_button_width;
-        return rect->width > 0;
-    }
-
-    if (button_index == 1) {
-        rect->x = panel.x + 12 + half_button_width + 12;
-        rect->y = top_row_y;
-        rect->width = half_button_width;
-        return rect->width > 0;
-    }
-
-    rect->x = panel.x + 12;
-    rect->y = top_row_y + rect->height + 8;
+    /* row 0: buttons 0 (RELOAD) and 1 (ROTATE)
+     * row 1: buttons 2 (SCREENSHOT) and 3 (SETTINGS) */
+    int row = (int)button_index / 2;
+    int col = (int)button_index % 2;
+    rect->x = panel.x + 12 + col * (half_button_width + 12);
+    rect->y = top_row_y + row * (rect->height + 8);
     rect->width = half_button_width;
     return rect->width > 0;
 }

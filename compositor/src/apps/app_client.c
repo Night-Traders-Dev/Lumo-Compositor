@@ -1533,6 +1533,76 @@ static void lumo_app_touch_handle_up(
                 lumo_app_settings_save(client);
                 (void)lumo_app_client_redraw(client);
             }
+            /* check for action buttons and sliders */
+            int action = lumo_app_settings_action_at(
+                client->width, client->height,
+                client->touch_down_x, client->touch_down_y,
+                client->selected_row);
+            if (action == 100) {
+                /* cycle rotation: read current, write next */
+                const char *home = getenv("HOME");
+                if (home != NULL) {
+                    char path[256], cur[16] = "0";
+                    snprintf(path, sizeof(path), "%s/.lumo-rotation", home);
+                    FILE *fp = fopen(path, "r");
+                    if (fp) {
+                        if (fgets(cur, sizeof(cur), fp)) {
+                            char *nl = strchr(cur, '\n');
+                            if (nl) *nl = '\0';
+                        }
+                        fclose(fp);
+                    }
+                    const char *next = "90";
+                    if (strcmp(cur, "normal") == 0 || strcmp(cur, "0") == 0)
+                        next = "90";
+                    else if (strcmp(cur, "90") == 0) next = "180";
+                    else if (strcmp(cur, "180") == 0) next = "270";
+                    else next = "normal";
+                    fp = fopen(path, "w");
+                    if (fp) { fprintf(fp, "%s\n", next); fclose(fp); }
+                    fprintf(stderr,
+                        "lumo-app: rotation set to %s (reload to apply)\n",
+                        next);
+                }
+                (void)lumo_app_client_redraw(client);
+            } else if (action == 101) {
+                /* volume slider drag */
+                int slider_x = 24 + 8;
+                int slider_w = (int)client->width - 24 * 2 - 16;
+                int pct = (int)((client->touch_down_x - slider_x) * 100.0
+                    / slider_w);
+                if (pct < 0) pct = 0;
+                if (pct > 100) pct = 100;
+                char cmd[128];
+                snprintf(cmd, sizeof(cmd),
+                    "pactl set-sink-volume @DEFAULT_SINK@ %d%%", pct);
+                pid_t pid = fork();
+                if (pid == 0) {
+                    close(STDERR_FILENO);
+                    execlp("sh", "sh", "-c", cmd, (char *)NULL);
+                    _exit(127);
+                }
+                if (pid > 0) waitpid(pid, NULL, 0);
+                (void)lumo_app_client_redraw(client);
+            } else if (action == 102) {
+                /* brightness slider drag */
+                int slider_x = 24 + 8;
+                int slider_w = (int)client->width - 24 * 2 - 16;
+                int pct = (int)((client->touch_down_x - slider_x) * 100.0
+                    / slider_w);
+                if (pct < 0) pct = 0;
+                if (pct > 100) pct = 100;
+                char val[16];
+                snprintf(val, sizeof(val), "%d",
+                    pct * 255 / 100); /* assume max=255 */
+                /* try common backlight sysfs paths */
+                FILE *fp = fopen(
+                    "/sys/class/backlight/backlight/brightness", "w");
+                if (!fp) fp = fopen(
+                    "/sys/class/backlight/0/brightness", "w");
+                if (fp) { fprintf(fp, "%s\n", val); fclose(fp); }
+                (void)lumo_app_client_redraw(client);
+            }
         } else {
             int row = lumo_app_settings_row_at(client->width, client->height,
                 client->touch_down_x, client->touch_down_y);

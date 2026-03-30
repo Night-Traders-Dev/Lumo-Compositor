@@ -111,6 +111,14 @@ int lumo_app_settings_toggle_at(
     double y,
     int subpage
 );
+/* returns action code if tap hit a button: 100=rotate, 101=vol_slider, 102=bright_slider */
+int lumo_app_settings_action_at(
+    uint32_t width,
+    uint32_t height,
+    double x,
+    double y,
+    int subpage
+);
 int lumo_app_clock_card_at(
     uint32_t width,
     uint32_t height,
