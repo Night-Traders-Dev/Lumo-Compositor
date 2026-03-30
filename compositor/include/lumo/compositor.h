@@ -875,6 +875,7 @@ struct lumo_compositor {
     enum lumo_touch_sample_type touch_debug_phase;
     enum lumo_hitbox_kind touch_debug_hitbox_kind;
     bool layer_config_dirty;
+    bool hitboxes_dirty;
     struct wlr_scene_rect *touch_indicator;
     struct wl_list outputs;
     struct wl_list keyboards;

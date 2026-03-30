@@ -61,8 +61,11 @@ static struct lumo_shell_buffer *lumo_shell_alloc_buffer(
     struct lumo_shell_client *client, uint32_t width, uint32_t height
 ) {
     struct lumo_shell_buffer *buffer;
-    size_t stride = width * 4u;
-    size_t size = stride * height;
+    size_t stride, size;
+    if (width > SIZE_MAX / 4u) return NULL;
+    stride = width * 4u;
+    if (height > 0 && stride > SIZE_MAX / height) return NULL;
+    size = stride * height;
     int fd = lumo_create_shm_file(size);
     if (fd < 0) return NULL;
 

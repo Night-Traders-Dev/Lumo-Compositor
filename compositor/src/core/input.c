@@ -2467,10 +2467,7 @@ void lumo_input_stop(struct lumo_compositor *compositor) {
         compositor->xkb_context = NULL;
     }
 
-    if (compositor->backend_new_input.link.prev != NULL &&
-            compositor->backend_new_input.link.next != NULL) {
-        wl_list_remove(&compositor->backend_new_input.link);
-    }
+    wl_list_remove(&compositor->backend_new_input.link);
 
     free(state);
     compositor->input_state = NULL;

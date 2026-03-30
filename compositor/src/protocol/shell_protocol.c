@@ -182,8 +182,10 @@ bool lumo_shell_protocol_frame_add_u32(
 ) {
     char value_buffer[32];
 
-    if (snprintf(value_buffer, sizeof(value_buffer), "%u", value) < 0) {
-        return false;
+    {
+        int written = snprintf(value_buffer, sizeof(value_buffer), "%u", value);
+        if (written < 0 || (size_t)written >= sizeof(value_buffer))
+            return false;
     }
 
     return lumo_shell_protocol_frame_add_field(frame, key, value_buffer);
@@ -196,8 +198,10 @@ bool lumo_shell_protocol_frame_add_double(
 ) {
     char value_buffer[32];
 
-    if (snprintf(value_buffer, sizeof(value_buffer), "%.2f", value) < 0) {
-        return false;
+    {
+        int written = snprintf(value_buffer, sizeof(value_buffer), "%.2f", value);
+        if (written < 0 || (size_t)written >= sizeof(value_buffer))
+            return false;
     }
 
     return lumo_shell_protocol_frame_add_field(frame, key, value_buffer);

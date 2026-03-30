@@ -79,7 +79,8 @@ static void test_photos_render_thumbnail(void) {
     };
 
     assert(pixels != NULL);
-    strcpy(ctx.media_files[0], "sample.webp");
+    strncpy(ctx.media_files[0], "sample.webp", sizeof(ctx.media_files[0]) - 1);
+    ctx.media_files[0][sizeof(ctx.media_files[0]) - 1] = '\0';
     ctx.photo_thumbnails[0] = thumbnail;
     ctx.photo_thumbnail_widths[0] = 2;
     ctx.photo_thumbnail_heights[0] = 2;

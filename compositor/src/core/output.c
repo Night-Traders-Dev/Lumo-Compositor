@@ -195,8 +195,6 @@ int lumo_output_start(struct lumo_compositor *compositor) {
         return -1;
     }
 
-    wl_list_init(&compositor->outputs);
-
     compositor->output_layout = wlr_output_layout_create(compositor->display);
     if (compositor->output_layout == NULL) {
         wlr_log(WLR_ERROR, "output: failed to create output layout");
@@ -304,6 +302,7 @@ void lumo_output_set_rotation(
     }
 
     lumo_protocol_refresh_shell_hitboxes(compositor);
+    compositor->hitboxes_dirty = false;
     lumo_protocol_mark_layers_dirty(compositor);
 
     {

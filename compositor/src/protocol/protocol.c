@@ -813,6 +813,7 @@ static void lumo_protocol_new_toplevel(
 
     if (compositor == NULL) {
         wlr_log(WLR_ERROR, "protocol: missing compositor for new toplevel");
+        free(toplevel);
         return;
     }
 
@@ -881,6 +882,7 @@ static void lumo_protocol_new_popup(
 
     if (compositor == NULL) {
         wlr_log(WLR_ERROR, "protocol: missing compositor for new popup");
+        free(popup);
         return;
     }
 
@@ -921,6 +923,7 @@ static void lumo_protocol_new_layer_surface(
 
     if (compositor == NULL) {
         wlr_log(WLR_ERROR, "protocol: missing compositor for new layer surface");
+        free(surface);
         return;
     }
 
@@ -1255,6 +1258,7 @@ void lumo_protocol_set_launcher_visible(
     lumo_shell_state_broadcast_launcher_visible(compositor, visible);
     lumo_shell_state_broadcast_scrim_state(compositor, compositor->scrim_state);
     lumo_protocol_refresh_shell_hitboxes(compositor);
+    compositor->hitboxes_dirty = false;
     lumo_protocol_mark_layers_dirty(compositor);
 }
 
@@ -1382,6 +1386,7 @@ void lumo_protocol_set_keyboard_visible(
     lumo_shell_state_broadcast_keyboard_visible(compositor, visible);
     lumo_shell_state_broadcast_scrim_state(compositor, compositor->scrim_state);
     lumo_protocol_refresh_shell_hitboxes(compositor);
+    compositor->hitboxes_dirty = false;
     lumo_protocol_mark_layers_dirty(compositor);
 }
 
@@ -1448,7 +1453,10 @@ void lumo_protocol_configure_layers(
         output->usable_area_valid = !wlr_box_empty(&full_area);
     }
 
-    lumo_protocol_refresh_shell_hitboxes(compositor);
+    if (compositor->hitboxes_dirty) {
+        lumo_protocol_refresh_shell_hitboxes(compositor);
+        compositor->hitboxes_dirty = false;
+    }
 
     /* wlr_scene_layer_surface_v1_configure re-enables nodes based on
      * surface->mapped.  Re-disable the OSK node when the keyboard is

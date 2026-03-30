@@ -306,7 +306,7 @@ static bool lumo_app_load_png(const char *path, uint32_t **pixels_out,
         return false;
     }
 
-    uint32_t *pixels = calloc((size_t)w * h, sizeof(uint32_t));
+    uint32_t *pixels = calloc((size_t)w * (size_t)h, sizeof(uint32_t));
     if (!pixels) {
         png_destroy_read_struct(&png, &info, NULL);
         fclose(fp);
@@ -352,7 +352,7 @@ static bool lumo_app_load_jpeg(const char *path, uint32_t **pixels_out,
         return false;
     }
 
-    uint32_t *pixels = calloc((size_t)w * h, sizeof(uint32_t));
+    uint32_t *pixels = calloc((size_t)w * (size_t)h, sizeof(uint32_t));
     if (!pixels) {
         jpeg_finish_decompress(&cinfo);
         jpeg_destroy_decompress(&cinfo);
@@ -360,7 +360,7 @@ static bool lumo_app_load_jpeg(const char *path, uint32_t **pixels_out,
         return false;
     }
 
-    unsigned char *row_buf = malloc(w * 3);
+    unsigned char *row_buf = malloc((size_t)w * 3u);
     if (!row_buf) { free(pixels); jpeg_finish_decompress(&cinfo); jpeg_destroy_decompress(&cinfo); fclose(fp); return false; }
     while (cinfo.output_scanline < h) {
         unsigned char *p = row_buf;
@@ -449,9 +449,9 @@ static bool lumo_app_load_pixbuf(
     }
 
     for (int y = 0; y < height; y++) {
-        const guchar *row = src + y * rowstride;
+        const guchar *row = src + (size_t)y * (size_t)rowstride;
         for (int x = 0; x < width; x++) {
-            const guchar *p = row + x * channels;
+            const guchar *p = row + (size_t)x * (size_t)channels;
             uint32_t alpha = has_alpha ? p[3] : 0xFFu;
             pixels[(size_t)y * (size_t)width + (size_t)x] =
                 (alpha << 24) |
@@ -756,7 +756,10 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
         return false;
     }
 
+    if (client->width > SIZE_MAX / 4u) return false;
     stride = (size_t)client->width * 4u;
+    if (client->height > 0 && stride > SIZE_MAX / (size_t)client->height)
+        return false;
     size = stride * (size_t)client->height;
     fd = lumo_app_create_shm_file(size);
     if (fd < 0) {
@@ -2340,11 +2343,11 @@ static void lumo_app_clock_load(struct lumo_app_client *client) {
     while (fgets(line, sizeof(line), fp)) {
         unsigned val;
         int ival;
-        if (sscanf(line, "alarm_hour=%u", &val) == 1) client->alarm_hour = val;
-        else if (sscanf(line, "alarm_min=%u", &val) == 1) client->alarm_min = val;
+        if (sscanf(line, "alarm_hour=%u", &val) == 1 && val < 24) client->alarm_hour = val;
+        else if (sscanf(line, "alarm_min=%u", &val) == 1 && val < 60) client->alarm_min = val;
         else if (sscanf(line, "alarm_enabled=%d", &ival) == 1) client->alarm_enabled = ival != 0;
-        else if (sscanf(line, "timer_total=%u", &val) == 1) client->timer_total_sec = val;
-        else if (sscanf(line, "clock_tab=%d", &ival) == 1) client->clock_tab = ival;
+        else if (sscanf(line, "timer_total=%u", &val) == 1 && val <= 86400) client->timer_total_sec = val;
+        else if (sscanf(line, "clock_tab=%d", &ival) == 1 && ival >= 0 && ival <= 3) client->clock_tab = ival;
     }
     fclose(fp);
 }
