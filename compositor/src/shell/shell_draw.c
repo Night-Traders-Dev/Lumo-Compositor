@@ -398,6 +398,12 @@ static bool lumo_glyph_rows(char ch, uint8_t rows[7]) {
     case '/':
         memcpy(rows, (uint8_t[]){0x01, 0x02, 0x04, 0x08, 0x10, 0x00, 0x00}, 7);
         return true;
+    case '<':
+        memcpy(rows, (uint8_t[]){0x02, 0x04, 0x08, 0x10, 0x08, 0x04, 0x02}, 7);
+        return true;
+    case '>':
+        memcpy(rows, (uint8_t[]){0x08, 0x04, 0x02, 0x01, 0x02, 0x04, 0x08}, 7);
+        return true;
     case ' ':
         memcpy(rows, blank, 7);
         return true;

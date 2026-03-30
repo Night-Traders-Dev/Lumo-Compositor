@@ -1939,9 +1939,9 @@ static void lumo_app_keyboard_key(
         } else if (key >= 2 && key <= 52) {
             static const char keymap[] =
                 "1234567890-="
-                "\0qwertyuiop[]\0\0"
-                "asdfghjkl;'\0\0\0"
-                "zxcvbnm,./";
+                "\0\0qwertyuiop[]\0"
+                "\0asdfghjkl;'\0\0"
+                "\0zxcvbnm,./";
             int idx = (int)key - 2;
             if (idx >= 0 && idx < (int)sizeof(keymap) - 1 &&
                     keymap[idx] != '\0') {
