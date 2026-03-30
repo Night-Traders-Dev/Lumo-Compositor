@@ -37,6 +37,15 @@ bool lumo_app_close_rect(
     uint32_t height,
     struct lumo_rect *rect
 );
+/* settings toggle state — persisted to ~/.lumo-settings */
+struct lumo_settings {
+    bool wifi_enabled;
+    bool auto_rotate;
+    bool auto_updates;
+    bool debug_mode;
+    bool persist_logs;
+};
+
 struct lumo_app_render_context {
     enum lumo_app_id app_id;
     bool close_active;
@@ -52,6 +61,7 @@ struct lumo_app_render_context {
     uint32_t alarm_min;
     bool alarm_enabled;
     int selected_row;
+    struct lumo_settings settings;
     char notes[8][128];
     int note_count;
     int note_editing;
@@ -91,6 +101,15 @@ int lumo_app_settings_row_at(
     uint32_t height,
     double x,
     double y
+);
+/* returns toggle index (0-based) if tap hit a toggle on the current subpage,
+ * or -1 if no toggle was hit */
+int lumo_app_settings_toggle_at(
+    uint32_t width,
+    uint32_t height,
+    double x,
+    double y,
+    int subpage
 );
 int lumo_app_clock_card_at(
     uint32_t width,

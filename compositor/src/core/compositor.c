@@ -152,6 +152,38 @@ struct lumo_compositor *lumo_compositor_create(
         }
         compositor->active_rotation = saved;
     }
+    /* clear old session logs unless persist_logs is set */
+    {
+        bool persist = false;
+        const char *h = getenv("HOME");
+        if (h != NULL) {
+            char sp[256];
+            snprintf(sp, sizeof(sp), "%s/.lumo-settings", h);
+            FILE *sf = fopen(sp, "r");
+            if (sf != NULL) {
+                char sl[128];
+                while (fgets(sl, sizeof(sl), sf)) {
+                    int v;
+                    if (sscanf(sl, "persist_logs=%d", &v) == 1 && v)
+                        persist = true;
+                }
+                fclose(sf);
+            }
+        }
+        if (!persist) {
+            /* rotate journal for this boot — clear previous boot entries */
+            pid_t pid = fork();
+            if (pid == 0) {
+                close(STDERR_FILENO);
+                execlp("journalctl", "journalctl", "--user",
+                    "--vacuum-time=1s", (char *)NULL);
+                _exit(127);
+            }
+            if (pid > 0)
+                waitpid(pid, NULL, 0);
+        }
+    }
+
     compositor->scrim_state = LUMO_SCRIM_HIDDEN;
     compositor->gesture_threshold = 32.0;
     compositor->gesture_timeout_ms = 90;

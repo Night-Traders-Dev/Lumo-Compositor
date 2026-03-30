@@ -806,7 +806,23 @@ static void lumo_input_replay_touch_point(
         }
     }
 
-    lumo_input_focus_surface(compositor, point->surface);
+    /* don't move keyboard focus when replaying to a shell layer surface
+     * (OSK/launcher) — the keyboard must stay focused on the app toplevel
+     * so that wlr_seat_keyboard_notify_key delivers keys to the app */
+    {
+        bool is_shell_surface = false;
+        struct lumo_layer_surface *ls;
+        wl_list_for_each(ls, &compositor->layer_surfaces, link) {
+            if (ls->layer_surface != NULL &&
+                    ls->layer_surface->surface == point->surface) {
+                is_shell_surface = true;
+                break;
+            }
+        }
+        if (!is_shell_surface) {
+            lumo_input_focus_surface(compositor, point->surface);
+        }
+    }
     wl_list_for_each(sample, &point->samples, link) {
         switch (sample->type) {
         case LUMO_TOUCH_SAMPLE_DOWN:

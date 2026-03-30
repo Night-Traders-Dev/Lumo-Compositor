@@ -92,6 +92,7 @@ struct lumo_app_client {
     uint32_t alarm_min;
     bool alarm_enabled;
     int selected_row;
+    struct lumo_settings settings;
     char notes[8][128];
     int note_count;
     int note_editing;
@@ -120,6 +121,8 @@ static void lumo_app_notes_save(const struct lumo_app_client *client);
 static void lumo_app_notes_load(struct lumo_app_client *client);
 static void lumo_app_clock_save(const struct lumo_app_client *client);
 static void lumo_app_clock_load(struct lumo_app_client *client);
+static void lumo_app_settings_save(const struct lumo_app_client *client);
+static void lumo_app_settings_load(struct lumo_app_client *client);
 static void lumo_app_sync_text_input_state(
     struct lumo_app_client *client,
     bool flush_pending
@@ -836,6 +839,7 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             .alarm_min = client->alarm_min,
             .alarm_enabled = client->alarm_enabled,
             .selected_row = client->selected_row,
+            .settings = client->settings,
             .note_count = client->note_count,
             .note_editing = client->note_editing,
             .term_line_count = client->term_line_count,
@@ -1502,9 +1506,32 @@ static void lumo_app_touch_handle_up(
     if (client->app_id == LUMO_APP_SETTINGS && client->width > 0 &&
             client->height > 0) {
         if (client->selected_row >= 0 && client->touch_down_y < 40.0) {
+            /* back button */
             client->selected_row = -1;
             (void)lumo_app_client_redraw(client);
-        } else if (client->selected_row < 0) {
+        } else if (client->selected_row >= 0) {
+            /* on a subpage — check for toggle taps */
+            int toggle = lumo_app_settings_toggle_at(
+                client->width, client->height,
+                client->touch_down_x, client->touch_down_y,
+                client->selected_row);
+            if (toggle >= 0) {
+                switch (toggle) {
+                case 0: client->settings.wifi_enabled =
+                    !client->settings.wifi_enabled; break;
+                case 1: client->settings.auto_rotate =
+                    !client->settings.auto_rotate; break;
+                case 2: client->settings.auto_updates =
+                    !client->settings.auto_updates; break;
+                case 3: client->settings.debug_mode =
+                    !client->settings.debug_mode; break;
+                case 4: client->settings.persist_logs =
+                    !client->settings.persist_logs; break;
+                }
+                lumo_app_settings_save(client);
+                (void)lumo_app_client_redraw(client);
+            }
+        } else {
             int row = lumo_app_settings_row_at(client->width, client->height,
                 client->touch_down_x, client->touch_down_y);
             if (row >= 0) {
@@ -2218,6 +2245,52 @@ static void lumo_app_clock_load(struct lumo_app_client *client) {
     fclose(fp);
 }
 
+static void lumo_app_settings_save(const struct lumo_app_client *client) {
+    const char *home = getenv("HOME");
+    char path[1100];
+    FILE *fp;
+    if (home == NULL) return;
+    snprintf(path, sizeof(path), "%s/.lumo-settings", home);
+    fp = fopen(path, "w");
+    if (fp == NULL) return;
+    fprintf(fp, "wifi_enabled=%d\n", client->settings.wifi_enabled ? 1 : 0);
+    fprintf(fp, "auto_rotate=%d\n", client->settings.auto_rotate ? 1 : 0);
+    fprintf(fp, "auto_updates=%d\n", client->settings.auto_updates ? 1 : 0);
+    fprintf(fp, "debug_mode=%d\n", client->settings.debug_mode ? 1 : 0);
+    fprintf(fp, "persist_logs=%d\n", client->settings.persist_logs ? 1 : 0);
+    fclose(fp);
+}
+
+static void lumo_app_settings_load(struct lumo_app_client *client) {
+    const char *home = getenv("HOME");
+    char path[1100], line[128];
+    FILE *fp;
+    /* defaults */
+    client->settings.wifi_enabled = true;
+    client->settings.auto_rotate = false;
+    client->settings.auto_updates = false;
+    client->settings.debug_mode = false;
+    client->settings.persist_logs = false;
+    if (home == NULL) return;
+    snprintf(path, sizeof(path), "%s/.lumo-settings", home);
+    fp = fopen(path, "r");
+    if (fp == NULL) return;
+    while (fgets(line, sizeof(line), fp)) {
+        int val;
+        if (sscanf(line, "wifi_enabled=%d", &val) == 1)
+            client->settings.wifi_enabled = val != 0;
+        else if (sscanf(line, "auto_rotate=%d", &val) == 1)
+            client->settings.auto_rotate = val != 0;
+        else if (sscanf(line, "auto_updates=%d", &val) == 1)
+            client->settings.auto_updates = val != 0;
+        else if (sscanf(line, "debug_mode=%d", &val) == 1)
+            client->settings.debug_mode = val != 0;
+        else if (sscanf(line, "persist_logs=%d", &val) == 1)
+            client->settings.persist_logs = val != 0;
+    }
+    fclose(fp);
+}
+
 static void lumo_app_print_usage(const char *argv0) {
     fprintf(stderr,
         "usage: %s [--app phone|messages|browser|camera|maps|music|photos|videos|clock|notes|files|settings]\n",
@@ -2271,6 +2344,9 @@ int main(int argc, char **argv) {
     }
     if (client.app_id == LUMO_APP_CLOCK) {
         lumo_app_clock_load(&client);
+    }
+    if (client.app_id == LUMO_APP_SETTINGS) {
+        lumo_app_settings_load(&client);
     }
     if (client.app_id == LUMO_APP_MUSIC) {
         static const char *audio_exts[] = {".mp3", ".wav", ".ogg", ".flac",

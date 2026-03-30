@@ -159,9 +159,31 @@ void lumo_protocol_refresh_keyboard_visibility(
 
     /* don't let refresh hide the keyboard when it was auto-shown
      * by app_id match — the text-input protocol race makes
-     * current_enabled and pending_enabled unreliable */
+     * current_enabled and pending_enabled unreliable.
+     * BUT: if a text-input explicitly disabled (current_enabled went
+     * false after being true), that's a real user action, so let it
+     * override auto-show. */
     if (!visible && compositor->keyboard_auto_shown) {
-        return;
+        bool explicit_disable = false;
+        if (compositor->text_input_manager != NULL) {
+            struct wl_resource *resource;
+            wl_list_for_each(resource,
+                    &compositor->text_input_manager->text_inputs, link) {
+                struct wlr_text_input_v3 *ti =
+                    wl_resource_get_user_data(resource);
+                if (ti != NULL && ti->seat == compositor->seat &&
+                        !ti->current_enabled && !ti->pending_enabled &&
+                        ti->focused_surface != NULL) {
+                    explicit_disable = true;
+                    break;
+                }
+            }
+        }
+        if (!explicit_disable) {
+            return;
+        }
+        wlr_log(WLR_INFO,
+            "protocol: explicit text-input disable overrides auto-show");
     }
     if (compositor->keyboard_visible && !visible) {
         wlr_log(WLR_INFO,
