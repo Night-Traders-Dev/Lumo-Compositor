@@ -2070,62 +2070,11 @@ int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
 
     wlr_log(WLR_INFO, "shell: launching clients from %s", state->binary_path);
 
-    /* spawn a single unified shell process instead of 5 separate ones.
-     * This reduces Wayland connections, state socket overhead, and
-     * context switches during animations. */
-    {
-        struct lumo_shell_process *process = &state->processes[0];
-        const char *argv[3] = {state->binary_path, "--unified", NULL};
-        int status_pipe[2] = {-1, -1};
-        pid_t pid;
-        int flags;
-
-        process->mode = LUMO_SHELL_MODE_LAUNCHER;
-        process->pid = -1;
-
-        if (pipe(status_pipe) != 0) {
-            wlr_log_errno(WLR_ERROR, "shell: failed to create status pipe");
+    for (size_t i = 0; i < sizeof(modes) / sizeof(modes[0]); i++) {
+        if (!lumo_shell_spawn_tracked_process(compositor, state, modes[i])) {
             lumo_shell_autostart_stop(compositor);
             return -1;
         }
-        flags = fcntl(status_pipe[0], F_GETFD);
-        if (flags >= 0) (void)fcntl(status_pipe[0], F_SETFD, flags | FD_CLOEXEC);
-        flags = fcntl(status_pipe[1], F_GETFD);
-        if (flags >= 0) (void)fcntl(status_pipe[1], F_SETFD, flags | FD_CLOEXEC);
-
-        pid = fork();
-        if (pid < 0) {
-            wlr_log_errno(WLR_ERROR, "shell: failed to fork unified shell");
-            close(status_pipe[0]);
-            close(status_pipe[1]);
-            lumo_shell_autostart_stop(compositor);
-            return -1;
-        }
-        if (pid == 0) {
-            close(status_pipe[0]);
-            execv(state->binary_path, (char *const *)argv);
-            {
-                int child_errno = errno;
-                (void)write(status_pipe[1], &child_errno, sizeof(child_errno));
-            }
-            _exit(127);
-        }
-        close(status_pipe[1]);
-        {
-            int child_errno = 0;
-            ssize_t n = read(status_pipe[0], &child_errno, sizeof(child_errno));
-            close(status_pipe[0]);
-            if (n > 0 && child_errno != 0) {
-                wlr_log(WLR_ERROR, "shell: unified exec failed: %s",
-                    strerror(child_errno));
-                waitpid(pid, NULL, 0);
-                lumo_shell_autostart_stop(compositor);
-                return -1;
-            }
-        }
-        process->pid = pid;
-        state->count = 1;
-        wlr_log(WLR_INFO, "shell: unified process pid=%d", pid);
     }
 
     /* read initial volume and brightness */
