@@ -245,10 +245,13 @@ static void test_quick_settings_button_rects(void) {
     struct lumo_rect rotate = {0};
     struct lumo_rect screenshot = {0};
 
+    struct lumo_rect settings = {0};
+
     assert(lumo_shell_quick_settings_button_rect(1024, 600, 0, &reload));
     assert(lumo_shell_quick_settings_button_rect(1024, 600, 1, &rotate));
     assert(lumo_shell_quick_settings_button_rect(1024, 600, 2, &screenshot));
-    assert(!lumo_shell_quick_settings_button_rect(1024, 600, 3, &screenshot));
+    assert(lumo_shell_quick_settings_button_rect(1024, 600, 3, &settings));
+    assert(!lumo_shell_quick_settings_button_rect(1024, 600, 4, &settings));
 
     assert(reload.width > 0);
     assert(reload.height == 28);
@@ -258,6 +261,8 @@ static void test_quick_settings_button_rects(void) {
     assert(screenshot.width == reload.width);
     assert(screenshot.x == reload.x);
     assert(screenshot.y > reload.y);
+    assert(settings.x > screenshot.x);
+    assert(settings.y == screenshot.y);
 }
 
 static void test_transition_durations(void) {

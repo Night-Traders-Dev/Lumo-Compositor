@@ -153,6 +153,10 @@ lumo_sources = files(
 shell_sources = files(
   'src/shell/shell_osk.c',
   'src/shell/shell_ui.c',
+  'src/shell/shell_draw.c',
+  'src/shell/shell_render.c',
+  'src/shell/shell_input.c',
+  'src/shell/shell_protocol_client.c',
   'src/shell/shell_client.c',
   'src/protocol/shell_protocol.c',
 ) + shell_protocol_files + xdg_client_protocol_files
