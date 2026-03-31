@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.58] - 2026-03-31
+
+### App Drawer Close Fix
+
+- Fixed app drawer not closing: tapping outside the launcher panel now dismisses the drawer, matching the existing quick-settings and time-panel dismiss behavior.
+- Fixed launcher and OSK close animation leaving ghost artifacts on screen. The non-unified shell client `tick_animation()` was drawing the final frame after deactivating the animation flag, causing `redraw()` to bail out and leave the previous frame's stale pixels visible forever. The final frame is now drawn before deactivation.
+- Fixed launcher and OSK renderers not clearing the pixel buffer when visibility reaches zero. The launcher skipped the full-buffer clear as an optimization (it normally fills every pixel with an overlay), but when the close animation returned early at `visibility=0`, stale pixels from the previous frame remained.
+- Added `finish_hide_if_needed()` call to the non-unified `tick_animation()` path, matching the unified render loop behavior, so the layer surface is properly reconfigured after the close animation completes.
+
+### Weather Display Fix
+
+- Fixed weather temperature displaying Celsius value with Fahrenheit label. The wttr.in API always returns Celsius with custom format strings regardless of the `&u` parameter. The parser now converts C to F (`temp * 9/5 + 32`) before storing.
+- Fixed wind speed displaying in km/h instead of mph. Wind values from wttr.in are now converted (`km/h * 0.621`) for US-unit display.
+
 ## [0.0.57] - 2026-03-30
 
 ### Codebase Audit & Fixes
