@@ -234,7 +234,7 @@ Current capabilities:
 - time/date panel with large clock, date, weather (temperature, condition, humidity, wind)
 - on-screen keyboard (Lomiri style) with shift key, close button, QWERTY + symbols pages, virtual keyboard fallback
 - full uppercase/lowercase bitmap font rendering in both shell and app surfaces
-- functional Browser (GTK4+WebKitGTK, local start page, smart URL bar, percent-encoded search)
+- functional Browser (system Chromium v122 via Wayland, single-process mode for riscv64, text-input-v3 OSK integration, DuckDuckGo Lite start page)
 - functional Terminal with real PTY shell (/bin/sh via forkpty), blinking cursor, menu, exit closes app
 - functional Clock with 4 tabs (Clock, Alarm, Stopwatch, Timer), persistent settings
 - functional Files with directory browsing, scroll, navigation, file sizes

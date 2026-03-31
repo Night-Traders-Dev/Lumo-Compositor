@@ -24,7 +24,7 @@ static const char *const lumo_shell_launcher_labels[] = {
 static const char *const lumo_shell_launcher_commands[] = {
     "lumo-app:phone",
     "lumo-app:messages",
-    "lumo-browser",
+    "chromium-browser --ozone-platform=wayland --no-sandbox --disable-gpu --single-process --no-first-run --start-maximized --touch-events=enabled --enable-wayland-ime --enable-features=WaylandTextInputV3 https://lite.duckduckgo.com",
     "lumo-app:camera",
     "lumo-app:maps",
     "lumo-app:music",

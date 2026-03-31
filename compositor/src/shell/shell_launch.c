@@ -1060,6 +1060,9 @@ static void lumo_shell_launch_app(
         setsid();
         if (app_id != NULL && app_id[0] != '\0') {
             execlp(binary, binary, "--app", app_id, (char *)NULL);
+        } else if (strchr(command, ' ') != NULL) {
+            /* command contains arguments — use shell to parse them */
+            execl("/bin/sh", "sh", "-c", command, (char *)NULL);
         } else {
             /* try the resolved path first, fall back to PATH lookup */
             if (binary != command) {
@@ -1362,6 +1365,14 @@ static void lumo_shell_bridge_handle_request_frame(
         wlr_log(WLR_INFO, "shell: rotation cycled to %s",
             lumo_rotation_name(next));
         (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
+        return;
+    }
+
+    if (strcmp(frame->name, "close_app") == 0) {
+        bool closed = lumo_protocol_close_focused_app(client->compositor);
+        wlr_log(WLR_INFO, "shell: close_app requested, result=%d", closed);
+        (void)lumo_shell_bridge_send_result(client, frame, closed,
+            closed ? NULL : "no_app", closed ? NULL : "no_focused_toplevel");
         return;
     }
 

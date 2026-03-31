@@ -11,6 +11,18 @@ All notable changes to this project will be documented in this file.
 - Fixed launcher and OSK renderers not clearing the pixel buffer when visibility reaches zero. The launcher skipped the full-buffer clear as an optimization (it normally fills every pixel with an overlay), but when the close animation returned early at `visibility=0`, stale pixels from the previous frame remained.
 - Added `finish_hide_if_needed()` call to the non-unified `tick_animation()` path, matching the unified render loop behavior, so the layer surface is properly reconfigured after the close animation completes.
 
+### Browser Overhaul
+
+- Replaced custom WebKitGTK browser (`lumo-browser`) with system Chromium (v122) for reliable modern web support. Launches via `chromium-browser --ozone-platform=wayland --single-process --disable-gpu --enable-wayland-ime` with DuckDuckGo Lite as the start page.
+- Added shell command argument support: launcher commands containing spaces are now executed via `sh -c` so Chromium flags are properly parsed.
+- Chromium's `--single-process` flag is critical on riscv64 — the multi-process renderer hangs with `RESULT_CODE_HUNG` on this hardware.
+- Chromium uses text-input-v3 on Wayland, so tapping input fields triggers the compositor's OSK auto-show.
+- Added `close_app` bridge protocol command to programmatically close the focused app via `xdg_toplevel_send_close`.
+
+### Top Panel Close Flash Fix
+
+- Fixed app drawer briefly flashing when closing a top-bar panel (quick settings or time panel). The launcher surface was rendering the app drawer grid during its close animation instead of clearing to transparent. Now skips drawer rendering when `compositor_launcher_visible` is false.
+
 ### Weather Display Fix
 
 - Fixed weather temperature displaying Celsius value with Fahrenheit label. The wttr.in API always returns Celsius with custom format strings regardless of the `&u` parameter. The parser now converts C to F (`temp * 9/5 + 32`) before storing.
