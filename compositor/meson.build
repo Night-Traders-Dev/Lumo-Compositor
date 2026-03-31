@@ -159,6 +159,8 @@ lumo_sources = files(
   'src/core/backend.c',
   'src/core/compositor.c',
   'src/core/input.c',
+  'src/core/input_touch.c',
+  'src/core/input_pointer.c',
   'src/core/output.c',
   'src/core/touch_audit.c',
   'src/protocol/protocol.c',
