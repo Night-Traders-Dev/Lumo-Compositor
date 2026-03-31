@@ -3,6 +3,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <limits.h>
 #include <poll.h>
 #include <signal.h>
@@ -428,6 +429,12 @@ static bool lumo_shell_bridge_write_all(
                 continue;
             }
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                /* non-blocking socket buffer full — wait briefly and retry
+                 * rather than disconnecting the client */
+                struct pollfd pfd = {fd, POLLOUT, 0};
+                if (poll(&pfd, 1, 50) > 0) {
+                    continue;
+                }
                 return false;
             }
             return false;
@@ -2286,7 +2293,10 @@ void lumo_shell_autostart_poll(struct lumo_compositor *compositor) {
         return;
     }
     state = compositor->shell_state;
-    if (state != NULL && state->state_broadcast_pending) {
+    if (state == NULL) {
+        return;
+    }
+    if (state->state_broadcast_pending) {
         lumo_shell_bridge_broadcast_state(compositor);
     }
 }

@@ -493,7 +493,6 @@ static void lumo_shell_client_apply_state_frame(
 
     if (changed || layout_changed) {
         if (client->unified) {
-            /* sync and redraw all slots in unified mode */
             for (int i = 0; i < client->surface_count; i++) {
                 struct lumo_shell_surface_slot *slot = &client->slots[i];
                 slot->dirty = true;

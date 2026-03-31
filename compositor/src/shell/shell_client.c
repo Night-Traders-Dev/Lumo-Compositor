@@ -351,15 +351,6 @@ static void lumo_shell_client_begin_transition(
         client->surface_hidden = false;
     }
 
-    if (!visible && client->mode == LUMO_SHELL_MODE_LAUNCHER &&
-            !client->compositor_launcher_visible) {
-        client->animation_from = 0.0;
-        client->animation_to = 0.0;
-        client->animation_active = false;
-        lumo_shell_client_finish_hide_if_needed(client);
-        return;
-    }
-
     client->animation_from = current_value;
     client->animation_to = visible ? 1.0 : 0.0;
     client->animation_started_msec = lumo_now_msec();
@@ -368,8 +359,6 @@ static void lumo_shell_client_begin_transition(
     client->animation_active =
         client->animation_from != client->animation_to;
 
-    if (!client->animation_active && !visible)
-        lumo_shell_client_finish_hide_if_needed(client);
 }
 
 void lumo_shell_client_sync_surface_state(
@@ -427,8 +416,6 @@ void lumo_shell_client_tick_animation(struct lumo_shell_client *client) {
     if (lumo_now_msec() >= client->animation_started_msec +
             client->animation_duration_msec) {
         client->animation_active = false;
-        if (!client->target_visible)
-            lumo_shell_client_finish_hide_if_needed(client);
     }
     (void)lumo_shell_client_redraw(client);
 }
@@ -465,6 +452,16 @@ static bool lumo_shell_draw_buffer(
 
 bool lumo_shell_client_redraw(struct lumo_shell_client *client) {
     if (client == NULL || !client->configured) return false;
+
+    /* don't redraw hidden surfaces that aren't animating — avoids
+     * committing stale transparent buffers that keep the layer
+     * surface visible in the compositor scene graph */
+    if (!client->target_visible && !client->animation_active &&
+            (client->mode == LUMO_SHELL_MODE_LAUNCHER ||
+             client->mode == LUMO_SHELL_MODE_OSK)) {
+        return false;
+    }
+
     return lumo_shell_draw_buffer(client, client->configured_width,
         client->configured_height);
 }

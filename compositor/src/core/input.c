@@ -924,8 +924,14 @@ static int lumo_input_gesture_timeout_cb(void *data) {
         }
 
         if (point->surface != NULL && point->capture_edge != LUMO_EDGE_NONE) {
-            lumo_input_replay_touch_point(compositor, point);
-            replayed = true;
+            /* only replay to shell surface if the touch was captured by
+             * the gesture handle hitbox — system edge zone captures
+             * should wait for touch-up to trigger the edge action,
+             * not replay as a tap on the shell surface */
+            if (lumo_hitbox_is_shell_gesture(point->hitbox)) {
+                lumo_input_replay_touch_point(compositor, point);
+                replayed = true;
+            }
         }
     }
 
@@ -1080,6 +1086,14 @@ static void lumo_input_touch_point_trigger_edge_action(
 
     switch (point->capture_edge) {
     case LUMO_EDGE_TOP: {
+        /* don't trigger panels when the app drawer is open */
+        if (compositor->launcher_visible) {
+            wlr_log(WLR_INFO,
+                "input: touch %d top-edge suppressed (drawer open)",
+                point->touch_id);
+            return;
+        }
+
         struct lumo_output *top_output = lumo_input_first_output(compositor);
         bool is_right_half = top_output != NULL &&
             top_output->wlr_output != NULL &&
@@ -1161,9 +1175,14 @@ static void lumo_input_touch_point_trigger_edge_action(
                 return;
             }
         }
-        /* nothing to close: open launcher */
-        lumo_protocol_set_launcher_visible(compositor, true);
-        lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_MODAL);
+        /* nothing to close: only open launcher if this came from the
+         * gesture handle hitbox, not from the system edge zone.
+         * This prevents accidental open-close-open toggling when
+         * the user taps the bottom edge area repeatedly. */
+        if (lumo_hitbox_is_shell_gesture(point->hitbox)) {
+            lumo_protocol_set_launcher_visible(compositor, true);
+            lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_MODAL);
+        }
         wlr_log(WLR_INFO,
             "input: touch %d triggered %s-edge launcher gesture at %u",
             point->touch_id, lumo_edge_zone_name(point->capture_edge),
@@ -1743,6 +1762,20 @@ static void lumo_input_touch_motion(
         return;
     }
 
+    /* swipe-down anywhere to close the app drawer */
+    if (compositor->launcher_visible && !point->gesture_triggered) {
+        double dy = ly - point->down_ly;
+        if (dy > threshold) {
+            lumo_protocol_set_launcher_visible(compositor, false);
+            point->gesture_triggered = true;
+            wlr_log(WLR_INFO,
+                "input: touch %d swipe-down closed launcher (dy=%.0f)",
+                point->touch_id, dy);
+            lumo_input_remove_touch_point(compositor, point);
+            return;
+        }
+    }
+
     if (point->captured) {
         lumo_input_touch_sample_append(point, LUMO_TOUCH_SAMPLE_MOTION,
             event->time_msec, lx, ly, target.sx, target.sy);
@@ -1880,7 +1913,7 @@ static void lumo_input_touch_down(
             }
         }
 
-        if (!in_panel && !lumo_input_target_is_shell(&target)) {
+        if (!in_panel) {
             if (compositor->quick_settings_visible) {
                 lumo_protocol_set_quick_settings_visible(compositor, false);
             }
@@ -1922,14 +1955,13 @@ static void lumo_input_touch_down(
     if (compositor->touch_audit_active && edge_zone != LUMO_EDGE_LEFT) {
         edge_zone = LUMO_EDGE_NONE;
     }
-    if (edge_zone == LUMO_EDGE_BOTTOM &&
-            point->hitbox != NULL &&
-            point->hitbox->kind != LUMO_HITBOX_EDGE_GESTURE &&
-            (point->hitbox->kind == LUMO_HITBOX_OSK_KEY ||
-             point->hitbox->kind == LUMO_HITBOX_SCRIM ||
-             point->hitbox->kind == LUMO_HITBOX_LAUNCHER_TILE)) {
-        /* bottom-edge zone overrides OSK/launcher hitboxes so swipe-
-         * to-close works even when those surfaces cover the bottom */
+    if (edge_zone != LUMO_EDGE_NONE &&
+            (point->hitbox == NULL ||
+             point->hitbox->kind != LUMO_HITBOX_EDGE_GESTURE)) {
+        /* system edge zones take priority over shell hitboxes (OSK,
+         * launcher scrim) so dismiss/close gestures always work.
+         * The gesture handle hitbox is excluded — it has its own
+         * tap/swipe logic that shouldn't be bypassed. */
         point->capture_edge = edge_zone;
         lumo_input_touch_point_begin_capture(compositor, point, &target,
             event->time_msec);
