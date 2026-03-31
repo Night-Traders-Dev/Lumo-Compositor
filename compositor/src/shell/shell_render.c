@@ -369,7 +369,8 @@ static void lumo_draw_launcher(
         return;
     }
 
-    if (visibility <= 0.0) {
+    if (visibility <= 0.0 ||
+            (client != NULL && !client->compositor_launcher_visible)) {
         lumo_clear_pixels(pixels, width, height);
         return;
     }
