@@ -370,6 +370,7 @@ static void lumo_draw_launcher(
     }
 
     if (visibility <= 0.0) {
+        lumo_clear_pixels(pixels, width, height);
         return;
     }
 
@@ -649,6 +650,7 @@ static void lumo_draw_osk(
     bool shift_active = client != NULL && client->compositor_osk_shift_active;
 
     if (visibility <= 0.0) {
+        lumo_clear_pixels(pixels, width, height);
         return;
     }
 

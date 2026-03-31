@@ -2216,6 +2216,17 @@ static void lumo_weather_parse(struct lumo_compositor *compositor,
         }
         strncpy(compositor->weather_humidity, humidity,
             sizeof(compositor->weather_humidity) - 1);
+        /* convert km/h wind to mph for US display */
+        {
+            int kmh = 0;
+            char arrow[8] = "";
+            if (sscanf(wind, "%4[^0-9]%d", arrow, &kmh) >= 2 ||
+                    sscanf(wind, "%d", &kmh) >= 1) {
+                int mph = kmh * 10 / 16; /* ×0.621 */
+                snprintf(wind, sizeof(wind), "%s%dmph",
+                    arrow[0] ? arrow : "", mph);
+            }
+        }
         strncpy(compositor->weather_wind, wind,
             sizeof(compositor->weather_wind) - 1);
     }
@@ -2245,15 +2256,19 @@ static void lumo_weather_parse(struct lumo_compositor *compositor,
     else if (strstr(lower, "partly"))
         code = 1;
 
+    /* wttr.in custom-format always returns Celsius; convert to Fahrenheit
+     * for display (the UI renders temp with an "F" suffix). */
+    int temp_f = temp * 9 / 5 + 32;
+
     if (strcmp(compositor->weather_condition, condition) != 0 ||
-            compositor->weather_temp_c != temp ||
+            compositor->weather_temp_c != temp_f ||
             compositor->weather_code != code) {
         strncpy(compositor->weather_condition, condition,
             sizeof(compositor->weather_condition) - 1);
-        compositor->weather_temp_c = temp;
+        compositor->weather_temp_c = temp_f;
         compositor->weather_code = code;
-        wlr_log(WLR_INFO, "weather: %dF %s (code=%d)", temp, condition,
-            code);
+        wlr_log(WLR_INFO, "weather: %dC -> %dF %s (code=%d)", temp, temp_f,
+            condition, code);
         lumo_shell_mark_state_dirty(compositor);
     }
 }

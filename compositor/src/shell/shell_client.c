@@ -413,9 +413,13 @@ void lumo_shell_client_tick_animation(struct lumo_shell_client *client) {
     if (client == NULL || !client->animation_active) return;
     if (lumo_now_msec() >= client->animation_started_msec +
             client->animation_duration_msec) {
+        /* draw the final frame (visibility=0) while animation_active is
+         * still true so that redraw doesn't bail out early */
+        (void)lumo_shell_client_redraw(client);
         client->animation_active = false;
         if (!client->target_visible)
             lumo_shell_client_finish_hide_if_needed(client);
+        return;
     }
     (void)lumo_shell_client_redraw(client);
 }
