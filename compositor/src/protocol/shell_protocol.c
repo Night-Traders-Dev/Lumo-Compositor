@@ -46,6 +46,32 @@ static bool lumo_shell_protocol_copy_token(
     return true;
 }
 
+static bool lumo_shell_protocol_copy_value(
+    char *buffer,
+    size_t buffer_size,
+    const char *value
+) {
+    size_t length;
+
+    if (buffer == NULL || buffer_size == 0 || value == NULL || value[0] == '\0') {
+        return false;
+    }
+
+    for (const char *cursor = value; *cursor != '\0'; cursor++) {
+        if (*cursor == '\n' || *cursor == '\r') {
+            return false;
+        }
+    }
+
+    length = strlen(value);
+    if (length + 1 > buffer_size) {
+        return false;
+    }
+
+    memcpy(buffer, value, length + 1);
+    return true;
+}
+
 static bool lumo_shell_protocol_append(
     char *buffer,
     size_t buffer_size,
@@ -158,7 +184,7 @@ bool lumo_shell_protocol_frame_add_field(
 
     field = &frame->fields[frame->field_count];
     if (!lumo_shell_protocol_copy_token(field->key, sizeof(field->key), key) ||
-            !lumo_shell_protocol_copy_token(field->value, sizeof(field->value),
+            !lumo_shell_protocol_copy_value(field->value, sizeof(field->value),
                 value)) {
         return false;
     }

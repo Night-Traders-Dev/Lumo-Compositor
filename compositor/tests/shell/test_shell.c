@@ -1,8 +1,21 @@
 #include "lumo/shell.h"
+#include "lumo/shell_protocol.h"
 
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+
+static bool protocol_callback_seen = false;
+static struct lumo_shell_protocol_frame protocol_callback_frame = {0};
+
+static void test_shell_protocol_capture(
+    const struct lumo_shell_protocol_frame *frame,
+    void *user_data
+) {
+    (void)user_data;
+    protocol_callback_seen = true;
+    protocol_callback_frame = *frame;
+}
 
 static void test_mode_names(void) {
     assert(strcmp(lumo_shell_mode_name(LUMO_SHELL_MODE_LAUNCHER), "launcher") == 0);
@@ -404,6 +417,36 @@ static void test_touch_debug_names(void) {
     assert(!lumo_shell_touch_debug_target_parse("edge", &target));
 }
 
+static void test_protocol_string_values(void) {
+    struct lumo_shell_protocol_frame frame = {0};
+    struct lumo_shell_protocol_stream stream;
+    char buffer[1024] = {0};
+    const char *value = NULL;
+
+    assert(lumo_shell_protocol_frame_init(&frame,
+        LUMO_SHELL_PROTOCOL_FRAME_EVENT, "state", 0));
+    assert(lumo_shell_protocol_frame_add_string(&frame, "weather_condition",
+        "Partly cloudy"));
+    assert(lumo_shell_protocol_frame_add_string(&frame, "weather_wind",
+        "5 mph"));
+    assert(lumo_shell_protocol_frame_format(&frame, buffer,
+        sizeof(buffer)) > 0);
+
+    protocol_callback_seen = false;
+    memset(&protocol_callback_frame, 0, sizeof(protocol_callback_frame));
+    lumo_shell_protocol_stream_init(&stream);
+    assert(lumo_shell_protocol_stream_feed(&stream, buffer, strlen(buffer),
+        test_shell_protocol_capture, NULL));
+    assert(protocol_callback_seen);
+    assert(strcmp(protocol_callback_frame.name, "state") == 0);
+    assert(lumo_shell_protocol_frame_get(&protocol_callback_frame,
+        "weather_condition", &value));
+    assert(strcmp(value, "Partly cloudy") == 0);
+    assert(lumo_shell_protocol_frame_get(&protocol_callback_frame,
+        "weather_wind", &value));
+    assert(strcmp(value, "5 mph") == 0);
+}
+
 static void test_surface_local_coords(void) {
     double local_x = -1.0;
     double local_y = -1.0;
@@ -424,6 +467,7 @@ static void test_surface_local_coords(void) {
 
 int main(void) {
     test_mode_names();
+    test_protocol_string_values();
     test_target_kind_parse();
     test_touch_debug_names();
     test_osk_key_text();

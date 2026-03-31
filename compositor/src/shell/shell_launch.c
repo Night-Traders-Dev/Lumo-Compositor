@@ -47,6 +47,7 @@ struct lumo_shell_bridge {
 struct lumo_shell_state {
     struct lumo_compositor *compositor;
     struct wl_event_source *child_signal_source;
+    struct wl_event_source *state_broadcast_source;
     bool stopping;
     bool state_broadcast_pending;
     char binary_path[PATH_MAX];
@@ -62,6 +63,7 @@ static void lumo_shell_bridge_remove_client(
 static void lumo_shell_bridge_broadcast_state(
     struct lumo_compositor *compositor
 );
+static void lumo_shell_state_broadcast_idle(void *data);
 static void lumo_shell_mark_state_dirty(
     struct lumo_compositor *compositor
 );
@@ -687,6 +689,25 @@ static void lumo_shell_bridge_broadcast_state(
     state->state_broadcast_pending = false;
 }
 
+static void lumo_shell_state_broadcast_idle(void *data) {
+    struct lumo_compositor *compositor = data;
+    struct lumo_shell_state *state;
+
+    if (compositor == NULL) {
+        return;
+    }
+
+    state = compositor->shell_state;
+    if (state == NULL) {
+        return;
+    }
+
+    state->state_broadcast_source = NULL;
+    if (state->state_broadcast_pending) {
+        lumo_shell_bridge_broadcast_state(compositor);
+    }
+}
+
 static void lumo_shell_mark_state_dirty(
     struct lumo_compositor *compositor
 ) {
@@ -699,6 +720,12 @@ static void lumo_shell_mark_state_dirty(
     state = compositor->shell_state;
     if (state != NULL) {
         state->state_broadcast_pending = true;
+        if (state->state_broadcast_source == NULL &&
+                compositor->event_loop != NULL) {
+            state->state_broadcast_source = wl_event_loop_add_idle(
+                compositor->event_loop, lumo_shell_state_broadcast_idle,
+                compositor);
+        }
     }
 }
 
@@ -2329,6 +2356,10 @@ void lumo_shell_autostart_stop(struct lumo_compositor *compositor) {
     if (state->child_signal_source != NULL) {
         wl_event_source_remove(state->child_signal_source);
         state->child_signal_source = NULL;
+    }
+    if (state->state_broadcast_source != NULL) {
+        wl_event_source_remove(state->state_broadcast_source);
+        state->state_broadcast_source = NULL;
     }
     if (compositor->weather_timer != NULL) {
         wl_event_source_remove(compositor->weather_timer);

@@ -287,6 +287,7 @@ test('lumo-compositor', test_exe)
 shell_test_sources = files(
   'src/shell/shell_osk.c',
   'src/shell/shell_ui.c',
+  'src/protocol/shell_protocol.c',
   'tests/shell/test_shell.c',
 )
 

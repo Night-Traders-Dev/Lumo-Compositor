@@ -871,9 +871,10 @@ static void lumo_input_replay_touch_point(
         }
         if (launcher_surface) {
             struct lumo_touch_sample *s;
+            bool launcher_coords_corrected = false;
 
             wl_list_for_each(s, &point->samples, link) {
-                if (s->sx == 0.0 && s->sy == 0.0) {
+                if (s->sx != s->lx || s->sy != s->ly) {
                     launcher_coords_invalid = true;
                     break;
                 }
@@ -883,6 +884,9 @@ static void lumo_input_replay_touch_point(
                     s->sx = s->lx;
                     s->sy = s->ly;
                 }
+                launcher_coords_corrected = true;
+            }
+            if (launcher_coords_corrected) {
                 wlr_log(WLR_INFO,
                     "input: replay corrected launcher coords at %.0f,%.0f",
                     point->down_lx, point->down_ly);
