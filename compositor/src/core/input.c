@@ -2105,16 +2105,25 @@ static void lumo_input_touch_down(
     if (edge_zone != LUMO_EDGE_NONE &&
             (point->hitbox == NULL ||
              point->hitbox->kind != LUMO_HITBOX_EDGE_GESTURE)) {
-        /* system edge zones take priority over shell hitboxes (OSK,
-         * launcher scrim) so dismiss/close gestures always work.
-         * The gesture handle hitbox is excluded — it has its own
-         * tap/swipe logic that shouldn't be bypassed. */
-        point->capture_edge = edge_zone;
-        lumo_input_touch_point_begin_capture(compositor, point, &target,
-            event->time_msec);
-        lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
-            true, point->lx, point->ly);
-        return;
+        /* When a toplevel app is focused and no panels are open, suppress
+         * top-edge capture so app UI at the top (e.g. browser tab close
+         * buttons) receives touch input.  The status bar hitbox still
+         * provides panel access via LUMO_HITBOX_EDGE_GESTURE. */
+        bool app_focused = !wl_list_empty(&compositor->toplevels) &&
+            !compositor->launcher_visible &&
+            !compositor->quick_settings_visible &&
+            !compositor->time_panel_visible;
+        if (app_focused && edge_zone == LUMO_EDGE_TOP &&
+                target.surface != NULL) {
+            /* let the touch fall through to the app */
+        } else {
+            point->capture_edge = edge_zone;
+            lumo_input_touch_point_begin_capture(compositor, point, &target,
+                event->time_msec);
+            lumo_input_touch_debug_update(compositor, point,
+                LUMO_TOUCH_SAMPLE_DOWN, true, point->lx, point->ly);
+            return;
+        }
     }
 
     /* --- hitbox checks (edges, gestures, OSK, launcher) --- */
@@ -2130,12 +2139,26 @@ static void lumo_input_touch_down(
     if (!compositor->touch_audit_active &&
             point->hitbox != NULL &&
             point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE) {
-        point->capture_edge = lumo_hitbox_edge_zone(point->hitbox);
-        lumo_input_touch_point_begin_capture(compositor, point, &target,
-            event->time_msec);
-        lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
-            true, point->lx, point->ly);
-        return;
+        /* suppress top-edge gesture hitbox when an app is focused and
+         * no panels are open, so app controls at the top of the screen
+         * (e.g. browser tab close) receive touch input */
+        bool suppress_top = false;
+        if (lumo_hitbox_edge_zone(point->hitbox) == LUMO_EDGE_TOP &&
+                !wl_list_empty(&compositor->toplevels) &&
+                !compositor->launcher_visible &&
+                !compositor->quick_settings_visible &&
+                !compositor->time_panel_visible &&
+                target.surface != NULL) {
+            suppress_top = true;
+        }
+        if (!suppress_top) {
+            point->capture_edge = lumo_hitbox_edge_zone(point->hitbox);
+            lumo_input_touch_point_begin_capture(compositor, point, &target,
+                event->time_msec);
+            lumo_input_touch_debug_update(compositor, point,
+                LUMO_TOUCH_SAMPLE_DOWN, true, point->lx, point->ly);
+            return;
+        }
     }
 
     if (edge_zone != LUMO_EDGE_NONE) {

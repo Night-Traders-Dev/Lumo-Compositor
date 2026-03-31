@@ -185,13 +185,9 @@ void lumo_protocol_refresh_keyboard_visibility(
         wlr_log(WLR_INFO,
             "protocol: explicit text-input disable overrides auto-show");
     }
-    if (compositor->keyboard_visible && !visible) {
-        wlr_log(WLR_INFO,
-            "protocol: refresh_keyboard hiding kbd "
-            "(text_enabled=%d focused=%p toplevels_empty=%d)",
-            0, (void *)compositor->seat->keyboard_state.focused_surface,
-            wl_list_empty(&compositor->toplevels));
-    }
+    wlr_log(WLR_INFO,
+        "protocol: refresh_keyboard visible=%d current_kbd=%d auto_shown=%d",
+        visible, compositor->keyboard_visible, compositor->keyboard_auto_shown);
     lumo_protocol_set_keyboard_visible(compositor, visible);
 }
 
@@ -268,11 +264,24 @@ static void lumo_protocol_text_input_commit(
         wl_container_of(listener, binding, commit);
 
     (void)data;
-    if (binding != NULL) {
+    if (binding != NULL && binding->compositor != NULL) {
+        bool enabled = binding->text_input != NULL &&
+            binding->text_input->current_enabled;
         wlr_log(WLR_INFO, "protocol: text_input_commit fired, enabled=%d",
-            binding->text_input != NULL ?
-                binding->text_input->current_enabled : -1);
-        lumo_protocol_refresh_keyboard_visibility(binding->compositor);
+            enabled);
+        /* directly show/hide keyboard based on the committed state
+         * rather than relying on refresh_keyboard_visibility which
+         * may not find the text-input in the manager's list */
+        if (enabled && !binding->compositor->keyboard_visible) {
+            wlr_log(WLR_INFO,
+                "protocol: text_input_commit showing keyboard");
+            lumo_protocol_set_keyboard_visible(binding->compositor, true);
+        } else if (!enabled && binding->compositor->keyboard_visible &&
+                !binding->compositor->keyboard_auto_shown) {
+            wlr_log(WLR_INFO,
+                "protocol: text_input_commit hiding keyboard");
+            lumo_protocol_set_keyboard_visible(binding->compositor, false);
+        }
     }
 }
 

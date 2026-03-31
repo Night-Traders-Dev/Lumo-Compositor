@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
 - Chromium's `--single-process` flag is critical on riscv64 — the multi-process renderer hangs with `RESULT_CODE_HUNG` on this hardware.
 - Chromium uses text-input-v3 on Wayland, so tapping input fields triggers the compositor's OSK auto-show.
 - Added `close_app` bridge protocol command to programmatically close the focused app via `xdg_toplevel_send_close`.
+- Fixed OSK not auto-showing when tapping input fields in Chromium: the `text_input_commit` handler now directly shows the keyboard when `enabled=true`, bypassing the `refresh_keyboard_visibility` list scan that failed to match the text-input resource.
+- Fixed top-of-screen controls (tab close button, menus) in apps being captured by the system top-edge gesture zone. Top-edge touches now pass through to the focused app when no panels are open.
 
 ### Top Panel Close Flash Fix
 
