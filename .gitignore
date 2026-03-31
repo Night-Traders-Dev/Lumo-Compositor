@@ -5,6 +5,15 @@ compositor/builddir/
 meson-logs/
 meson-private/
 compile_commands.json
+
+# Chromium build artifacts (submodule has its own .gitignore)
+chromium-build/
+riscv64-sysroot/
+src
+.gclient
+.gclient_entries
+.cipd/
+
 *.o
 *.a
 *.so
