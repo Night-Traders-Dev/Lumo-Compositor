@@ -1077,12 +1077,17 @@ static void lumo_input_touch_point_trigger_edge_action(
     uint32_t time_msec
 ) {
     bool closed_focused_app = false;
+    bool is_tap = false;
+    double progress;
 
     if (compositor == NULL || point == NULL || point->gesture_triggered) {
         return;
     }
 
     point->gesture_triggered = true;
+    progress = lumo_input_touch_point_edge_progress(point,
+        point->lx, point->ly);
+    is_tap = progress < 12.0;
 
     switch (point->capture_edge) {
     case LUMO_EDGE_TOP: {
@@ -1144,27 +1149,26 @@ static void lumo_input_touch_point_trigger_edge_action(
         if (compositor->touch_audit_active) {
             lumo_touch_audit_set_active(compositor, false);
         }
-        /* launcher visible: bottom swipe closes it */
+        /* launcher visible: close it (tap or swipe) */
         if (compositor->launcher_visible) {
             lumo_protocol_set_launcher_visible(compositor, false);
             if (compositor->keyboard_visible) {
                 lumo_protocol_set_keyboard_visible(compositor, false);
             }
             wlr_log(WLR_INFO,
-                "input: touch %d closed launcher from bottom swipe at %u",
+                "input: touch %d closed launcher at %u",
                 point->touch_id, time_msec);
             return;
         }
-        /* gesture handle: always toggle the launcher open, even when
-         * an app is focused.  The drawer overlays the app. */
-        if (lumo_hitbox_is_shell_gesture(point->hitbox)) {
+        /* gesture handle TAP: open launcher directly (even over apps) */
+        if (is_tap && lumo_hitbox_is_shell_gesture(point->hitbox)) {
             if (compositor->keyboard_visible) {
                 lumo_protocol_set_keyboard_visible(compositor, false);
             }
             lumo_protocol_set_launcher_visible(compositor, true);
             lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_MODAL);
             wlr_log(WLR_INFO,
-                "input: touch %d opened launcher from gesture handle at %u",
+                "input: touch %d opened launcher from gesture tap at %u",
                 point->touch_id, time_msec);
             return;
         }
@@ -1176,7 +1180,7 @@ static void lumo_input_touch_point_trigger_edge_action(
                 point->touch_id, time_msec);
             return;
         }
-        /* app focused: system edge swipe closes app */
+        /* app focused: swipe closes app */
         if (!compositor->touch_audit_active &&
                 !wl_list_empty(&compositor->toplevels)) {
             closed_focused_app =
@@ -1188,8 +1192,13 @@ static void lumo_input_touch_point_trigger_edge_action(
                 return;
             }
         }
+        /* nothing to close: open launcher from gesture handle */
+        if (lumo_hitbox_is_shell_gesture(point->hitbox)) {
+            lumo_protocol_set_launcher_visible(compositor, true);
+            lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_MODAL);
+        }
         wlr_log(WLR_INFO,
-            "input: touch %d triggered %s-edge launcher gesture at %u",
+            "input: touch %d triggered %s-edge gesture at %u",
             point->touch_id, lumo_edge_zone_name(point->capture_edge),
             time_msec);
         return;

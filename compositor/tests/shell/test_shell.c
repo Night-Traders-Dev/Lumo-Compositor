@@ -283,8 +283,8 @@ static void test_quick_settings_button_rects(void) {
 }
 
 static void test_transition_durations(void) {
-    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_LAUNCHER, true) == 350);
-    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_LAUNCHER, false) == 250);
+    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_LAUNCHER, true) == 200);
+    assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_LAUNCHER, false) == 150);
     assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_OSK, true) == 300);
     assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_OSK, false) == 200);
     assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_GESTURE, true) == 0);

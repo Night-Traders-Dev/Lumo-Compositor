@@ -497,7 +497,7 @@ uint32_t lumo_shell_transition_duration_ms(
     /* Material Design durations: 300-500ms for panels, 250-350ms for dismiss */
     switch (mode) {
     case LUMO_SHELL_MODE_LAUNCHER:
-        return visible ? 350u : 250u;
+        return visible ? 200u : 150u;
     case LUMO_SHELL_MODE_OSK:
         return visible ? 300u : 200u;
     case LUMO_SHELL_MODE_GESTURE:
