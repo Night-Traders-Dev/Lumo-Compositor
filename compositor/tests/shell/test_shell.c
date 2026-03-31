@@ -330,6 +330,20 @@ static void test_launcher_search_and_filtered_tiles(void) {
     assert(time_panel.height == 220);
 }
 
+static void test_tall_launcher_layout(void) {
+    struct lumo_rect panel = {0};
+    struct lumo_rect first = {0};
+    struct lumo_rect last = {0};
+
+    assert(lumo_shell_launcher_panel_rect(800, 1280, &panel));
+    assert(lumo_shell_launcher_tile_rect(800, 1280, 0, &first));
+    assert(lumo_shell_launcher_tile_rect(800, 1280, 11, &last));
+    assert(first.y > panel.y + 80);
+    assert(last.y > first.y);
+    assert(last.y + last.height > panel.y + (panel.height * 3) / 4);
+    assert(last.y + last.height <= panel.y + panel.height);
+}
+
 static void test_transition_durations(void) {
     assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_LAUNCHER, true) == 200);
     assert(lumo_shell_transition_duration_ms(LUMO_SHELL_MODE_LAUNCHER, false) == 150);
@@ -425,6 +439,7 @@ int main(void) {
     test_gesture_hitbox();
     test_quick_settings_button_rects();
     test_launcher_search_and_filtered_tiles();
+    test_tall_launcher_layout();
     test_transition_durations();
     test_touch_audit_layout();
     test_surface_local_coords();

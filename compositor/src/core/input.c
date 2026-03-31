@@ -1,5 +1,6 @@
 #include "lumo/compositor.h"
 
+#include <float.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -289,7 +290,16 @@ static enum lumo_edge_zone lumo_input_system_edge_zone(
     double ly
 ) {
     struct wlr_box box = {0};
-    double threshold;
+    struct lumo_shell_surface_config shell_config = {0};
+    double side_threshold;
+    double top_threshold;
+    double bottom_threshold;
+    double top_dist;
+    double left_dist;
+    double right_dist;
+    double bottom_dist;
+    double best = DBL_MAX;
+    enum lumo_edge_zone zone = LUMO_EDGE_NONE;
 
     if (compositor == NULL || output == NULL || output->wlr_output == NULL) {
         return LUMO_EDGE_NONE;
@@ -301,10 +311,57 @@ static enum lumo_edge_zone lumo_input_system_edge_zone(
         return LUMO_EDGE_NONE;
     }
 
-    threshold = compositor->gesture_threshold > 0.0
+    side_threshold = compositor->gesture_threshold > 0.0
         ? compositor->gesture_threshold
         : 24.0;
-    return lumo_edge_zone_in_box(&box, lx, ly, threshold);
+    top_threshold = side_threshold;
+    bottom_threshold = side_threshold;
+
+    if (lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_STATUS,
+            (uint32_t)box.width, (uint32_t)box.height, &shell_config) &&
+            shell_config.height > 0) {
+        top_threshold = shell_config.height;
+    }
+    if (lumo_shell_surface_config_for_mode(LUMO_SHELL_MODE_GESTURE,
+            (uint32_t)box.width, (uint32_t)box.height, &shell_config) &&
+            shell_config.height > 0) {
+        bottom_threshold = shell_config.height;
+    }
+
+    if (lx < box.x || ly < box.y ||
+            lx >= box.x + box.width ||
+            ly >= box.y + box.height) {
+        return LUMO_EDGE_NONE;
+    }
+
+    top_dist = ly - box.y;
+    if (top_dist >= 0.0 && top_dist <= top_threshold && top_dist < best) {
+        best = top_dist;
+        zone = LUMO_EDGE_TOP;
+    }
+
+    left_dist = lx - box.x;
+    if (left_dist >= 0.0 && left_dist <= side_threshold && left_dist < best) {
+        best = left_dist;
+        zone = LUMO_EDGE_LEFT;
+    }
+
+    right_dist = box.x + box.width - lx;
+    if (right_dist >= 0.0 && right_dist <= side_threshold &&
+            right_dist < best) {
+        best = right_dist;
+        zone = LUMO_EDGE_RIGHT;
+    }
+
+    if (!compositor->launcher_visible) {
+        bottom_dist = box.y + box.height - ly;
+        if (bottom_dist >= 0.0 && bottom_dist <= bottom_threshold &&
+                bottom_dist < best) {
+            zone = LUMO_EDGE_BOTTOM;
+        }
+    }
+
+    return zone;
 }
 
 static void lumo_input_touch_audit_log(
@@ -766,6 +823,9 @@ static void lumo_input_replay_touch_point(
     {
         struct lumo_layer_surface *ls;
         bool wrong_surface = false;
+        bool launcher_surface = false;
+        bool launcher_coords_invalid = false;
+
         wl_list_for_each(ls, &compositor->layer_surfaces, link) {
             if (ls->layer_surface == NULL || ls->scene_surface == NULL) {
                 continue;
@@ -776,6 +836,11 @@ static void lumo_input_replay_touch_point(
                     !compositor->keyboard_visible) {
                 wrong_surface = true;
                 break;
+            }
+            if (ls->layer_surface->surface == point->surface &&
+                    ls->layer_surface->namespace != NULL &&
+                    strcmp(ls->layer_surface->namespace, "launcher") == 0) {
+                launcher_surface = true;
             }
         }
         if (wrong_surface) {
@@ -802,6 +867,25 @@ static void lumo_input_replay_touch_point(
                         point->down_lx, point->down_ly);
                     break;
                 }
+            }
+        }
+        if (launcher_surface) {
+            struct lumo_touch_sample *s;
+
+            wl_list_for_each(s, &point->samples, link) {
+                if (s->sx == 0.0 && s->sy == 0.0) {
+                    launcher_coords_invalid = true;
+                    break;
+                }
+            }
+            if (launcher_coords_invalid) {
+                wl_list_for_each(s, &point->samples, link) {
+                    s->sx = s->lx;
+                    s->sy = s->ly;
+                }
+                wlr_log(WLR_INFO,
+                    "input: replay corrected launcher coords at %.0f,%.0f",
+                    point->down_lx, point->down_ly);
             }
         }
     }
@@ -1091,12 +1175,8 @@ static void lumo_input_touch_point_trigger_edge_action(
 
     switch (point->capture_edge) {
     case LUMO_EDGE_TOP: {
-        /* don't trigger panels when the app drawer is open */
         if (compositor->launcher_visible) {
-            wlr_log(WLR_INFO,
-                "input: touch %d top-edge suppressed (drawer open)",
-                point->touch_id);
-            return;
+            lumo_protocol_set_launcher_visible(compositor, false);
         }
 
         struct lumo_output *top_output = lumo_input_first_output(compositor);
@@ -1145,12 +1225,36 @@ static void lumo_input_touch_point_trigger_edge_action(
             point->touch_id, time_msec);
         return;
     case LUMO_EDGE_RIGHT:
+        if (compositor->touch_audit_active) {
+            lumo_touch_audit_set_active(compositor, false);
+        }
+        if (compositor->time_panel_visible) {
+            lumo_protocol_set_time_panel_visible(compositor, false);
+        }
+        if (compositor->quick_settings_visible) {
+            lumo_protocol_set_quick_settings_visible(compositor, false);
+        }
+        if (compositor->keyboard_visible) {
+            lumo_protocol_set_keyboard_visible(compositor, false);
+        }
+        lumo_protocol_set_launcher_visible(compositor, true);
+        lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_MODAL);
+        wlr_log(WLR_INFO,
+            "input: touch %d opened launcher from right edge at %u",
+            point->touch_id, time_msec);
+        return;
     case LUMO_EDGE_BOTTOM:
         if (compositor->touch_audit_active) {
             lumo_touch_audit_set_active(compositor, false);
         }
-        /* launcher visible: close it (tap or swipe) */
         if (compositor->launcher_visible) {
+            if (is_tap) {
+                wlr_log(WLR_INFO,
+                    "input: touch %d ignored bottom-edge tap while launcher "
+                    "open at %u",
+                    point->touch_id, time_msec);
+                return;
+            }
             lumo_protocol_set_launcher_visible(compositor, false);
             if (compositor->keyboard_visible) {
                 lumo_protocol_set_keyboard_visible(compositor, false);
@@ -1192,11 +1296,9 @@ static void lumo_input_touch_point_trigger_edge_action(
                 return;
             }
         }
-        /* nothing to close: open launcher from gesture handle */
-        if (lumo_hitbox_is_shell_gesture(point->hitbox)) {
-            lumo_protocol_set_launcher_visible(compositor, true);
-            lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_MODAL);
-        }
+        /* nothing to close: open launcher from any bottom-edge swipe/tap */
+        lumo_protocol_set_launcher_visible(compositor, true);
+        lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_MODAL);
         wlr_log(WLR_INFO,
             "input: touch %d triggered %s-edge gesture at %u",
             point->touch_id, lumo_edge_zone_name(point->capture_edge),

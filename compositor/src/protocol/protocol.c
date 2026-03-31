@@ -502,12 +502,18 @@ void lumo_protocol_refresh_shell_hitboxes(struct lumo_compositor *compositor) {
             &shell_config)) {
         /* Guard: shell_config.height > workarea.height would wrap rect.y */
         if (shell_config.height <= (uint32_t)workarea.height) {
-            rect.x = workarea.x;
-            rect.y = workarea.y + workarea.height - (int)shell_config.height;
-            rect.width = workarea.width;
-            rect.height = (int)shell_config.height;
-            lumo_protocol_register_hitbox(compositor, "shell-gesture", &rect,
-                LUMO_HITBOX_EDGE_GESTURE, true, true);
+            rect.x = 0;
+            rect.y = 0;
+            rect.width = 0;
+            rect.height = 0;
+            if (lumo_shell_gesture_handle_rect((uint32_t)workarea.width,
+                    shell_config.height, &rect)) {
+                rect.x += workarea.x;
+                rect.y += workarea.y + workarea.height -
+                    (int)shell_config.height;
+                lumo_protocol_register_hitbox(compositor, "shell-gesture",
+                    &rect, LUMO_HITBOX_EDGE_GESTURE, true, true);
+            }
         }
     }
 

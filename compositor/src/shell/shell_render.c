@@ -461,7 +461,10 @@ static void lumo_draw_launcher(
 
         tile_rect.y += slide_y;
         cx = tile_rect.x + tile_rect.width / 2;
-        cy = tile_rect.y;
+        cy = tile_rect.y +
+            ((tile_rect.height - (56 + 8 + 20)) > 0
+                ? (tile_rect.height - (56 + 8 + 20)) / 2
+                : 0);
         active = active_target != NULL &&
             active_target->kind == LUMO_SHELL_TARGET_LAUNCHER_TILE &&
             active_target->index == tile_index;
@@ -608,7 +611,7 @@ static void lumo_draw_launcher(
         }
 
         label_rect.x = tile_rect.x;
-        label_rect.y = tile_rect.y + 56 + 8;
+        label_rect.y = cy + 56 + 8;
         label_rect.width = tile_rect.width;
         label_rect.height = 20;
         lumo_draw_text_centered(pixels, width, height, &label_rect, 2,

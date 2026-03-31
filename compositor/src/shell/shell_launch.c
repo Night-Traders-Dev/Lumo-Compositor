@@ -1101,8 +1101,20 @@ static void lumo_shell_bridge_handle_request_frame(
         case LUMO_SHELL_TARGET_GESTURE_HANDLE:
             wlr_log(WLR_INFO,
                 "shell: activate_target gesture handle requested");
-            lumo_protocol_set_launcher_visible(client->compositor,
-                !client->compositor->launcher_visible);
+            if (client->compositor->time_panel_visible) {
+                lumo_protocol_set_time_panel_visible(client->compositor,
+                    false);
+            }
+            if (client->compositor->quick_settings_visible) {
+                lumo_protocol_set_quick_settings_visible(client->compositor,
+                    false);
+            }
+            if (client->compositor->keyboard_visible) {
+                lumo_protocol_set_keyboard_visible(client->compositor, false);
+            }
+            lumo_protocol_set_launcher_visible(client->compositor, true);
+            lumo_protocol_set_scrim_state(client->compositor,
+                LUMO_SCRIM_MODAL);
             handled = true;
             break;
         case LUMO_SHELL_TARGET_OSK_KEY:

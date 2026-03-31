@@ -5,8 +5,8 @@
 #include <stddef.h>
 #include <string.h>
 
-static const uint32_t lumo_shell_launcher_columns = 3;
-static const uint32_t lumo_shell_launcher_rows = 4;
+static const uint32_t lumo_shell_launcher_columns = 4;
+static const uint32_t lumo_shell_launcher_rows = 3;
 static const char *const lumo_shell_launcher_labels[] = {
     "PHONE",
     "TERMINAL",
@@ -163,10 +163,15 @@ static bool lumo_shell_launcher_visible_tile_geometry(
 ) {
     struct lumo_rect panel;
     struct lumo_rect search_bar;
-    uint32_t cell_h;
+    struct lumo_rect grid_rect;
+    int bottom_gutter;
     int grid_width;
-    int grid_x;
+    int grid_top;
+    int grid_bottom;
+    int available_height;
+    int grid_height;
     int cell_width;
+    int cell_height;
 
     if (rect == NULL || visible_index >= lumo_shell_launcher_columns *
             lumo_shell_launcher_rows ||
@@ -182,20 +187,43 @@ static bool lumo_shell_launcher_visible_tile_geometry(
         return false;
     }
 
-    cell_width = grid_width / 4;
+    cell_width = grid_width / (int)lumo_shell_launcher_columns;
     if (cell_width <= 0) {
         return false;
     }
 
-    grid_width = cell_width * 4;
-    grid_x = panel.x + (panel.width - grid_width) / 2;
-    cell_h = 56 + 56;
+    grid_width = cell_width * (int)lumo_shell_launcher_columns;
+    grid_top = search_bar.y + search_bar.height + 28;
+    bottom_gutter = (int)lumo_shell_clamp_u32(output_height / 24, 20, 40);
+    grid_bottom = panel.y + panel.height - bottom_gutter;
+    if (grid_bottom <= grid_top) {
+        return false;
+    }
 
-    rect->x = grid_x + (int)(visible_index % 4u) * cell_width;
-    rect->y = search_bar.y + search_bar.height + 16 +
-        (int)(visible_index / 4u) * (int)cell_h;
+    available_height = grid_bottom - grid_top;
+    cell_height = available_height / (int)lumo_shell_launcher_rows;
+    if (cell_height <= 0) {
+        return false;
+    }
+    cell_height = (int)lumo_shell_clamp_u32((uint32_t)cell_height, 112, 240);
+    grid_height = cell_height * (int)lumo_shell_launcher_rows;
+    if (grid_height > available_height) {
+        cell_height = available_height / (int)lumo_shell_launcher_rows;
+        if (cell_height <= 0) {
+            return false;
+        }
+        grid_height = cell_height * (int)lumo_shell_launcher_rows;
+    }
+
+    grid_rect.x = panel.x + (panel.width - grid_width) / 2;
+    grid_rect.y = grid_top + (available_height - grid_height) / 2;
+
+    rect->x = grid_rect.x +
+        (int)(visible_index % lumo_shell_launcher_columns) * cell_width;
+    rect->y = grid_rect.y +
+        (int)(visible_index / lumo_shell_launcher_columns) * cell_height;
     rect->width = cell_width;
-    rect->height = (int)cell_h;
+    rect->height = cell_height;
     return true;
 }
 
