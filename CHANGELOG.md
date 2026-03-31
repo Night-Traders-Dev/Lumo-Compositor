@@ -21,6 +21,13 @@ All notable changes to this project will be documented in this file.
 - Fixed OSK not auto-showing when tapping input fields in Chromium: the `text_input_commit` handler now directly shows the keyboard when `enabled=true`, bypassing the `refresh_keyboard_visibility` list scan that failed to match the text-input resource.
 - Fixed top-of-screen controls (tab close button, menus) in apps being captured by the system top-edge gesture zone. Top-edge touches now pass through to the focused app when no panels are open.
 
+### Chromium Source & Lumo Theme
+
+- Added Chromium v122.0.6261.128 as a git submodule (shallow clone) under `chromium/` for source-level UI customization.
+- Created `lumo_color_mixer.cc` — a Chromium color mixer that overrides 40+ color IDs with the Lumo palette (Ubuntu Orange #E95420, Aubergine #2C001E, dark surfaces, warm secondary text).
+- Wired Lumo mixer into `chrome_color_mixers.cc` after all standard mixers so Lumo colors take precedence over Chrome defaults.
+- Registered in `BUILD.gn` for the color mixers source set.
+
 ### Top Panel Close Flash Fix
 
 - Fixed app drawer briefly flashing when closing a top-bar panel (quick settings or time panel). The launcher surface was rendering the app drawer grid during its close animation instead of clearing to transparent. Now skips drawer rendering when `compositor_launcher_visible` is false.

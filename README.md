@@ -17,6 +17,9 @@ leans toward:
   The compositor sources are grouped by category under `src/apps`, `src/core`,
   `src/protocol`, `src/shell`, and `src/tools`, with matching grouped test
   directories.
+- `chromium/` is a git submodule containing Chromium v122.0.6261.128 source
+  with Lumo theme modifications (color mixer, touch optimizations).
+  Clone with `git submodule update --init --depth 1` to fetch.
 - `docs/` contains the architecture and migration notes.
 - `Design.md` captures the touch-first shell direction and visual language.
 - `CHANGELOG.md` tracks semver-style progress starting at `0.0.1`.
