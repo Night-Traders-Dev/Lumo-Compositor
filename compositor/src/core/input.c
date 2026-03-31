@@ -2046,6 +2046,35 @@ static void lumo_input_touch_down(
         }
     }
 
+    /* tap outside the launcher panel to dismiss the app drawer */
+    if (compositor->launcher_visible) {
+        bool in_launcher = false;
+        struct lumo_rect launcher_rect = {0};
+        struct lumo_output *o = lumo_input_first_output(compositor);
+
+        if (o != NULL && o->wlr_output != NULL) {
+            int ow = 0, oh = 0;
+
+            wlr_output_effective_resolution(o->wlr_output, &ow, &oh);
+
+            if (lumo_shell_launcher_panel_rect((uint32_t)ow,
+                    (uint32_t)oh, &launcher_rect) &&
+                    lumo_rect_contains(&launcher_rect,
+                        point->lx, point->ly)) {
+                in_launcher = true;
+            }
+        }
+
+        if (!in_launcher) {
+            lumo_protocol_set_launcher_visible(compositor, false);
+            wlr_log(WLR_INFO,
+                "input: touch %d dismissed launcher (outside tap)",
+                point->touch_id);
+            lumo_input_remove_touch_point(compositor, point);
+            return;
+        }
+    }
+
     lumo_input_touch_sample_append(point, LUMO_TOUCH_SAMPLE_DOWN,
         event->time_msec, point->lx, point->ly, point->sx, point->sy);
     lumo_input_touch_point_bind_surface(point, target.surface);

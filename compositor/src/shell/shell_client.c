@@ -414,6 +414,8 @@ void lumo_shell_client_tick_animation(struct lumo_shell_client *client) {
     if (lumo_now_msec() >= client->animation_started_msec +
             client->animation_duration_msec) {
         client->animation_active = false;
+        if (!client->target_visible)
+            lumo_shell_client_finish_hide_if_needed(client);
     }
     (void)lumo_shell_client_redraw(client);
 }
