@@ -276,14 +276,12 @@ static void lumo_shell_client_update_input_region(
         if (!client->compositor_launcher_visible &&
                 (client->compositor_quick_settings_visible ||
                     client->compositor_time_panel_visible)) {
-            int bar_h = 48;
-            int pw = (int)width / 2;
-            if (pw < 200) pw = 200;
-            if (client->compositor_quick_settings_visible)
-                wl_region_add(region, (int)width - pw - 8, bar_h,
-                    pw + 8, (int)height - bar_h);
-            if (client->compositor_time_panel_visible)
-                wl_region_add(region, 0, bar_h, pw + 16, 200);
+            if (client->compositor_quick_settings_visible &&
+                    lumo_shell_quick_settings_panel_rect(width, height, &rect))
+                wl_region_add(region, rect.x, rect.y, rect.width, rect.height);
+            if (client->compositor_time_panel_visible &&
+                    lumo_shell_time_panel_rect(width, height, &rect))
+                wl_region_add(region, rect.x, rect.y, rect.width, rect.height);
         }
         break;
     case LUMO_SHELL_MODE_OSK:

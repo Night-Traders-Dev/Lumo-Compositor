@@ -1903,29 +1903,25 @@ static void lumo_input_touch_down(
 
     if (compositor->quick_settings_visible || compositor->time_panel_visible) {
         bool in_panel = false;
+        struct lumo_rect panel_rect = {0};
+        struct lumo_output *o = lumo_input_first_output(compositor);
 
-        if (compositor->quick_settings_visible) {
-            struct lumo_output *o = lumo_input_first_output(compositor);
-            if (o != NULL && o->wlr_output != NULL) {
-                int ow = 0, oh = 0;
-                wlr_output_effective_resolution(o->wlr_output, &ow, &oh);
-                int pw = ow / 2;
-                if (point->lx >= ow - pw - 8 && point->ly >= 48 &&
-                        point->ly < oh) {
-                    in_panel = true;
-                }
+        if (o != NULL && o->wlr_output != NULL) {
+            int ow = 0, oh = 0;
+
+            wlr_output_effective_resolution(o->wlr_output, &ow, &oh);
+
+            if (compositor->quick_settings_visible &&
+                    lumo_shell_quick_settings_panel_rect((uint32_t)ow,
+                        (uint32_t)oh, &panel_rect) &&
+                    lumo_rect_contains(&panel_rect, point->lx, point->ly)) {
+                in_panel = true;
             }
-        }
-        if (compositor->time_panel_visible) {
-            struct lumo_output *o = lumo_input_first_output(compositor);
-            if (o != NULL && o->wlr_output != NULL) {
-                int ow = 0, oh = 0;
-                wlr_output_effective_resolution(o->wlr_output, &ow, &oh);
-                int pw = ow / 2;
-                if (point->lx >= 0 && point->lx <= pw + 16 &&
-                        point->ly >= 48 && point->ly < 250) {
-                    in_panel = true;
-                }
+            if (!in_panel && compositor->time_panel_visible &&
+                    lumo_shell_time_panel_rect((uint32_t)ow,
+                        (uint32_t)oh, &panel_rect) &&
+                    lumo_rect_contains(&panel_rect, point->lx, point->ly)) {
+                in_panel = true;
             }
         }
 

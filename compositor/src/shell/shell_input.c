@@ -49,8 +49,12 @@ void lumo_shell_client_note_target(
         return;
     }
 
-    if (lumo_shell_target_for_mode(client->mode, client->configured_width,
-            client->configured_height, x, y, &target)) {
+    if (lumo_shell_target_for_mode_with_query(client->mode,
+            client->configured_width, client->configured_height,
+            client->mode == LUMO_SHELL_MODE_LAUNCHER
+                ? client->toast_message
+                : NULL,
+            x, y, &target)) {
         fprintf(stderr, "lumo-shell: note_target %s %s idx=%u at %.0f,%.0f "
             "in %ux%u\n",
             lumo_shell_mode_name(client->mode),
@@ -74,25 +78,25 @@ int lumo_shell_status_button_hit(
     double x,
     double y
 ) {
-    int panel_w, bar_h, panel_x;
+    struct lumo_rect panel = {0};
+    int bar_h;
     struct lumo_rect button_rect = {0};
 
-    if (client == NULL || !client->compositor_quick_settings_visible) {
+    if (client == NULL || !client->compositor_quick_settings_visible ||
+            !lumo_shell_quick_settings_panel_rect(client->configured_width,
+                client->configured_height, &panel)) {
         return 0;
     }
 
-    panel_w = (int)client->configured_width / 2;
-    if (panel_w < 200) panel_w = 200;
     bar_h = 48; /* must match drawing code bar_h */
-    panel_x = (int)client->configured_width - panel_w - 8;
 
     /* layout offsets — must match the drawing code above:
      * title(12) + sep(24) + wifi(10+22) + display(22) + session(22) +
      * device(22) + sep(28) + vol_label(12) + vol_track(20) +
      * bri_label(32) + bri_track(28) + sep(28) + buttons(10) */
     int base_y = bar_h + 4;
-    int track_x = panel_x + 16;
-    int track_w = panel_w - 32;
+    int track_x = panel.x + 16;
+    int track_w = panel.width - 32;
 
     /* volume slider zone: row starts at base + 12+24+10+22+22+22+28+12 */
     int vol_y = base_y + 12 + 24 + 10 + 22 + 22 + 22 + 28 + 6;
@@ -135,12 +139,20 @@ uint32_t lumo_shell_slider_pct_from_touch(
     const struct lumo_shell_client *client,
     double x
 ) {
-    int panel_w = (int)client->configured_width / 2;
-    if (panel_w < 200) panel_w = 200;
-    int panel_x = (int)client->configured_width - panel_w - 8;
-    int track_x = panel_x + 16;
-    int track_w = panel_w - 32;
-    int rel = (int)x - track_x;
+    struct lumo_rect panel = {0};
+    int track_x;
+    int track_w;
+    int rel;
+
+    if (client == NULL ||
+            !lumo_shell_quick_settings_panel_rect(client->configured_width,
+                client->configured_height, &panel)) {
+        return 0;
+    }
+
+    track_x = panel.x + 16;
+    track_w = panel.width - 32;
+    rel = (int)x - track_x;
     if (rel < 0) rel = 0;
     if (rel > track_w) rel = track_w;
     return (uint32_t)(rel * 100 / track_w);
@@ -430,7 +442,9 @@ static void lumo_shell_touch_handle_up(
             if (lumo_shell_protocol_frame_init(&frame,
                     LUMO_SHELL_PROTOCOL_FRAME_REQUEST, "activate_target",
                     client->next_request_id++)) {
-                lumo_shell_protocol_frame_add_string(&frame, "kind", "tile");
+                lumo_shell_protocol_frame_add_string(&frame, "kind",
+                    lumo_shell_target_kind_name(
+                        LUMO_SHELL_TARGET_LAUNCHER_TILE));
                 lumo_shell_protocol_frame_add_u32(&frame, "index", 11);
                 lumo_shell_protocol_frame_add_string(&frame, "mode",
                     "launcher");
@@ -443,17 +457,22 @@ static void lumo_shell_touch_handle_up(
 
     /* search bar tap — show keyboard when tapping search area */
     if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
-            client->compositor_launcher_visible &&
-            client->pointer_y >= 54.0 && client->pointer_y < 94.0) {
-        /* tap on search bar — request keyboard */
-        struct lumo_shell_protocol_frame kf;
-        if (lumo_shell_protocol_frame_init(&kf,
-                LUMO_SHELL_PROTOCOL_FRAME_REQUEST, "set_keyboard_visible",
-                client->next_request_id++)) {
-            lumo_shell_protocol_frame_add_bool(&kf, "visible", true);
-            (void)lumo_shell_client_send_frame(client, &kf);
+            client->compositor_launcher_visible) {
+        struct lumo_rect search_rect = {0};
+
+        if (lumo_shell_launcher_search_bar_rect(client->configured_width,
+                client->configured_height, &search_rect) &&
+                lumo_rect_contains(&search_rect, client->pointer_x,
+                    client->pointer_y)) {
+            struct lumo_shell_protocol_frame kf;
+            if (lumo_shell_protocol_frame_init(&kf,
+                    LUMO_SHELL_PROTOCOL_FRAME_REQUEST, "set_keyboard_visible",
+                    client->next_request_id++)) {
+                lumo_shell_protocol_frame_add_bool(&kf, "visible", true);
+                (void)lumo_shell_client_send_frame(client, &kf);
+            }
+            return;
         }
-        return;
     }
 
     if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
@@ -486,8 +505,10 @@ static void lumo_shell_touch_handle_motion(
         return;
     }
 
-    lumo_shell_client_note_target(client, wl_fixed_to_double(x),
-        wl_fixed_to_double(y));
+    client->pointer_x = wl_fixed_to_double(x);
+    client->pointer_y = wl_fixed_to_double(y);
+    lumo_shell_client_note_target(client, client->pointer_x,
+        client->pointer_y);
 }
 
 static void lumo_shell_touch_handle_frame(

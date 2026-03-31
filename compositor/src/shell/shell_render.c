@@ -239,12 +239,15 @@ static void lumo_draw_launcher(
         lumo_argb(0xFF, 0xE9, 0x54, 0x20),
         lumo_argb(0xFF, 0x77, 0x21, 0x6F),
     };
-    struct lumo_rect panel_rect;
-    struct lumo_rect accent_rect;
-    struct lumo_rect title_badge;
+    struct lumo_rect panel_rect = {0};
+    struct lumo_rect accent_rect = {0};
+    struct lumo_rect title_badge = {0};
     struct lumo_rect close_rect = {0};
     struct lumo_rect close_label_rect = {0};
-    size_t tile_count = lumo_shell_launcher_tile_count();
+    struct lumo_rect search_rect = {0};
+    const char *query = client != NULL ? client->toast_message : NULL;
+    bool has_query = query != NULL && query[0] != '\0' &&
+        strcmp(query, "-") != 0;
     int slide_y;
 
     if (client != NULL && client->compositor_touch_audit_active) {
@@ -270,11 +273,10 @@ static void lumo_draw_launcher(
             uint32_t tp_label = lumo_theme.text_secondary;
             uint32_t tp_text = lumo_theme.text_primary;
             uint32_t tp_accent = lumo_theme.accent;
-            struct lumo_rect tp;
+            struct lumo_rect tp = {0};
             time_t now = time(NULL);
             struct tm tm_now = {0};
             char tbuf[16], dbuf[32], wbuf[16];
-            int pw = (int)(width / 2);
 
             localtime_r(&now, &tm_now);
             strftime(tbuf, sizeof(tbuf), "%H:%M", &tm_now);
@@ -282,11 +284,9 @@ static void lumo_draw_launcher(
             snprintf(wbuf, sizeof(wbuf), "WEEK %d",
                 (tm_now.tm_yday / 7) + 1);
 
-            if (pw < 240) pw = 240;
-            tp.x = 8;
-            tp.y = bar_h + 4;
-            tp.width = pw;
-            tp.height = 220;
+            if (!lumo_shell_time_panel_rect(width, height, &tp)) {
+                return;
+            }
             lumo_fill_rounded_rect(pixels, width, height, &tp, 18, tp_bg);
             lumo_draw_outline(pixels, width, height, &tp, 1, tp_stroke);
 
@@ -387,118 +387,110 @@ static void lumo_draw_launcher(
         lumo_fill_rounded_rect(pixels, width, height, &full, 0, overlay);
     }
 
-    (void)panel_top;
-    (void)panel_bottom;
-    (void)panel_stroke;
-    (void)panel_rect;
-    (void)title_badge;
+    if (!lumo_shell_launcher_panel_rect(width, height, &panel_rect)) {
+        return;
+    }
+    if (!lumo_shell_launcher_search_bar_rect(width, height, &search_rect)) {
+        return;
+    }
 
-    (void)close_fill;
-    (void)close_label;
-    (void)close_rect;
-    (void)close_label_rect;
-    (void)accent_rect;
+    panel_rect.y += slide_y;
+    search_rect.y += slide_y;
+    accent_rect.x = panel_rect.x + 24;
+    accent_rect.y = panel_rect.y + 18;
+    accent_rect.width = 56;
+    accent_rect.height = 6;
+    title_badge.x = panel_rect.x + 24;
+    title_badge.y = panel_rect.y + 32;
+    title_badge.width = 220;
+    title_badge.height = 18;
+    lumo_fill_vertical_gradient(pixels, width, height, &panel_rect,
+        panel_top, panel_bottom);
+    lumo_draw_outline(pixels, width, height, &panel_rect, 1, panel_stroke);
+    lumo_fill_rounded_rect(pixels, width, height, &accent_rect, 3, highlight);
+    lumo_draw_text(pixels, width, height, title_badge.x, title_badge.y, 2,
+        title_color, "APPLICATIONS");
 
-    /* GNOME 3.x style app grid with search bar */
-    {
-        /* 4-column grid — spread across full width */
-        int icon_size = 56;
-        int cols = 4;
-        int cell_w = ((int)width - 48) / cols;
-        int cell_h = icon_size + 56;
-        int total_rows = ((int)tile_count + cols - 1) / cols;
-        int grid_w = cols * cell_w;
-        int grid_x_start = ((int)width - grid_w) / 2;
-        int search_bar_h = 40;
-        int top_pad = 60 + search_bar_h + 16;
-        int grid_y_start = top_pad + slide_y;
+    if (lumo_shell_launcher_close_rect(width, height, &close_rect)) {
+        bool close_active = active_target != NULL &&
+            active_target->kind == LUMO_SHELL_TARGET_LAUNCHER_CLOSE;
 
-        /* search bar — shows query text from toast_message */
-        bool has_query = client != NULL &&
-            client->toast_message[0] != '\0' &&
-            strcmp(client->toast_message, "-") != 0;
-        {
-            int bar_w = (int)width * 2 / 5;
-            if (bar_w < 280) bar_w = 280;
-            if (bar_w > 500) bar_w = 500;
-            int bar_x = ((int)width - bar_w) / 2;
-            int bar_y = 54 + slide_y;
-            struct lumo_rect search_bg = {bar_x, bar_y, bar_w, search_bar_h};
-            lumo_fill_rounded_rect(pixels, width, height, &search_bg, 20,
-                has_query ? lumo_theme.panel_bg : lumo_theme.tile_fill);
-            lumo_draw_outline(pixels, width, height, &search_bg, 1,
-                has_query ? lumo_theme.accent : lumo_theme.tile_stroke);
-            if (has_query) {
-                char display[40];
-                snprintf(display, sizeof(display), "> %s",
-                    client->toast_message);
-                lumo_draw_text_centered(pixels, width, height, &search_bg,
-                    2, lumo_theme.text_primary, display);
-            } else {
-                lumo_draw_text_centered(pixels, width, height, &search_bg,
-                    2, lumo_theme.text_secondary, "TYPE TO SEARCH...");
-            }
+        close_rect.y += slide_y;
+        close_label_rect = close_rect;
+        lumo_fill_rounded_rect(pixels, width, height, &close_rect, 14,
+            close_active ? highlight : close_fill);
+        lumo_draw_outline(pixels, width, height, &close_rect, 1,
+            close_active ? highlight : panel_stroke);
+    lumo_draw_text_centered(pixels, width, height, &close_label_rect, 3,
+            close_label, "X");
+    }
+
+    lumo_fill_rounded_rect(pixels, width, height, &search_rect, 20,
+        has_query ? lumo_theme.panel_bg : lumo_theme.tile_fill);
+    lumo_draw_outline(pixels, width, height, &search_rect, 1,
+        has_query ? highlight : lumo_theme.tile_stroke);
+    if (has_query) {
+        char display[40];
+
+        snprintf(display, sizeof(display), "> %.36s", query);
+        lumo_draw_text_centered(pixels, width, height, &search_rect, 2,
+            title_color, display);
+    } else {
+        lumo_draw_text_centered(pixels, width, height, &search_rect, 2,
+            subtitle_color, "TYPE TO SEARCH...");
+    }
+
+    for (uint32_t visible_index = 0;
+            visible_index < (uint32_t)lumo_shell_launcher_filtered_tile_count(
+                query);
+            visible_index++) {
+        struct lumo_rect tile_rect = {0};
+        struct lumo_rect icon_rect = {0};
+        struct lumo_rect label_rect = {0};
+        uint32_t tile_index = 0;
+        int cx;
+        int cy;
+        bool active;
+        const char *label;
+        uint32_t accent;
+
+        if (!lumo_shell_launcher_filtered_tile_rect(width, height, query,
+                visible_index, &tile_index, &tile_rect)) {
+            continue;
         }
 
-        /* build filtered tile list */
-        uint32_t visible_tiles[12];
-        uint32_t visible_count = 0;
-        for (uint32_t i = 0; i < tile_count; i++) {
-            const char *name = lumo_shell_launcher_tile_label(i);
-            if (!has_query || name == NULL) {
-                visible_tiles[visible_count++] = i;
-                continue;
-            }
-            /* case-insensitive substring match */
-            bool match = false;
-            for (int j = 0; name[j] && !match; j++) {
-                bool partial = true;
-                for (int k = 0; client->toast_message[k] && partial; k++) {
-                    char a = name[j + k];
-                    char b = client->toast_message[k];
-                    if (a >= 'a' && a <= 'z') a -= 32;
-                    if (b >= 'a' && b <= 'z') b -= 32;
-                    if (a != b || a == '\0') partial = false;
-                }
-                if (partial) match = true;
-            }
-            if (match) visible_tiles[visible_count++] = i;
-        }
-
-    for (uint32_t vi = 0; vi < visible_count; vi++) {
-        uint32_t tile_index = visible_tiles[vi];
-        int col = (int)vi % cols;
-        int row = (int)vi / cols;
-        int cx = grid_x_start + col * cell_w + cell_w / 2;
-        int cy = grid_y_start + row * cell_h;
-        struct lumo_rect tile_rect;
-        struct lumo_rect icon_rect;
-        struct lumo_rect label_rect;
-        bool active = active_target != NULL &&
+        tile_rect.y += slide_y;
+        cx = tile_rect.x + tile_rect.width / 2;
+        cy = tile_rect.y;
+        active = active_target != NULL &&
             active_target->kind == LUMO_SHELL_TARGET_LAUNCHER_TILE &&
             active_target->index == tile_index;
-        const char *label = lumo_shell_launcher_tile_label(tile_index);
-        uint32_t accent = accent_colors[tile_index %
+        label = lumo_shell_launcher_tile_label(tile_index);
+        accent = accent_colors[tile_index %
             (sizeof(accent_colors) / sizeof(accent_colors[0]))];
 
-        tile_rect.x = cx - cell_w / 2;
-        tile_rect.y = cy;
-        tile_rect.width = cell_w;
-        tile_rect.height = cell_h;
+        if (active) {
+            lumo_fill_rounded_rect(pixels, width, height, &tile_rect, 18,
+                lumo_argb(0x28,
+                    (uint8_t)((highlight >> 16) & 0xFF),
+                    (uint8_t)((highlight >> 8) & 0xFF),
+                    (uint8_t)(highlight & 0xFF)));
+            lumo_draw_outline(pixels, width, height, &tile_rect, 1, highlight);
+        }
 
-        /* icon background — centered rounded square */
-        icon_rect.x = cx - icon_size / 2;
+        icon_rect.x = cx - 28;
         icon_rect.y = cy;
-        icon_rect.width = icon_size;
-        icon_rect.height = icon_size;
+        icon_rect.width = 56;
+        icon_rect.height = 56;
         lumo_fill_rounded_rect(pixels, width, height, &icon_rect, 16,
             active ? highlight : tile_fill);
+        lumo_draw_outline(pixels, width, height, &icon_rect, 1, tile_stroke);
 
-        /* inner icon drawing area — centered in the icon background */
         {
             int inner = 36;
+
             icon_rect.x = cx - inner / 2;
-            icon_rect.y = cy + (icon_size - inner) / 2;
+            icon_rect.y = cy + (56 - inner) / 2;
             icon_rect.width = inner;
             icon_rect.height = inner;
         }
@@ -511,116 +503,118 @@ static void lumo_draw_launcher(
 
             switch (tile_index) {
             case 0: /* Phone - handset */
-                lumo_fill_rect(pixels, width, height, ix+10, iy, 8, 6, ic);
-                lumo_fill_rect(pixels, width, height, ix+8, iy+6, 12, 2, ic);
-                lumo_fill_rect(pixels, width, height, ix+12, iy+8, 4, 14, ic);
-                lumo_fill_rect(pixels, width, height, ix+8, iy+22, 12, 2, ic);
-                lumo_fill_rect(pixels, width, height, ix+10, iy+24, 8, 4, ic);
+                lumo_fill_rect(pixels, width, height, ix + 10, iy, 8, 6, ic);
+                lumo_fill_rect(pixels, width, height, ix + 8, iy + 6, 12, 2, ic);
+                lumo_fill_rect(pixels, width, height, ix + 12, iy + 8, 4, 14, ic);
+                lumo_fill_rect(pixels, width, height, ix + 8, iy + 22, 12, 2, ic);
+                lumo_fill_rect(pixels, width, height, ix + 10, iy + 24, 8, 4, ic);
                 break;
             case 1: /* Terminal - prompt */
                 lumo_fill_rect(pixels, width, height, ix, iy, isz, 2, ic);
                 lumo_fill_rect(pixels, width, height, ix, iy, 2, isz, ic);
-                lumo_fill_rect(pixels, width, height, ix, iy+isz-2, isz, 2, ic);
-                lumo_fill_rect(pixels, width, height, ix+isz-2, iy, 2, isz, ic);
-                lumo_fill_rect(pixels, width, height, ix+6, iy+10, 4, 4, ic);
-                lumo_fill_rect(pixels, width, height, ix+10, iy+14, 4, 4, ic);
-                lumo_fill_rect(pixels, width, height, ix+16, iy+20, 8, 2, ic);
+                lumo_fill_rect(pixels, width, height, ix, iy + isz - 2, isz, 2, ic);
+                lumo_fill_rect(pixels, width, height, ix + isz - 2, iy, 2, isz, ic);
+                lumo_fill_rect(pixels, width, height, ix + 6, iy + 10, 4, 4, ic);
+                lumo_fill_rect(pixels, width, height, ix + 10, iy + 14, 4, 4, ic);
+                lumo_fill_rect(pixels, width, height, ix + 16, iy + 20, 8, 2, ic);
                 break;
             case 2: /* Browser - globe */
                 lumo_fill_rounded_rect(pixels, width, height, &icon_rect, 22, ic);
-                lumo_fill_rect(pixels, width, height, ix+12, iy, 4, isz, lumo_argb(0xFF, 0x1E, 0x0A, 0x1A));
-                lumo_fill_rect(pixels, width, height, ix, iy+12, isz, 4, lumo_argb(0xFF, 0x1E, 0x0A, 0x1A));
+                lumo_fill_rect(pixels, width, height, ix + 12, iy, 4, isz,
+                    lumo_argb(0xFF, 0x1E, 0x0A, 0x1A));
+                lumo_fill_rect(pixels, width, height, ix, iy + 12, isz, 4,
+                    lumo_argb(0xFF, 0x1E, 0x0A, 0x1A));
                 break;
             case 3: /* Camera - lens */
-                lumo_fill_rect(pixels, width, height, ix+4, iy, isz-8, 4, ic);
-                lumo_fill_rect(pixels, width, height, ix, iy+4, isz, isz-4, ic);
+                lumo_fill_rect(pixels, width, height, ix + 4, iy, isz - 8, 4, ic);
+                lumo_fill_rect(pixels, width, height, ix, iy + 4, isz, isz - 4, ic);
                 {
-                    struct lumo_rect lens = {ix+8, iy+10, 12, 12};
+                    struct lumo_rect lens = {ix + 8, iy + 10, 12, 12};
                     lumo_fill_rounded_rect(pixels, width, height, &lens, 6,
                         lumo_argb(0xFF, 0x1E, 0x0A, 0x1A));
                 }
                 break;
             case 4: /* Maps - pin */
-                lumo_fill_rect(pixels, width, height, ix+10, iy+2, 8, 14, ic);
-                lumo_fill_rect(pixels, width, height, ix+8, iy+4, 12, 10, ic);
-                lumo_fill_rect(pixels, width, height, ix+12, iy+16, 4, 10, ic);
+                lumo_fill_rect(pixels, width, height, ix + 10, iy + 2, 8, 14, ic);
+                lumo_fill_rect(pixels, width, height, ix + 8, iy + 4, 12, 10, ic);
+                lumo_fill_rect(pixels, width, height, ix + 12, iy + 16, 4, 10, ic);
                 break;
             case 5: /* Music - note */
-                lumo_fill_rect(pixels, width, height, ix+18, iy+2, 4, 20, ic);
-                lumo_fill_rect(pixels, width, height, ix+8, iy+4, 14, 4, ic);
-                lumo_fill_rect(pixels, width, height, ix+4, iy+6, 4, 18, ic);
+                lumo_fill_rect(pixels, width, height, ix + 18, iy + 2, 4, 20, ic);
+                lumo_fill_rect(pixels, width, height, ix + 8, iy + 4, 14, 4, ic);
+                lumo_fill_rect(pixels, width, height, ix + 4, iy + 6, 4, 18, ic);
                 {
-                    struct lumo_rect n1 = {ix, iy+20, 10, 8};
-                    struct lumo_rect n2 = {ix+14, iy+18, 10, 8};
+                    struct lumo_rect n1 = {ix, iy + 20, 10, 8};
+                    struct lumo_rect n2 = {ix + 14, iy + 18, 10, 8};
                     lumo_fill_rounded_rect(pixels, width, height, &n1, 4, ic);
                     lumo_fill_rounded_rect(pixels, width, height, &n2, 4, ic);
                 }
                 break;
             case 6: /* Photos - mountain */
-                lumo_fill_rect(pixels, width, height, ix, iy+isz-8, isz, 8, ic);
-                lumo_fill_rect(pixels, width, height, ix+4, iy+12, 4, 8, ic);
-                lumo_fill_rect(pixels, width, height, ix+8, iy+8, 4, 12, ic);
-                lumo_fill_rect(pixels, width, height, ix+12, iy+14, 4, 6, ic);
-                lumo_fill_rect(pixels, width, height, ix+16, iy+6, 4, 14, ic);
-                lumo_fill_rect(pixels, width, height, ix+20, iy+10, 4, 10, ic);
+                lumo_fill_rect(pixels, width, height, ix, iy + isz - 8, isz, 8, ic);
+                lumo_fill_rect(pixels, width, height, ix + 4, iy + 12, 4, 8, ic);
+                lumo_fill_rect(pixels, width, height, ix + 8, iy + 8, 4, 12, ic);
+                lumo_fill_rect(pixels, width, height, ix + 12, iy + 14, 4, 6, ic);
+                lumo_fill_rect(pixels, width, height, ix + 16, iy + 6, 4, 14, ic);
+                lumo_fill_rect(pixels, width, height, ix + 20, iy + 10, 4, 10, ic);
                 break;
             case 7: /* Videos - play triangle */
-                lumo_fill_rect(pixels, width, height, ix+8, iy+4, 4, isz-8, ic);
-                lumo_fill_rect(pixels, width, height, ix+12, iy+6, 4, isz-12, ic);
-                lumo_fill_rect(pixels, width, height, ix+16, iy+8, 4, isz-16, ic);
-                lumo_fill_rect(pixels, width, height, ix+20, iy+10, 4, isz-20, ic);
+                lumo_fill_rect(pixels, width, height, ix + 8, iy + 4, 4, isz - 8, ic);
+                lumo_fill_rect(pixels, width, height, ix + 12, iy + 6, 4, isz - 12, ic);
+                lumo_fill_rect(pixels, width, height, ix + 16, iy + 8, 4, isz - 16, ic);
+                lumo_fill_rect(pixels, width, height, ix + 20, iy + 10, 4, isz - 20, ic);
                 break;
             case 8: /* Clock - clock face */
                 lumo_fill_rounded_rect(pixels, width, height, &icon_rect, 22, ic);
                 {
-                    struct lumo_rect inner = {ix+4, iy+4, isz-8, isz-8};
+                    struct lumo_rect inner = {ix + 4, iy + 4, isz - 8, isz - 8};
                     lumo_fill_rounded_rect(pixels, width, height, &inner, 10,
                         lumo_argb(0xFF, 0x1E, 0x0A, 0x1A));
                 }
-                lumo_fill_rect(pixels, width, height, ix+13, iy+6, 2, 10, ic);
-                lumo_fill_rect(pixels, width, height, ix+13, iy+13, 8, 2, ic);
+                lumo_fill_rect(pixels, width, height, ix + 13, iy + 6, 2, 10, ic);
+                lumo_fill_rect(pixels, width, height, ix + 13, iy + 13, 8, 2, ic);
                 break;
             case 9: /* Notes - lines */
-                lumo_fill_rect(pixels, width, height, ix+2, iy+4, isz-4, 3, ic);
-                lumo_fill_rect(pixels, width, height, ix+2, iy+10, isz-8, 3, ic);
-                lumo_fill_rect(pixels, width, height, ix+2, iy+16, isz-4, 3, ic);
-                lumo_fill_rect(pixels, width, height, ix+2, iy+22, isz-12, 3, ic);
+                lumo_fill_rect(pixels, width, height, ix + 2, iy + 4, isz - 4, 3, ic);
+                lumo_fill_rect(pixels, width, height, ix + 2, iy + 10, isz - 8, 3, ic);
+                lumo_fill_rect(pixels, width, height, ix + 2, iy + 16, isz - 4, 3, ic);
+                lumo_fill_rect(pixels, width, height, ix + 2, iy + 22, isz - 12, 3, ic);
                 break;
             case 10: /* Files - folder */
-                lumo_fill_rect(pixels, width, height, ix+2, iy+4, 10, 4, ic);
-                lumo_fill_rect(pixels, width, height, ix+2, iy+8, isz-4, isz-12, ic);
-                lumo_fill_rect(pixels, width, height, ix+2, iy+8, isz-4, 4,
+                lumo_fill_rect(pixels, width, height, ix + 2, iy + 4, 10, 4, ic);
+                lumo_fill_rect(pixels, width, height, ix + 2, iy + 8, isz - 4,
+                    isz - 12, ic);
+                lumo_fill_rect(pixels, width, height, ix + 2, iy + 8, isz - 4, 4,
                     lumo_argb(0xFF, 0x77, 0x21, 0x6F));
                 break;
             case 11: /* Settings - gear */
-                lumo_fill_rect(pixels, width, height, ix+10, iy, 8, isz, ic);
-                lumo_fill_rect(pixels, width, height, ix, iy+10, isz, 8, ic);
-                lumo_fill_rect(pixels, width, height, ix+4, iy+4, 6, 6, ic);
-                lumo_fill_rect(pixels, width, height, ix+18, iy+4, 6, 6, ic);
-                lumo_fill_rect(pixels, width, height, ix+4, iy+18, 6, 6, ic);
-                lumo_fill_rect(pixels, width, height, ix+18, iy+18, 6, 6, ic);
+                lumo_fill_rect(pixels, width, height, ix + 10, iy, 8, isz, ic);
+                lumo_fill_rect(pixels, width, height, ix, iy + 10, isz, 8, ic);
+                lumo_fill_rect(pixels, width, height, ix + 4, iy + 4, 6, 6, ic);
+                lumo_fill_rect(pixels, width, height, ix + 18, iy + 4, 6, 6, ic);
+                lumo_fill_rect(pixels, width, height, ix + 4, iy + 18, 6, 6, ic);
+                lumo_fill_rect(pixels, width, height, ix + 18, iy + 18, 6, 6, ic);
                 {
-                    struct lumo_rect ctr = {ix+8, iy+8, 12, 12};
+                    struct lumo_rect ctr = {ix + 8, iy + 8, 12, 12};
                     lumo_fill_rounded_rect(pixels, width, height, &ctr, 6,
                         lumo_argb(0xFF, 0x1E, 0x0A, 0x1A));
                 }
                 break;
             default:
-                lumo_fill_rounded_rect(pixels, width, height, &icon_rect, 12, accent);
+                lumo_fill_rounded_rect(pixels, width, height, &icon_rect, 12,
+                    accent);
                 break;
             }
         }
 
-        /* app name centered below icon */
-        label_rect.x = cx - cell_w / 2;
-        label_rect.y = cy + icon_size + 8;
-        label_rect.width = cell_w;
+        label_rect.x = tile_rect.x;
+        label_rect.y = tile_rect.y + 56 + 8;
+        label_rect.width = tile_rect.width;
         label_rect.height = 20;
         lumo_draw_text_centered(pixels, width, height, &label_rect, 2,
             active ? highlight : subtitle_color,
             label != NULL ? label : "APP");
     }
-    } /* end grid block */
 }
 
 /* ── on-screen keyboard ───────────────────────────────────────────── */
@@ -842,18 +836,13 @@ static void lumo_draw_quick_settings_panel(
     const uint32_t value_color = lumo_theme.text_primary;
     const uint32_t accent = lumo_theme.accent;
     const uint32_t dim = lumo_theme.dim;
-    struct lumo_rect panel;
-    int panel_w = (int)(width / 2);
+    struct lumo_rect panel = {0};
     int row_y;
 
-    if (panel_w < 200) {
-        panel_w = 200;
+    (void)bar_height;
+    if (!lumo_shell_quick_settings_panel_rect(width, height, &panel)) {
+        return;
     }
-
-    panel.x = (int)width - panel_w - 8;
-    panel.y = bar_height + 4;
-    panel.width = panel_w;
-    panel.height = (int)height - bar_height - 8;
     lumo_fill_rounded_rect(pixels, width, height, &panel, 14, panel_bg);
     lumo_draw_outline(pixels, width, height, &panel, 1, panel_stroke);
 

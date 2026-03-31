@@ -135,7 +135,9 @@ static inline bool lumo_shell_target_kind_parse(
         return false;
     }
 
-    if (strcmp(value, "launcher-tile") == 0 || strcmp(value, "launcher_tile") == 0) {
+    if (strcmp(value, "launcher-tile") == 0 ||
+            strcmp(value, "launcher_tile") == 0 ||
+            strcmp(value, "tile") == 0) {
         *kind = LUMO_SHELL_TARGET_LAUNCHER_TILE;
         return true;
     }
@@ -179,6 +181,11 @@ bool lumo_shell_launcher_tile_rect(
     uint32_t tile_index,
     struct lumo_rect *rect
 );
+bool lumo_shell_launcher_search_bar_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+);
 bool lumo_shell_launcher_panel_rect(
     uint32_t output_width,
     uint32_t output_height,
@@ -193,6 +200,25 @@ bool lumo_shell_quick_settings_button_rect(
     uint32_t output_width,
     uint32_t output_height,
     uint32_t button_index,
+    struct lumo_rect *rect
+);
+bool lumo_shell_quick_settings_panel_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+);
+bool lumo_shell_time_panel_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+);
+size_t lumo_shell_launcher_filtered_tile_count(const char *query);
+bool lumo_shell_launcher_filtered_tile_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    const char *query,
+    uint32_t visible_index,
+    uint32_t *tile_index,
     struct lumo_rect *rect
 );
 bool lumo_shell_osk_key_rect(
@@ -220,6 +246,15 @@ bool lumo_shell_target_for_mode(
     enum lumo_shell_mode mode,
     uint32_t output_width,
     uint32_t output_height,
+    double x,
+    double y,
+    struct lumo_shell_target *target
+);
+bool lumo_shell_target_for_mode_with_query(
+    enum lumo_shell_mode mode,
+    uint32_t output_width,
+    uint32_t output_height,
+    const char *launcher_query,
     double x,
     double y,
     struct lumo_shell_target *target

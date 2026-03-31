@@ -24,6 +24,8 @@ static void test_target_kind_parse(void) {
 
     assert(lumo_shell_target_kind_parse("launcher-tile", &kind));
     assert(kind == LUMO_SHELL_TARGET_LAUNCHER_TILE);
+    assert(lumo_shell_target_kind_parse("tile", &kind));
+    assert(kind == LUMO_SHELL_TARGET_LAUNCHER_TILE);
     assert(lumo_shell_target_kind_parse("launcher_close", &kind));
     assert(kind == LUMO_SHELL_TARGET_LAUNCHER_CLOSE);
     assert(lumo_shell_target_kind_parse("osk_key", &kind));
@@ -261,15 +263,20 @@ static void test_quick_settings_button_rects(void) {
     struct lumo_rect reload = {0};
     struct lumo_rect rotate = {0};
     struct lumo_rect screenshot = {0};
-
     struct lumo_rect settings = {0};
+    struct lumo_rect panel = {0};
 
+    assert(lumo_shell_quick_settings_panel_rect(1024, 600, &panel));
     assert(lumo_shell_quick_settings_button_rect(1024, 600, 0, &reload));
     assert(lumo_shell_quick_settings_button_rect(1024, 600, 1, &rotate));
     assert(lumo_shell_quick_settings_button_rect(1024, 600, 2, &screenshot));
     assert(lumo_shell_quick_settings_button_rect(1024, 600, 3, &settings));
     assert(!lumo_shell_quick_settings_button_rect(1024, 600, 4, &settings));
 
+    assert(panel.x == 504);
+    assert(panel.y == 52);
+    assert(panel.width == 512);
+    assert(panel.height == 544);
     assert(reload.width > 0);
     assert(reload.height == 28);
     assert(rotate.width == reload.width);
@@ -280,6 +287,47 @@ static void test_quick_settings_button_rects(void) {
     assert(screenshot.y > reload.y);
     assert(settings.x > screenshot.x);
     assert(settings.y == screenshot.y);
+}
+
+static void test_launcher_search_and_filtered_tiles(void) {
+    struct lumo_rect panel = {0};
+    struct lumo_rect search = {0};
+    struct lumo_rect filtered = {0};
+    struct lumo_rect time_panel = {0};
+    struct lumo_shell_target target = {0};
+    uint32_t tile_index = UINT32_MAX;
+
+    assert(lumo_shell_launcher_panel_rect(1024, 600, &panel));
+    assert(lumo_shell_launcher_search_bar_rect(1024, 600, &search));
+    assert(search.x == 324);
+    assert(search.y == 54);
+    assert(search.width == 376);
+    assert(search.height == 40);
+    assert(lumo_rect_contains(&panel, search.x + search.width / 2.0,
+        search.y + search.height / 2.0));
+
+    assert(lumo_shell_launcher_filtered_tile_count(NULL) == 12);
+    assert(lumo_shell_launcher_filtered_tile_count("SET") == 1);
+    assert(lumo_shell_launcher_filtered_tile_rect(1024, 600, "SET", 0,
+        &tile_index, &filtered));
+    assert(tile_index == 11);
+    assert(filtered.x >= panel.x);
+    assert(filtered.x + filtered.width <= panel.x + panel.width);
+    assert(filtered.y >= search.y + search.height);
+    assert(!lumo_shell_launcher_filtered_tile_rect(1024, 600, "SET", 1,
+        &tile_index, &filtered));
+
+    assert(lumo_shell_target_for_mode_with_query(LUMO_SHELL_MODE_LAUNCHER,
+        1024, 600, "SET", filtered.x + filtered.width / 2.0,
+        filtered.y + filtered.height / 2.0, &target));
+    assert(target.kind == LUMO_SHELL_TARGET_LAUNCHER_TILE);
+    assert(target.index == 11);
+
+    assert(lumo_shell_time_panel_rect(1024, 600, &time_panel));
+    assert(time_panel.x == 8);
+    assert(time_panel.y == 52);
+    assert(time_panel.width == 512);
+    assert(time_panel.height == 220);
 }
 
 static void test_transition_durations(void) {
@@ -376,6 +424,7 @@ int main(void) {
     test_osk_hitboxes();
     test_gesture_hitbox();
     test_quick_settings_button_rects();
+    test_launcher_search_and_filtered_tiles();
     test_transition_durations();
     test_touch_audit_layout();
     test_surface_local_coords();

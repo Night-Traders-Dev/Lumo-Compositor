@@ -1,5 +1,6 @@
 #include "lumo/shell.h"
 
+#include <ctype.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <string.h>
@@ -114,43 +115,146 @@ static bool lumo_shell_launcher_close_geometry(
     size = lumo_shell_clamp_u32(output_width / 20, 44, 60);
     rect->width = (int)size;
     rect->height = (int)size;
-    rect->x = panel.x + panel.width - (int)size - 24;
-    rect->y = panel.y + 18;
+    rect->x = panel.x + panel.width - (int)size - 16;
+    rect->y = panel.y + 12;
     return true;
 }
 
-static bool lumo_shell_launcher_geometry(
+static bool lumo_shell_launcher_search_bar_geometry(
     uint32_t output_width,
     uint32_t output_height,
-    uint32_t tile_index,
     struct lumo_rect *rect
 ) {
-    /* 4-column grid — must match shell_client.c */
-    uint32_t icon_size = 56;
-    uint32_t cols = 4;
-    uint32_t cell_w, cell_h, grid_w, grid_x, grid_y;
-    uint32_t row, col, cx;
+    struct lumo_rect panel;
+    int bar_w;
 
-    if (rect == NULL || output_width == 0 || output_height == 0 ||
-            tile_index >= lumo_shell_launcher_columns * lumo_shell_launcher_rows) {
+    if (rect == NULL ||
+            !lumo_shell_launcher_panel_geometry(output_width, output_height,
+                &panel)) {
         return false;
     }
 
-    cell_w = (output_width - 48) / cols;
-    cell_h = icon_size + 56;
-    grid_w = cols * cell_w;
-    grid_x = (output_width - grid_w) / 2;
-    grid_y = 60 + 40 + 16; /* search bar (40) + padding */
+    bar_w = (int)(panel.width * 2 / 5);
+    if (bar_w < 280) {
+        bar_w = 280;
+    }
+    if (bar_w > 500) {
+        bar_w = 500;
+    }
+    if (bar_w > panel.width - 32) {
+        bar_w = panel.width - 32;
+    }
+    if (bar_w <= 0) {
+        return false;
+    }
 
-    row = tile_index / cols;
-    col = tile_index % cols;
-    cx = grid_x + col * cell_w + cell_w / 2;
+    rect->x = panel.x + (panel.width - bar_w) / 2;
+    rect->y = panel.y + 18;
+    rect->width = bar_w;
+    rect->height = 40;
+    return true;
+}
 
-    rect->x = (int)(cx - cell_w / 2);
-    rect->y = (int)(grid_y + row * cell_h);
-    rect->width = (int)cell_w;
+static bool lumo_shell_launcher_visible_tile_geometry(
+    uint32_t output_width,
+    uint32_t output_height,
+    uint32_t visible_index,
+    struct lumo_rect *rect
+) {
+    struct lumo_rect panel;
+    struct lumo_rect search_bar;
+    uint32_t cell_h;
+    int grid_width;
+    int grid_x;
+    int cell_width;
+
+    if (rect == NULL || visible_index >= lumo_shell_launcher_columns *
+            lumo_shell_launcher_rows ||
+            !lumo_shell_launcher_panel_geometry(output_width, output_height,
+                &panel) ||
+            !lumo_shell_launcher_search_bar_geometry(output_width,
+                output_height, &search_bar)) {
+        return false;
+    }
+
+    grid_width = panel.width - 32;
+    if (grid_width <= 0) {
+        return false;
+    }
+
+    cell_width = grid_width / 4;
+    if (cell_width <= 0) {
+        return false;
+    }
+
+    grid_width = cell_width * 4;
+    grid_x = panel.x + (panel.width - grid_width) / 2;
+    cell_h = 56 + 56;
+
+    rect->x = grid_x + (int)(visible_index % 4u) * cell_width;
+    rect->y = search_bar.y + search_bar.height + 16 +
+        (int)(visible_index / 4u) * (int)cell_h;
+    rect->width = cell_width;
     rect->height = (int)cell_h;
     return true;
+}
+
+static bool lumo_shell_launcher_query_active(const char *query) {
+    return query != NULL && query[0] != '\0' && strcmp(query, "-") != 0;
+}
+
+static bool lumo_shell_launcher_query_matches(
+    const char *label,
+    const char *query
+) {
+    if (label == NULL) {
+        return false;
+    }
+    if (!lumo_shell_launcher_query_active(query)) {
+        return true;
+    }
+
+    for (size_t i = 0; label[i] != '\0'; i++) {
+        size_t j = 0;
+
+        while (query[j] != '\0') {
+            unsigned char lhs = (unsigned char)label[i + j];
+            unsigned char rhs = (unsigned char)query[j];
+
+            if (lhs == '\0' || tolower(lhs) != tolower(rhs)) {
+                break;
+            }
+            j++;
+        }
+
+        if (query[j] == '\0') {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static size_t lumo_shell_launcher_collect_filtered_tiles(
+    const char *query,
+    uint32_t *indices,
+    size_t capacity
+) {
+    size_t count = 0;
+
+    for (uint32_t i = 0; i < lumo_shell_launcher_tile_count(); i++) {
+        if (!lumo_shell_launcher_query_matches(
+                lumo_shell_launcher_tile_label(i), query)) {
+            continue;
+        }
+
+        if (indices != NULL && count < capacity) {
+            indices[count] = i;
+        }
+        count++;
+    }
+
+    return count;
 }
 
 static bool lumo_shell_quick_settings_panel_geometry(
@@ -180,6 +284,35 @@ static bool lumo_shell_quick_settings_panel_geometry(
     rect->width = panel_w;
     rect->height = (int)output_height - 56;
     return rect->height > 0;
+}
+
+static bool lumo_shell_time_panel_geometry(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+) {
+    int panel_w;
+
+    if (rect == NULL || output_width == 0 || output_height <= 56) {
+        return false;
+    }
+
+    panel_w = (int)(output_width / 2);
+    if (panel_w < 240) {
+        panel_w = 240;
+    }
+    if (panel_w > (int)output_width - 16) {
+        panel_w = (int)output_width - 16;
+    }
+    if (panel_w <= 0) {
+        return false;
+    }
+
+    rect->x = 8;
+    rect->y = 52;
+    rect->width = panel_w;
+    rect->height = 220;
+    return true;
 }
 
 static bool lumo_shell_quick_settings_button_geometry(
@@ -436,8 +569,17 @@ bool lumo_shell_launcher_tile_rect(
     uint32_t tile_index,
     struct lumo_rect *rect
 ) {
-    return lumo_shell_launcher_geometry(output_width, output_height,
-        tile_index, rect);
+    return lumo_shell_launcher_visible_tile_geometry(output_width,
+        output_height, tile_index, rect);
+}
+
+bool lumo_shell_launcher_search_bar_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+) {
+    return lumo_shell_launcher_search_bar_geometry(output_width,
+        output_height, rect);
 }
 
 bool lumo_shell_launcher_panel_rect(
@@ -466,6 +608,52 @@ bool lumo_shell_quick_settings_button_rect(
 ) {
     return lumo_shell_quick_settings_button_geometry(output_width,
         output_height, button_index, rect);
+}
+
+bool lumo_shell_quick_settings_panel_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+) {
+    return lumo_shell_quick_settings_panel_geometry(output_width,
+        output_height, rect);
+}
+
+bool lumo_shell_time_panel_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+) {
+    return lumo_shell_time_panel_geometry(output_width, output_height, rect);
+}
+
+size_t lumo_shell_launcher_filtered_tile_count(const char *query) {
+    return lumo_shell_launcher_collect_filtered_tiles(query, NULL, 0);
+}
+
+bool lumo_shell_launcher_filtered_tile_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    const char *query,
+    uint32_t visible_index,
+    uint32_t *tile_index,
+    struct lumo_rect *rect
+) {
+    uint32_t visible_tiles[12] = {0};
+    size_t visible_count = lumo_shell_launcher_collect_filtered_tiles(query,
+        visible_tiles, sizeof(visible_tiles) / sizeof(visible_tiles[0]));
+
+    if (visible_index >= visible_count ||
+            !lumo_shell_launcher_visible_tile_geometry(output_width,
+                output_height, visible_index, rect)) {
+        return false;
+    }
+
+    if (tile_index != NULL) {
+        *tile_index = visible_tiles[visible_index];
+    }
+
+    return true;
 }
 
 bool lumo_shell_gesture_handle_rect(
@@ -575,10 +763,11 @@ bool lumo_shell_touch_audit_point_rect(
     return true;
 }
 
-bool lumo_shell_target_for_mode(
+bool lumo_shell_target_for_mode_with_query(
     enum lumo_shell_mode mode,
     uint32_t output_width,
     uint32_t output_height,
+    const char *launcher_query,
     double x,
     double y,
     struct lumo_shell_target *target
@@ -603,15 +792,18 @@ bool lumo_shell_target_for_mode(
             return true;
         }
 
-        count = (uint32_t)lumo_shell_launcher_tile_count();
+        count = (uint32_t)lumo_shell_launcher_filtered_tile_count(
+            launcher_query);
         for (uint32_t i = 0; i < count; i++) {
-            if (!lumo_shell_launcher_geometry(output_width, output_height, i,
-                    &rect)) {
+            uint32_t tile_index = 0;
+
+            if (!lumo_shell_launcher_filtered_tile_rect(output_width,
+                    output_height, launcher_query, i, &tile_index, &rect)) {
                 continue;
             }
             if (lumo_rect_contains(&rect, x, y)) {
                 target->kind = LUMO_SHELL_TARGET_LAUNCHER_TILE;
-                target->index = i;
+                target->index = tile_index;
                 target->rect = rect;
                 return true;
             }
@@ -650,6 +842,18 @@ bool lumo_shell_target_for_mode(
     default:
         return false;
     }
+}
+
+bool lumo_shell_target_for_mode(
+    enum lumo_shell_mode mode,
+    uint32_t output_width,
+    uint32_t output_height,
+    double x,
+    double y,
+    struct lumo_shell_target *target
+) {
+    return lumo_shell_target_for_mode_with_query(mode, output_width,
+        output_height, NULL, x, y, target);
 }
 
 bool lumo_shell_surface_local_coords(
