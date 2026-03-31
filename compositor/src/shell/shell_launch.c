@@ -2171,10 +2171,12 @@ static void lumo_weather_parse(struct lumo_compositor *compositor,
     if (sscanf(p, "%d", &temp) < 1) temp = 0;
 
     /* find condition after °C or °F */
+    bool is_fahrenheit = false;
     const char *deg = strstr(p, "\xC2\xB0"); /* UTF-8 degree sign */
     if (deg != NULL) {
         deg += 2; /* skip ° */
-        if (*deg == 'C' || *deg == 'F') deg++;
+        if (*deg == 'F') { is_fahrenheit = true; deg++; }
+        else if (*deg == 'C') deg++;
         while (*deg == ' ') deg++;
         /* parse: "Sunny 45% →10mph\n" or similar */
         strncpy(condition, deg, sizeof(condition) - 1);
@@ -2267,9 +2269,9 @@ static void lumo_weather_parse(struct lumo_compositor *compositor,
     else if (strstr(lower, "partly"))
         code = 1;
 
-    /* wttr.in custom-format always returns Celsius; convert to Fahrenheit
-     * for display (the UI renders temp with an "F" suffix). */
-    int temp_f = temp * 9 / 5 + 32;
+    /* convert to Fahrenheit if the response is in Celsius.
+     * wttr.in returns °F when &u is effective, °C otherwise. */
+    int temp_f = is_fahrenheit ? temp : temp * 9 / 5 + 32;
 
     if (strcmp(compositor->weather_condition, condition) != 0 ||
             compositor->weather_temp_c != temp_f ||
