@@ -247,15 +247,14 @@ static void lumo_draw_launcher(
     size_t tile_count = lumo_shell_launcher_tile_count();
     int slide_y;
 
-    if (visibility <= 0.0) {
-        return;
-    }
-
     if (client != NULL && client->compositor_touch_audit_active) {
         lumo_draw_touch_audit(pixels, width, height, client);
         return;
     }
 
+    /* panels are drawn on the launcher surface but don't depend on
+     * the launcher slide-up animation — render at full opacity
+     * immediately so panels appear without delay */
     if (client != NULL && (client->compositor_quick_settings_visible ||
             client->compositor_time_panel_visible) &&
             !client->compositor_launcher_visible) {
@@ -367,6 +366,10 @@ static void lumo_draw_launcher(
                     "WEATHER LOADING...");
             }
         }
+        return;
+    }
+
+    if (visibility <= 0.0) {
         return;
     }
 

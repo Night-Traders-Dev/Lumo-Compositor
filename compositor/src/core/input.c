@@ -1155,6 +1155,19 @@ static void lumo_input_touch_point_trigger_edge_action(
                 point->touch_id, time_msec);
             return;
         }
+        /* gesture handle: always toggle the launcher open, even when
+         * an app is focused.  The drawer overlays the app. */
+        if (lumo_hitbox_is_shell_gesture(point->hitbox)) {
+            if (compositor->keyboard_visible) {
+                lumo_protocol_set_keyboard_visible(compositor, false);
+            }
+            lumo_protocol_set_launcher_visible(compositor, true);
+            lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_MODAL);
+            wlr_log(WLR_INFO,
+                "input: touch %d opened launcher from gesture handle at %u",
+                point->touch_id, time_msec);
+            return;
+        }
         /* keyboard visible without launcher: bottom swipe hides it */
         if (compositor->keyboard_visible) {
             lumo_protocol_set_keyboard_visible(compositor, false);
@@ -1163,7 +1176,7 @@ static void lumo_input_touch_point_trigger_edge_action(
                 point->touch_id, time_msec);
             return;
         }
-        /* app focused: bottom swipe closes app */
+        /* app focused: system edge swipe closes app */
         if (!compositor->touch_audit_active &&
                 !wl_list_empty(&compositor->toplevels)) {
             closed_focused_app =
@@ -1174,14 +1187,6 @@ static void lumo_input_touch_point_trigger_edge_action(
                     point->touch_id, time_msec);
                 return;
             }
-        }
-        /* nothing to close: only open launcher if this came from the
-         * gesture handle hitbox, not from the system edge zone.
-         * This prevents accidental open-close-open toggling when
-         * the user taps the bottom edge area repeatedly. */
-        if (lumo_hitbox_is_shell_gesture(point->hitbox)) {
-            lumo_protocol_set_launcher_visible(compositor, true);
-            lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_MODAL);
         }
         wlr_log(WLR_INFO,
             "input: touch %d triggered %s-edge launcher gesture at %u",
@@ -1750,19 +1755,9 @@ static void lumo_input_touch_motion(
         }
     }
 
-    if (!point->captured && point->delivered && point->surface != NULL) {
-        wlr_seat_touch_notify_motion(compositor->seat, event->time_msec,
-            event->touch_id, target.sx, target.sy);
-        point->lx = lx;
-        point->ly = ly;
-        point->sx = target.sx;
-        point->sy = target.sy;
-        lumo_input_touch_debug_update(compositor, point,
-            LUMO_TOUCH_SAMPLE_MOTION, true, point->lx, point->ly);
-        return;
-    }
-
-    /* swipe-down anywhere to close the app drawer */
+    /* swipe-down anywhere to close the app drawer — check before
+     * delivering motion to surfaces so it works even for touches
+     * on the dark overlay outside the launcher panel hitbox */
     if (compositor->launcher_visible && !point->gesture_triggered) {
         double dy = ly - point->down_ly;
         if (dy > threshold) {
@@ -1774,6 +1769,18 @@ static void lumo_input_touch_motion(
             lumo_input_remove_touch_point(compositor, point);
             return;
         }
+    }
+
+    if (!point->captured && point->delivered && point->surface != NULL) {
+        wlr_seat_touch_notify_motion(compositor->seat, event->time_msec,
+            event->touch_id, target.sx, target.sy);
+        point->lx = lx;
+        point->ly = ly;
+        point->sx = target.sx;
+        point->sy = target.sy;
+        lumo_input_touch_debug_update(compositor, point,
+            LUMO_TOUCH_SAMPLE_MOTION, true, point->lx, point->ly);
+        return;
     }
 
     if (point->captured) {
@@ -2129,18 +2136,23 @@ static void lumo_input_touch_up(
 
             if (progress < 12.0) {
                 /* very short movement = tap on the edge/handle.
-                 * suppress top-edge taps when a toplevel is focused
-                 * to prevent accidental panel triggers from apps */
+                 * suppress top-edge taps from the thin system edge zone
+                 * when a toplevel is focused to prevent accidental panel
+                 * triggers, but allow taps on the status bar hitbox so
+                 * panels remain accessible while apps are running. */
                 bool suppress = false;
                 if (point->capture_edge == LUMO_EDGE_TOP &&
                         !wl_list_empty(&compositor->toplevels) &&
                         !compositor->launcher_visible &&
                         !compositor->time_panel_visible &&
-                        !compositor->quick_settings_visible) {
+                        !compositor->quick_settings_visible &&
+                        (point->hitbox == NULL ||
+                         point->hitbox->kind != LUMO_HITBOX_EDGE_GESTURE)) {
                     suppress = true;
                     wlr_log(WLR_INFO,
                         "input: touch %d top-edge tap suppressed "
-                        "(app focused)", point->touch_id);
+                        "(app focused, system edge zone)",
+                        point->touch_id);
                 }
                 if (!suppress) {
                     lumo_input_touch_point_trigger_edge_action(compositor,

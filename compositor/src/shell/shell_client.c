@@ -318,6 +318,14 @@ void lumo_shell_client_finish_hide_if_needed(
             client->mode == LUMO_SHELL_MODE_BACKGROUND ||
             client->target_visible || client->surface_hidden)
         return;
+    /* launcher: keep the surface at full size so re-show doesn't
+     * need a layer surface reconfigure round-trip (which stalls
+     * the first animation frame).  The last animation frame is
+     * already nearly transparent. */
+    if (client->mode == LUMO_SHELL_MODE_LAUNCHER) {
+        client->surface_hidden = true;
+        return;
+    }
     if (lumo_shell_client_build_config(client, false, &hidden_config) &&
             !lumo_shell_surface_config_equal(&client->config, &hidden_config))
         (void)lumo_shell_client_apply_config(client, &hidden_config);
@@ -345,8 +353,7 @@ static void lumo_shell_client_begin_transition(
 
     if (visible) {
         if (lumo_shell_client_build_config(client, true, &config) &&
-                (client->surface_hidden ||
-                    !lumo_shell_surface_config_equal(&client->config, &config)))
+                !lumo_shell_surface_config_equal(&client->config, &config))
             (void)lumo_shell_client_apply_config(client, &config);
         client->surface_hidden = false;
     }
