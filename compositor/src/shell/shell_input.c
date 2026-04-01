@@ -22,7 +22,11 @@ void lumo_shell_client_set_active_target(
 
     client->active_target = *target;
     client->active_target_valid = true;
-    (void)lumo_shell_client_redraw(client);
+    if (client->unified) {
+        lumo_shell_client_redraw_unified(client);
+    } else {
+        (void)lumo_shell_client_redraw(client);
+    }
 }
 
 void lumo_shell_client_clear_active_target(
@@ -34,7 +38,11 @@ void lumo_shell_client_clear_active_target(
 
     client->active_target_valid = false;
     memset(&client->active_target, 0, sizeof(client->active_target));
-    (void)lumo_shell_client_redraw(client);
+    if (client->unified) {
+        lumo_shell_client_redraw_unified(client);
+    } else {
+        (void)lumo_shell_client_redraw(client);
+    }
 }
 
 void lumo_shell_client_note_target(

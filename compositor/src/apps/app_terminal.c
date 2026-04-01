@@ -92,9 +92,11 @@ void lumo_app_render_terminal(
 
     /* scrollback output lines */
     if (!menu_open) {
+        int prompt_y = (int)height - 40;
+
         for (int i = 0; i < line_count && i < 16; i++) {
             const char *line = ctx != NULL ? ctx->term_lines[i] : "";
-            if (y + line_h > (int)height - 40) break;
+            if (y + line_h > prompt_y - line_h) break;
             lumo_app_draw_text(pixels, width, height, 12, y, 2,
                 text_color, line);
             y += line_h;
@@ -108,18 +110,17 @@ void lumo_app_render_terminal(
             cursor_visible = (ts.tv_nsec / 500000000) == 0;
         }
 
-        /* current line */
-        if (ctx != NULL && ctx->term_input_len > 0 &&
-                y + line_h <= (int)height - 20) {
-            lumo_app_draw_text(pixels, width, height, 12, y, 2,
+        /* current line — always at the bottom */
+        if (ctx != NULL && ctx->term_input_len > 0) {
+            lumo_app_draw_text(pixels, width, height, 12, prompt_y, 2,
                 prompt_color, ctx->term_input);
             if (cursor_visible) {
                 int pw = ctx->term_input_len * 2 * 6;
-                lumo_app_fill_rect(pixels, width, height, 12 + pw + 2, y,
-                    2, 14, cursor_color);
+                lumo_app_fill_rect(pixels, width, height, 12 + pw + 2,
+                    prompt_y, 2, 14, cursor_color);
             }
-        } else if (y + line_h <= (int)height - 20 && cursor_visible) {
-            lumo_app_fill_rect(pixels, width, height, 12, y, 2, 14,
+        } else if (cursor_visible) {
+            lumo_app_fill_rect(pixels, width, height, 12, prompt_y, 2, 14,
                 cursor_color);
         }
     }

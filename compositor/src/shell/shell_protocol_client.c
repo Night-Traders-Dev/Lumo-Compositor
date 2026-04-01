@@ -232,6 +232,17 @@ static void lumo_shell_client_apply_state_frame(
         }
     }
 
+    {
+        uint32_t osk_page_value;
+        if (lumo_shell_protocol_frame_get_u32(frame, "osk_page",
+                &osk_page_value)) {
+            if (lumo_shell_osk_get_page() != osk_page_value) {
+                lumo_shell_osk_set_page(osk_page_value);
+                changed = true;
+            }
+        }
+    }
+
     if (lumo_shell_protocol_frame_get_bool(frame, "quick_settings_visible",
             &bool_value)) {
         if (client->compositor_quick_settings_visible != bool_value) {

@@ -527,6 +527,10 @@ static bool lumo_shell_bridge_build_state_frame(
             compositor->osk_shift_active)) {
         return false;
     }
+    if (!lumo_shell_protocol_frame_add_u32(frame, "osk_page",
+            lumo_shell_osk_get_page())) {
+        return false;
+    }
     if (!lumo_shell_protocol_frame_add_bool(frame, "quick_settings_visible",
             compositor->quick_settings_visible)) {
         return false;
@@ -864,6 +868,7 @@ static const char *lumo_shell_bridge_commit_osk_text(
         lumo_shell_osk_toggle_page();
         wlr_log(WLR_INFO, "shell: osk page toggled to %u",
             lumo_shell_osk_get_page());
+        lumo_shell_mark_state_dirty(compositor);
         return NULL;
     }
 
