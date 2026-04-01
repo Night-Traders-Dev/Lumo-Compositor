@@ -620,7 +620,7 @@ static void lumo_input_touch_down(
                 }
                 wlr_log(WLR_INFO, "input: pinch started (ids %d,%d dist=%.0f)",
                     other->touch_id, point->touch_id, dist);
-                lumo_input_remove_touch_point(compositor, point);
+                /* keep both points alive for motion tracking */
                 return;
             }
         }
