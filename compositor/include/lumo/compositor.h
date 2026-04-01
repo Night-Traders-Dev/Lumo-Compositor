@@ -931,6 +931,10 @@ struct lumo_compositor {
     char toast_message[128];
     uint64_t toast_show_time_ms;
     uint32_t toast_duration_ms;
+    bool pinch_active;
+    int32_t pinch_touch_ids[2];
+    double pinch_initial_distance;
+    double pinch_scale;
 };
 
 static inline bool lumo_touch_audit_debug_gesture_enabled(

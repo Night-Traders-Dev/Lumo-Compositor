@@ -41,6 +41,7 @@ app_deps = [
 ]
 
 libutil = meson.get_compiler('c').find_library('util', required: true)
+libm = meson.get_compiler('c').find_library('m', required: false)
 
 screenshot_deps = [
   dependency('wayland-client', required: true),
@@ -218,7 +219,7 @@ executable(
   'lumo-compositor',
   lumo_sources + files('src/core/main.c'),
   include_directories: lumo_inc,
-  dependencies: lumo_deps,
+  dependencies: lumo_deps + [libm],
   install: true,
 )
 
@@ -280,7 +281,7 @@ test_exe = executable(
   'lumo-compositor-tests',
   test_sources,
   include_directories: lumo_inc,
-  dependencies: lumo_deps,
+  dependencies: lumo_deps + [libm],
   install: false,
 )
 
@@ -355,7 +356,7 @@ fuzz_test_exe = executable(
   'lumo-fuzz-tests',
   fuzz_test_sources,
   include_directories: lumo_inc,
-  dependencies: lumo_deps,
+  dependencies: lumo_deps + [libm],
   install: false,
 )
 

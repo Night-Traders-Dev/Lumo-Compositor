@@ -82,6 +82,8 @@ struct lumo_app_client {
     int term_input_len;
     int scroll_offset;
     bool term_menu_open;
+    double zoom_scale;
+    double pinch_base_scale;
     bool stopwatch_running;
     uint64_t stopwatch_start_ms;
     uint64_t stopwatch_accumulated_ms;
@@ -855,6 +857,7 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             .term_line_count = client->term_line_count,
             .term_input_len = client->term_input_len,
             .term_menu_open = client->term_menu_open,
+            .zoom_scale = client->zoom_scale,
             .media_file_count = client->media_file_count,
             .media_selected = client->media_selected,
             .media_playing = client->media_playing,
@@ -1929,6 +1932,21 @@ static void lumo_app_keyboard_key(
     (void)kb; (void)serial; (void)time;
 
     if (client == NULL) return;
+
+    /* pinch-to-zoom: handle KEY_ZOOMIN / KEY_ZOOMOUT from compositor */
+    if (state == WL_KEYBOARD_KEY_STATE_PRESSED &&
+            (key == 0x1a2 || key == 0x1a3)) {
+        if (key == 0x1a2) { /* KEY_ZOOMIN */
+            client->zoom_scale *= 1.1;
+            if (client->zoom_scale > 4.0) client->zoom_scale = 4.0;
+        } else { /* KEY_ZOOMOUT */
+            client->zoom_scale /= 1.1;
+            if (client->zoom_scale < 0.5) client->zoom_scale = 0.5;
+        }
+        (void)lumo_app_client_redraw(client);
+        return;
+    }
+
     if (client->app_id != LUMO_APP_MESSAGES) return;
 
     /* track shift key state */
@@ -2440,6 +2458,8 @@ int main(int argc, char **argv) {
         .pty_pid = 0,
         .alarm_hour = 6,
         .alarm_min = 30,
+        .zoom_scale = 1.0,
+        .pinch_base_scale = 1.0,
     };
 
     for (int i = 1; i < argc; i++) {

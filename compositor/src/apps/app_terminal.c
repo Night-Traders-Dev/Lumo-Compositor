@@ -54,7 +54,10 @@ void lumo_app_render_terminal(
     uint32_t cursor_color = theme.accent;
     uint32_t header_bg = theme.header_bg;
 
-    int scale = 2;
+    double zoom = (ctx != NULL && ctx->zoom_scale > 0.0) ? ctx->zoom_scale : 1.0;
+    int scale = (int)(2.0 * zoom + 0.5);
+    if (scale < 1) scale = 1;
+    if (scale > 6) scale = 6;
     int char_w = scale * 6; /* bitmap font: 6px per char at scale 1 */
     int line_h = scale * 6 + 6; /* line height with spacing */
     int margin = 12;

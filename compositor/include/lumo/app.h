@@ -73,6 +73,7 @@ struct lumo_app_render_context {
     char term_input[82];
     int term_input_len;
     bool term_menu_open;
+    double zoom_scale;
     /* media apps */
     char media_files[LUMO_APP_MEDIA_MAX_FILES][64];
     int media_file_count;

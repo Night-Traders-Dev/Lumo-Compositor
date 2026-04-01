@@ -1,9 +1,19 @@
 #include "lumo/compositor.h"
 
 #include <float.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+
+#include <linux/input-event-codes.h>
+
+#ifndef KEY_ZOOMIN
+#define KEY_ZOOMIN 0x1a2
+#endif
+#ifndef KEY_ZOOMOUT
+#define KEY_ZOOMOUT 0x1a3
+#endif
 
 #include <wlr/interfaces/wlr_keyboard.h>
 #include <wlr/types/wlr_keyboard.h>
@@ -372,6 +382,42 @@ static void lumo_input_touch_motion(
         event->y, &lx, &ly, NULL);
     lumo_input_surface_target_at(compositor, lx, ly, &target);
 
+    if (compositor->pinch_active &&
+            (event->touch_id == compositor->pinch_touch_ids[0] ||
+             event->touch_id == compositor->pinch_touch_ids[1])) {
+        int32_t other_id = (event->touch_id == compositor->pinch_touch_ids[0])
+            ? compositor->pinch_touch_ids[1] : compositor->pinch_touch_ids[0];
+        struct lumo_touch_point *other_pt =
+            lumo_input_touch_point_for_id(compositor, other_id);
+        point->lx = lx;
+        point->ly = ly;
+        if (other_pt != NULL && compositor->pinch_initial_distance > 0.0) {
+            static double last_notified_scale = 1.0;
+            double dx = lx - other_pt->lx;
+            double dy = ly - other_pt->ly;
+            double dist = sqrt(dx * dx + dy * dy);
+            double new_scale = dist / compositor->pinch_initial_distance;
+            if (new_scale < 0.5) new_scale = 0.5;
+            if (new_scale > 4.0) new_scale = 4.0;
+            compositor->pinch_scale = new_scale;
+            wlr_pointer_gestures_v1_send_pinch_update(
+                compositor->pointer_gestures, compositor->seat,
+                event->time_msec, 0.0, 0.0, new_scale, 0.0);
+            if (fabs(new_scale - last_notified_scale) > 0.1) {
+                uint32_t key = new_scale > last_notified_scale
+                    ? KEY_ZOOMIN : KEY_ZOOMOUT;
+                wlr_seat_keyboard_notify_key(compositor->seat,
+                    event->time_msec, key,
+                    WL_KEYBOARD_KEY_STATE_PRESSED);
+                wlr_seat_keyboard_notify_key(compositor->seat,
+                    event->time_msec, key,
+                    WL_KEYBOARD_KEY_STATE_RELEASED);
+                last_notified_scale = new_scale;
+            }
+        }
+        return;
+    }
+
     threshold = compositor->gesture_threshold > 0.0
         ? compositor->gesture_threshold
         : 24.0;
@@ -526,6 +572,64 @@ static void lumo_input_touch_down(
         memset(&target, 0, sizeof(target));
         point->sx = 0.0;
         point->sy = 0.0;
+    }
+
+    /* pinch-to-zoom: second finger on app surface starts pinch */
+    if (!compositor->pinch_active && !wl_list_empty(&compositor->toplevels)) {
+        struct lumo_touch_point *other = NULL;
+        int delivered_count = 0;
+        struct lumo_touch_point *iter;
+        wl_list_for_each(iter, &compositor->touch_points, link) {
+            if (iter != point && iter->delivered && !iter->captured) {
+                other = iter;
+                delivered_count++;
+            }
+        }
+        if (delivered_count == 1 && other != NULL) {
+            double dx = point->lx - other->lx;
+            double dy = point->ly - other->ly;
+            double dist = sqrt(dx * dx + dy * dy);
+            if (dist > 20.0) {
+                compositor->pinch_active = true;
+                compositor->pinch_touch_ids[0] = other->touch_id;
+                compositor->pinch_touch_ids[1] = point->touch_id;
+                compositor->pinch_initial_distance = dist;
+                compositor->pinch_scale = 1.0;
+                point->gesture_triggered = true;
+                other->gesture_triggered = true;
+                {
+                    struct wlr_touch_point *seat_tp =
+                        wlr_seat_touch_get_point(compositor->seat,
+                            other->touch_id);
+                    if (seat_tp != NULL) {
+                        wlr_seat_touch_notify_cancel(compositor->seat,
+                            seat_tp->client);
+                    }
+                }
+                /* Send pointer focus + pinch begin for gesture protocol */
+                if (other->surface != NULL) {
+                    wlr_seat_pointer_notify_enter(compositor->seat, other->surface,
+                        other->sx, other->sy);
+                    wlr_pointer_gestures_v1_send_pinch_begin(
+                        compositor->pointer_gestures, compositor->seat,
+                        lumo_input_now_msec(), 2);
+                }
+                /* Hide keyboard if auto-shown during pinch */
+                if (compositor->keyboard_auto_shown && compositor->keyboard_visible) {
+                    lumo_protocol_set_keyboard_visible(compositor, false);
+                }
+                wlr_log(WLR_INFO, "input: pinch started (ids %d,%d dist=%.0f)",
+                    other->touch_id, point->touch_id, dist);
+                lumo_input_remove_touch_point(compositor, point);
+                return;
+            }
+        }
+    }
+
+    /* Ignore additional fingers during active pinch */
+    if (compositor->pinch_active) {
+        lumo_input_remove_touch_point(compositor, point);
+        return;
     }
 
     if (compositor->quick_settings_visible || compositor->time_panel_visible) {
@@ -805,6 +909,26 @@ static void lumo_input_touch_up(
         return;
     }
 
+    if (compositor->pinch_active &&
+            (event->touch_id == compositor->pinch_touch_ids[0] ||
+             event->touch_id == compositor->pinch_touch_ids[1])) {
+        wlr_log(WLR_INFO, "input: pinch ended (scale=%.2f)", compositor->pinch_scale);
+        wlr_pointer_gestures_v1_send_pinch_end(
+            compositor->pointer_gestures, compositor->seat,
+            event->time_msec, false);
+        int32_t other_id = (event->touch_id == compositor->pinch_touch_ids[0])
+            ? compositor->pinch_touch_ids[1] : compositor->pinch_touch_ids[0];
+        struct lumo_touch_point *other_pt =
+            lumo_input_touch_point_for_id(compositor, other_id);
+        compositor->pinch_active = false;
+        compositor->pinch_touch_ids[0] = -1;
+        compositor->pinch_touch_ids[1] = -1;
+        lumo_input_remove_touch_point(compositor, point);
+        if (other_pt != NULL)
+            lumo_input_remove_touch_point(compositor, other_pt);
+        return;
+    }
+
     if (point->captured && !point->delivered) {
         if (!point->gesture_triggered &&
                 point->capture_edge != LUMO_EDGE_NONE) {
@@ -1011,6 +1135,12 @@ int lumo_input_start(struct lumo_compositor *compositor) {
         free(state);
         return -1;
     }
+
+    compositor->pinch_active = false;
+    compositor->pinch_touch_ids[0] = -1;
+    compositor->pinch_touch_ids[1] = -1;
+    compositor->pinch_initial_distance = 0.0;
+    compositor->pinch_scale = 1.0;
 
 #if LUMO_ENABLE_XWAYLAND
     if (compositor->xwayland != NULL) {
