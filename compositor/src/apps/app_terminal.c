@@ -122,14 +122,27 @@ void lumo_app_render_terminal(
         return;
     }
 
-    /* ── terminal content: bottom-up layout ──
-     * The prompt sits at the bottom. Scrollback lines fill upward
-     * from just above the prompt. This keeps recent output visible
-     * near where the user is typing. */
+    /* ── terminal content: top-down layout ──
+     * Scrollback lines render top-down from below the header.
+     * The prompt and cursor follow immediately after the last
+     * output line, scrolling upward as output accumulates. */
 
-    /* 1. Draw prompt + cursor at the bottom */
-    int prompt_y = (int)height - margin - line_h;
+    int y = header_h + 4;
+    int area_bottom = (int)height - margin;
 
+    /* 1. Draw scrollback lines top-down */
+    for (int i = 0; i < line_count && i < 16; i++) {
+        const char *line = ctx != NULL ? ctx->term_lines[i] : "";
+        int wrapped = lumo_term_wrapped_lines(line, chars_per_line);
+        int block_h = wrapped * line_h;
+
+        if (y + block_h > area_bottom) break;
+        lumo_term_draw_wrapped(pixels, width, height, margin, y, scale,
+            text_color, line, chars_per_line, line_h);
+        y += block_h;
+    }
+
+    /* 2. Draw prompt + cursor right after the last output line */
     bool cursor_visible;
     {
         struct timespec ts;
@@ -137,37 +150,22 @@ void lumo_app_render_terminal(
         cursor_visible = (ts.tv_nsec / 500000000) == 0;
     }
 
-    if (ctx != NULL && ctx->term_input_len > 0) {
-        /* wrap the current input line too */
-        lumo_term_draw_wrapped(pixels, width, height, margin, prompt_y,
-            scale, prompt_color, ctx->term_input, chars_per_line, line_h);
-        if (cursor_visible) {
-            int cursor_x = (ctx->term_input_len % chars_per_line) * char_w;
-            int cursor_line = ctx->term_input_len / chars_per_line;
-            lumo_app_fill_rect(pixels, width, height,
-                margin + cursor_x + 2, prompt_y + cursor_line * line_h,
+    if (y + line_h <= area_bottom) {
+        if (ctx != NULL && ctx->term_input_len > 0) {
+            int input_lines = lumo_term_draw_wrapped(pixels, width, height,
+                margin, y, scale, prompt_color, ctx->term_input,
+                chars_per_line, line_h);
+            if (cursor_visible) {
+                int cursor_x = (ctx->term_input_len % chars_per_line) * char_w;
+                int cursor_line = ctx->term_input_len / chars_per_line;
+                lumo_app_fill_rect(pixels, width, height,
+                    margin + cursor_x + 2, y + cursor_line * line_h,
+                    2, line_h - 4, cursor_color);
+            }
+            (void)input_lines;
+        } else if (cursor_visible) {
+            lumo_app_fill_rect(pixels, width, height, margin, y,
                 2, line_h - 4, cursor_color);
         }
-    } else if (cursor_visible) {
-        lumo_app_fill_rect(pixels, width, height, margin, prompt_y,
-            2, line_h - 4, cursor_color);
-    }
-
-    /* 2. Draw scrollback lines bottom-up from above the prompt */
-    int scrollback_bottom = prompt_y - prompt_margin;
-    int scrollback_top = header_h + 4;
-    int y = scrollback_bottom;
-
-    /* iterate lines in reverse (newest first, drawing upward) */
-    for (int i = line_count - 1; i >= 0 && y > scrollback_top; i--) {
-        const char *line = ctx != NULL ? ctx->term_lines[i] : "";
-        int wrapped = lumo_term_wrapped_lines(line, chars_per_line);
-        int block_h = wrapped * line_h;
-
-        y -= block_h;
-        if (y < scrollback_top) break;
-
-        lumo_term_draw_wrapped(pixels, width, height, margin, y, scale,
-            text_color, line, chars_per_line, line_h);
     }
 }
