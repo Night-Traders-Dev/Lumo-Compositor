@@ -615,7 +615,9 @@ static void lumo_app_pty_read(struct lumo_app_client *client) {
                 continue;
             }
             if (ch == '\r') {
-                client->pty_line_len = 0;
+                /* ignore \r — the PTY sends \r\n for every line and
+                 * resetting pty_line_len here would wipe the output.
+                 * For a dumb terminal, \r is not needed. */
                 continue;
             }
             if (ch == '\n') {
