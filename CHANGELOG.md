@@ -28,6 +28,36 @@ All notable changes to this project will be documented in this file.
 - Wired Lumo mixer into `chrome_color_mixers.cc` after all standard mixers so Lumo colors take precedence over Chrome defaults.
 - Registered in `BUILD.gn` for the color mixers source set.
 
+### Pinch-to-Zoom
+
+- Implemented two-finger pinch-to-zoom gesture for all native Lumo apps. The compositor detects two simultaneous touch points on an app surface, tracks inter-finger distance, and sends KEY_ZOOMIN/KEY_ZOOMOUT events as the scale crosses 0.1 boundaries.
+- Terminal font scale adjusts in real-time during pinch: default scale 2, pinch-out zooms up to scale 6, pinch-in down to scale 1. All layout (chars per line, line height, wrapping) adapts automatically.
+- Pinch cancels the original single-touch delivery via `wlr_seat_touch_send_cancel` to prevent accidental taps during the gesture.
+- Auto-shown keyboard is hidden when a pinch begins.
+- Zoom state persists across pinch gestures (cumulative).
+
+### Terminal Overhaul
+
+- Fixed terminal command output not rendering: `\r` (carriage return) was wiping the line buffer before `\n` could commit it. The PTY sends `output\r\n` for each line; `\r` is now ignored.
+- Added text wrapping: long lines wrap at the display width boundary instead of running off screen.
+- Changed to top-down layout: scrollback lines render from the header downward, with the prompt following immediately after the last output line.
+- Terminal font size responds to pinch-to-zoom (scale 1-6).
+
+### OSK Improvements
+
+- Fixed OSK page toggle (123/ABC) not updating visually: the page state was not broadcast to the shell client process. Added `osk_page` field to the state protocol frame.
+- Fixed OSK key press visual feedback not showing in unified mode: the redraw path now calls `lumo_shell_client_redraw_unified()` when the active target changes.
+- Increased `LUMO_SHELL_PROTOCOL_MAX_FIELDS` from 36 to 48 — the state frame had grown to 41 fields, silently failing and breaking all UI interaction.
+
+### Input Modularization
+
+- Split `input.c` (2,715 lines) into three files: `input.c` (1,236), `input_touch.c` (963), `input_pointer.c` (490), plus `input_internal.h` (169) for shared declarations.
+- Zero behavioral changes — pure structural refactor verified by the full UI test suite.
+
+### Weather Fix
+
+- Fixed double C→F conversion: the `&u` flag works from the OrangePi (returns °F directly), so the parser now detects the unit suffix and skips conversion when already Fahrenheit.
+
 ### Top Panel Close Flash Fix
 
 - Fixed app drawer briefly flashing when closing a top-bar panel (quick settings or time panel). The launcher surface was rendering the app drawer grid during its close animation instead of clearing to transparent. Now skips drawer rendering when `compositor_launcher_visible` is false.

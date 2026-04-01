@@ -238,7 +238,7 @@ Current capabilities:
 - on-screen keyboard (Lomiri style) with shift key, close button, QWERTY + symbols pages, virtual keyboard fallback
 - full uppercase/lowercase bitmap font rendering in both shell and app surfaces
 - functional Browser (system Chromium v122 via Wayland, single-process mode for riscv64, text-input-v3 OSK integration, DuckDuckGo Lite start page)
-- functional Terminal with real PTY shell (/bin/sh via forkpty), blinking cursor, menu, exit closes app
+- functional Terminal with real PTY shell (/bin/sh via forkpty), text wrapping, pinch-to-zoom font scaling, blinking cursor, menu, exit closes app
 - functional Clock with 4 tabs (Clock, Alarm, Stopwatch, Timer), persistent settings
 - functional Files with directory browsing, scroll, navigation, file sizes
 - functional Settings with 8 categorized sub-pages
@@ -246,6 +246,7 @@ Current capabilities:
 - functional Music player (scans ~/Music, playback via mpv)
 - functional Photos with PNG/JPEG decoding, fullscreen viewer, grid with scroll
 - functional Videos (scans ~/Videos, playback via mpv)
+- pinch-to-zoom: two-finger gesture detection with real-time scale tracking, works in all native apps
 - swipe gestures: velocity + angle + projection detection (iOS/Android research-based)
 - screen rotation via quick settings with touch matrix remapping
 - shell child supervision with automatic respawn
