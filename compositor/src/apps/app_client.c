@@ -134,7 +134,12 @@ static void lumo_app_contacts_save(const struct lumo_app_client *client);
 static void lumo_app_contacts_load(struct lumo_app_client *client);
 static void lumo_app_places_save(const struct lumo_app_client *client);
 static void lumo_app_places_load(struct lumo_app_client *client);
-/* new app hit-test functions (defined in app_phone.c, app_camera.c, app_maps.c) */
+/* new app hit-test functions */
+int lumo_app_browser_button_at(uint32_t width, uint32_t height,
+    double x, double y);
+static void lumo_app_bookmarks_load(struct lumo_app_client *client);
+static void lumo_app_bookmarks_save(const struct lumo_app_client *client);
+static void lumo_app_browser_launch_url(const char *url);
 int lumo_app_phone_button_at(uint32_t width, uint32_t height,
     double x, double y, int tab);
 int lumo_app_camera_button_at(uint32_t width, uint32_t height,
@@ -1777,6 +1782,70 @@ static void lumo_app_touch_handle_up(
         lumo_app_sync_text_input_state(client, client->note_editing >= 0);
     }
 
+    /* Browser app touch handling */
+    if (client->app_id == LUMO_APP_BROWSER && client->width > 0 &&
+            client->height > 0) {
+        int btn = lumo_app_browser_button_at(client->width, client->height,
+            client->touch_down_x, client->touch_down_y);
+
+        if (btn == 0) {
+            /* URL bar tap — toggle editing */
+            if (client->note_editing >= 0) {
+                client->note_editing = -1;
+            } else {
+                client->note_editing = 0;
+            }
+            (void)lumo_app_client_redraw(client);
+        } else if (btn == 3 && client->term_input_len > 0) {
+            /* GO button — launch URL */
+            lumo_app_browser_launch_url(client->term_input);
+            client->note_editing = -1;
+            (void)lumo_app_client_redraw(client);
+        } else if (btn == 4) {
+            /* bookmark — save current URL */
+            if (client->term_input_len > 0 && client->note_count < 8) {
+                snprintf(client->notes[client->note_count],
+                    sizeof(client->notes[0]), "%s", client->term_input);
+                client->note_count++;
+                lumo_app_bookmarks_save(client);
+                (void)lumo_app_client_redraw(client);
+            }
+        } else if (btn == 5) {
+            /* home — clear URL, show start page */
+            client->term_input_len = 0;
+            client->term_input[0] = '\0';
+            client->note_editing = -1;
+            (void)lumo_app_client_redraw(client);
+        } else if (btn >= 100) {
+            int row = btn - 100;
+            if (client->note_editing >= 0) {
+                /* in editing mode: tap quick link → fill URL */
+                static const char *quick_urls[] = {
+                    "https://duckduckgo.com/",
+                    "https://en.m.wikipedia.org/",
+                    "https://github.com/",
+                    "https://m.youtube.com/",
+                };
+                if (row < 4) {
+                    snprintf(client->term_input, sizeof(client->term_input),
+                        "%s", quick_urls[row]);
+                    client->term_input_len = (int)strlen(client->term_input);
+                    lumo_app_browser_launch_url(client->term_input);
+                    client->note_editing = -1;
+                    (void)lumo_app_client_redraw(client);
+                }
+            } else if (row < client->note_count) {
+                /* home mode: tap bookmark → launch */
+                snprintf(client->term_input, sizeof(client->term_input),
+                    "%s", client->notes[row]);
+                client->term_input_len = (int)strlen(client->term_input);
+                lumo_app_browser_launch_url(client->term_input);
+                (void)lumo_app_client_redraw(client);
+            }
+        }
+        lumo_app_sync_text_input_state(client, client->note_editing >= 0);
+    }
+
     if (client->app_id == LUMO_APP_SETTINGS && client->width > 0 &&
             client->height > 0) {
         if (client->selected_row >= 0 &&
@@ -2095,6 +2164,13 @@ static void lumo_app_text_input_delete_surrounding(void *data,
             for (uint32_t i = 0; i < before; i++) {
                 lumo_app_term_write(client, "\x7f", 1);
             }
+        } else if (client->app_id == LUMO_APP_BROWSER &&
+                client->note_editing >= 0) {
+            for (uint32_t i = 0; i < before && client->term_input_len > 0;
+                    i++) {
+                client->term_input[--client->term_input_len] = '\0';
+            }
+            (void)lumo_app_client_redraw(client);
         } else if ((client->app_id == LUMO_APP_NOTES ||
                 client->app_id == LUMO_APP_MAPS) &&
                 client->note_editing >= 0 &&
@@ -2130,6 +2206,26 @@ static void lumo_app_text_input_done(void *data,
                     lumo_app_term_write(client, &ch, 1);
                 }
             }
+        } else if (client->app_id == LUMO_APP_BROWSER &&
+                client->note_editing >= 0) {
+            /* OSK text for browser URL bar */
+            for (int i = 0; i < client->pending_commit_len; i++) {
+                char ch = client->pending_commit[i];
+                if (ch == '\n') {
+                    /* enter = go */
+                    if (client->term_input_len > 0) {
+                        lumo_app_browser_launch_url(client->term_input);
+                        client->note_editing = -1;
+                        lumo_app_sync_text_input_state(client, false);
+                    }
+                    break;
+                }
+                if (client->term_input_len < (int)sizeof(client->term_input) - 1) {
+                    client->term_input[client->term_input_len++] = ch;
+                    client->term_input[client->term_input_len] = '\0';
+                }
+            }
+            (void)lumo_app_client_redraw(client);
         } else if (client->app_id == LUMO_APP_NOTES ||
                 client->app_id == LUMO_APP_MAPS) {
             /* OSK text for notes/maps app */
@@ -2720,6 +2816,82 @@ static void lumo_app_places_save(const struct lumo_app_client *client) {
     fclose(fp);
 }
 
+/* Browser bookmarks — stored in ~/.lumo-browser-bookmarks */
+static void lumo_app_bookmarks_load(struct lumo_app_client *client) {
+    const char *home = getenv("HOME");
+    char path[1100];
+    FILE *fp;
+    if (home == NULL) return;
+    snprintf(path, sizeof(path), "%s/.lumo-browser-bookmarks", home);
+    fp = fopen(path, "r");
+    if (fp == NULL) {
+        /* defaults */
+        snprintf(client->notes[0], sizeof(client->notes[0]),
+            "https://duckduckgo.com/");
+        snprintf(client->notes[1], sizeof(client->notes[0]),
+            "https://en.m.wikipedia.org/");
+        snprintf(client->notes[2], sizeof(client->notes[0]),
+            "https://github.com/");
+        client->note_count = 3;
+        return;
+    }
+    client->note_count = 0;
+    while (client->note_count < 8 &&
+            fgets(client->notes[client->note_count],
+                sizeof(client->notes[0]), fp) != NULL) {
+        char *nl = strchr(client->notes[client->note_count], '\n');
+        if (nl) *nl = '\0';
+        if (client->notes[client->note_count][0] != '\0')
+            client->note_count++;
+    }
+    fclose(fp);
+}
+
+static void lumo_app_bookmarks_save(const struct lumo_app_client *client) {
+    const char *home = getenv("HOME");
+    char path[1100];
+    FILE *fp;
+    if (home == NULL) return;
+    snprintf(path, sizeof(path), "%s/.lumo-browser-bookmarks", home);
+    fp = fopen(path, "w");
+    if (fp == NULL) return;
+    for (int i = 0; i < client->note_count; i++)
+        fprintf(fp, "%s\n", client->notes[i]);
+    fclose(fp);
+}
+
+/* Launch URL in system browser subprocess */
+static void lumo_app_browser_launch_url(const char *url) {
+    if (url == NULL || url[0] == '\0') return;
+    char resolved[4096];
+
+    /* resolve bare domains and search queries */
+    if (strstr(url, "://") != NULL) {
+        snprintf(resolved, sizeof(resolved), "%s", url);
+    } else if (strstr(url, "localhost") != NULL) {
+        snprintf(resolved, sizeof(resolved), "http://%s", url);
+    } else if (strchr(url, '.') != NULL && strchr(url, ' ') == NULL) {
+        snprintf(resolved, sizeof(resolved), "https://%s", url);
+    } else {
+        snprintf(resolved, sizeof(resolved),
+            "https://duckduckgo.com/?q=%s", url);
+    }
+
+    pid_t pid = fork();
+    if (pid == 0) {
+        setsid();
+        /* try epiphany first, then lumo-browser GTK, then xdg-open */
+        execlp("epiphany", "epiphany", resolved, (char *)NULL);
+        execlp("lumo-browser", "lumo-browser", resolved, (char *)NULL);
+        execlp("xdg-open", "xdg-open", resolved, (char *)NULL);
+        _exit(127);
+    }
+    if (pid > 0) {
+        fprintf(stderr, "lumo-app: launched browser for %s (pid=%d)\n",
+            resolved, (int)pid);
+    }
+}
+
 static void lumo_app_settings_load(struct lumo_app_client *client) {
     const char *home = getenv("HOME");
     char path[1100], line[128];
@@ -2808,6 +2980,9 @@ int main(int argc, char **argv) {
     }
     if (client.app_id == LUMO_APP_MAPS) {
         lumo_app_places_load(&client);
+    }
+    if (client.app_id == LUMO_APP_BROWSER) {
+        lumo_app_bookmarks_load(&client);
     }
     if (client.app_id == LUMO_APP_CAMERA) {
         static const char *img_exts[] = {".jpg", ".jpeg", ".png", ".bmp"};
@@ -2903,11 +3078,13 @@ int main(int argc, char **argv) {
         bool needs_periodic = client.app_id == LUMO_APP_CLOCK ||
             client.app_id == LUMO_APP_SETTINGS ||
             client.app_id == LUMO_APP_NOTES ||
-            client.app_id == LUMO_APP_MAPS || is_terminal;
+            client.app_id == LUMO_APP_MAPS ||
+            client.app_id == LUMO_APP_BROWSER || is_terminal;
         int timeout_ms = client.app_id == LUMO_APP_CLOCK ? 1000 :
             client.app_id == LUMO_APP_SETTINGS ? 5000 :
             (is_terminal || client.app_id == LUMO_APP_NOTES ||
-             client.app_id == LUMO_APP_MAPS) ? 500 : -1;
+             client.app_id == LUMO_APP_MAPS ||
+             client.app_id == LUMO_APP_BROWSER) ? 500 : -1;
 
         while (client.running) {
             struct pollfd pfds[2];

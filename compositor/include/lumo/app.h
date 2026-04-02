@@ -142,6 +142,10 @@ int lumo_app_notes_row_at(
     double x,
     double y
 );
+int lumo_app_browser_button_at(
+    uint32_t width, uint32_t height,
+    double x, double y
+);
 int lumo_app_phone_button_at(
     uint32_t width, uint32_t height,
     double x, double y, int tab

@@ -98,6 +98,10 @@ void lumo_app_render_maps(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels, uint32_t width, uint32_t height
 );
+void lumo_app_render_browser(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
 void lumo_app_render_stub(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels, uint32_t width, uint32_t height
