@@ -58,10 +58,77 @@ static void test_app_close_rect(void) {
 }
 
 static void test_app_osk_policy(void) {
+    /* Terminal always wants OSK */
     assert(lumo_app_wants_osk(LUMO_APP_MESSAGES, -1));
+    /* Notes: only when editing */
     assert(!lumo_app_wants_osk(LUMO_APP_NOTES, -1));
     assert(lumo_app_wants_osk(LUMO_APP_NOTES, 0));
+    assert(lumo_app_wants_osk(LUMO_APP_NOTES, 3));
+    /* Maps: only when editing a place */
+    assert(!lumo_app_wants_osk(LUMO_APP_MAPS, -1));
+    assert(lumo_app_wants_osk(LUMO_APP_MAPS, 0));
+    assert(lumo_app_wants_osk(LUMO_APP_MAPS, 2));
+    /* Other apps never want OSK */
     assert(!lumo_app_wants_osk(LUMO_APP_SETTINGS, -1));
+    assert(!lumo_app_wants_osk(LUMO_APP_PHONE, -1));
+    assert(!lumo_app_wants_osk(LUMO_APP_CAMERA, -1));
+    assert(!lumo_app_wants_osk(LUMO_APP_CLOCK, -1));
+}
+
+static void test_notes_osk_trigger(void) {
+    const uint32_t w = 800, h = 480;
+
+    /* tap on "+ADD NOTE" button area (h-106..h-66, outside center) → -2 */
+    int result = lumo_app_notes_row_at(w, h, 200.0, (double)(h - 90));
+    assert(result == -2);
+
+    /* tap on delete button area in list (h-152..h-112) → -3 */
+    result = lumo_app_notes_row_at(w, h, 200.0, (double)(h - 130));
+    assert(result == -3);
+
+    /* tap on done button (top-right header) → -4 */
+    result = lumo_app_notes_row_at(w, h, (double)(w - 50), 20.0);
+    assert(result == -4);
+
+    /* tap on editor delete (centered, h-106..h-66) → -5 */
+    result = lumo_app_notes_row_at(w, h, (double)(w / 2), (double)(h - 90));
+    assert(result == -5);
+
+    /* tap on first note row → 0 */
+    result = lumo_app_notes_row_at(w, h, 200.0, 100.0);
+    assert(result == 0);
+
+    /* OSK policy: notes wants OSK only when editing */
+    assert(!lumo_app_wants_osk(LUMO_APP_NOTES, -1));
+    assert(lumo_app_wants_osk(LUMO_APP_NOTES, 0));
+}
+
+static void test_maps_osk_trigger(void) {
+    const uint32_t w = 800, h = 480;
+
+    /* compass tab button (leftmost third of tab bar) */
+    int result = lumo_app_maps_button_at(w, h, 50.0, 60.0, 0);
+    assert(result == 1);
+
+    /* places tab button */
+    result = lumo_app_maps_button_at(w, h, (double)(w / 2), 60.0, 0);
+    assert(result == 2);
+
+    /* info tab button */
+    result = lumo_app_maps_button_at(w, h, (double)(w - 50), 60.0, 0);
+    assert(result == 3);
+
+    /* "+ADD PLACE" button in places tab */
+    result = lumo_app_maps_button_at(w, h, 200.0, (double)(h - 90), 1);
+    assert(result == 0);
+
+    /* place row in places tab */
+    result = lumo_app_maps_button_at(w, h, 200.0, 110.0, 1);
+    assert(result == 100);
+
+    /* OSK should be requested when editing a place */
+    assert(!lumo_app_wants_osk(LUMO_APP_MAPS, -1));
+    assert(lumo_app_wants_osk(LUMO_APP_MAPS, 0));
 }
 
 static void test_photos_render_thumbnail(void) {
@@ -134,6 +201,8 @@ int main(void) {
     test_app_launcher_mapping();
     test_app_close_rect();
     test_app_osk_policy();
+    test_notes_osk_trigger();
+    test_maps_osk_trigger();
     test_photos_render_thumbnail();
     test_app_render();
     return 0;

@@ -4,32 +4,49 @@
 #include <time.h>
 
 /* Notes hit test:
- * In list mode:  row index (0-7), -2 = add, -3 = delete
- * In editor mode: -4 = done button, -5 = delete in editor
- * -1 = nothing */
+ * >= 0: row index
+ * -1: nothing
+ * -2: add note button
+ * -3: delete note button (list view)
+ * -4: done button (editor)
+ * -5: delete button (editor)
+ *
+ * Context-dependent zones are disambiguated by the caller (app_client.c)
+ * which knows whether we're in list or editor mode. */
 int lumo_app_notes_row_at(
     uint32_t width, uint32_t height, double x, double y
 ) {
+    int h = (int)height;
+    int w = (int)width;
     int header_y = 96;
     int row_h = 48;
-    int max_rows = ((int)height - header_y - 70) / row_h;
-    (void)width;
-    /* add button at bottom (above gesture zone) */
-    if (y >= (double)((int)height - 110) && y < (double)((int)height - 66)) return -2;
-    /* delete button (above add) */
-    if (y >= (double)((int)height - 156) && y < (double)((int)height - 116)) return -3;
-    /* done button (in editor: top-right area) */
-    if (x >= (double)((int)width - 100) && y >= 48.0 && y < 88.0) return -4;
-    /* delete in editor (above gesture zone) */
-    if (y >= (double)((int)height - 100) && y < (double)((int)height - 60)) return -5;
-    if (x < 16.0 || x > (double)width - 16.0) return -1;
-    if (y < header_y) return -1;
-    int idx = (int)(y - header_y) / row_h;
+    int max_rows = (h - header_y - 120) / row_h;
+
+    /* done button: top-right header area */
+    if (x >= (double)(w - 100) && y >= 4.0 && y < 44.0)
+        return -4;
+
+    /* bottom buttons zone (h-106..h-66) */
+    if (y >= (double)(h - 106) && y < (double)(h - 66)) {
+        /* right half = add (list), center = delete (editor) */
+        if (x >= (double)(w / 2 - 80) && x < (double)(w / 2 + 80))
+            return -5; /* editor delete (centered) */
+        return -2; /* add note (full width in list) */
+    }
+
+    /* delete note (list): h-152..h-112 */
+    if (y >= (double)(h - 152) && y < (double)(h - 112))
+        return -3;
+
+    /* note rows */
+    if (x < 12.0 || x > (double)(w - 12)) return -1;
+    if (y < (double)header_y) return -1;
+    int idx = (int)(y - (double)header_y) / row_h;
     if (idx < 0 || idx >= max_rows) return -1;
     return idx;
 }
 
-/* Render the full-screen note editor (Google Keep style) */
+/* Render the full-screen note editor */
 static void render_editor(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels, uint32_t width, uint32_t height,
@@ -70,7 +87,7 @@ static void render_editor(
     {
         int pad = 16;
         int area_top = 88;
-        int area_h = h - area_top - 112;
+        int area_h = h - area_top - 120;
         struct lumo_rect area = {pad, area_top, w - pad * 2, area_h};
         lumo_app_fill_rounded_rect(pixels, width, height, &area, 16,
             theme->card_bg);
@@ -109,7 +126,6 @@ static void render_editor(
             struct timespec ts;
             clock_gettime(CLOCK_MONOTONIC, &ts);
             if ((ts.tv_nsec / 500000000) == 0) {
-                /* compute cursor position */
                 int cursor_line = text_len / max_chars;
                 int cursor_col = text_len % max_chars;
                 int cx = area.x + 16 + cursor_col * char_w;
@@ -130,13 +146,13 @@ static void render_editor(
         }
     }
 
-    /* delete button (above gesture zone) */
+    /* delete button (centered, above gesture zone) */
     {
-        struct lumo_rect del_btn = {16, h - 96, w - 32, 36};
+        struct lumo_rect del_btn = {w / 2 - 80, h - 102, 160, 36};
         lumo_app_fill_rounded_rect(pixels, width, height, &del_btn, 14,
             0xFFDC3545);
         lumo_app_draw_text_centered(pixels, width, height, &del_btn, 2,
-            theme->text, "DELETE NOTE");
+            theme->text, "DELETE");
     }
 }
 
@@ -209,7 +225,7 @@ void lumo_app_render_notes(
         lumo_app_draw_text(pixels, width, height, row.x + 44, row.y + 8,
             2, is_sel ? theme.text : theme.text_dim, text);
 
-        /* timestamp hint */
+        /* hint */
         lumo_app_draw_text(pixels, width, height, row.x + 44, row.y + 28,
             1, theme.text_dim, "TAP TO EDIT");
 
@@ -232,7 +248,7 @@ void lumo_app_render_notes(
             theme.text, "DELETE NOTE");
     }
 
-    /* add button (above bottom gesture zone) */
+    /* add button (above gesture zone) */
     {
         struct lumo_rect add_btn = {12, (int)height - 106, (int)width - 24, 40};
         lumo_app_fill_rounded_rect(pixels, width, height, &add_btn, 14,

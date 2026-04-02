@@ -2883,10 +2883,13 @@ int main(int argc, char **argv) {
          * Settings polls every 5 s so status values (battery, wifi, etc.) stay
          * reasonably fresh without hammering the compositor. */
         bool needs_periodic = client.app_id == LUMO_APP_CLOCK ||
-            client.app_id == LUMO_APP_SETTINGS || is_terminal;
+            client.app_id == LUMO_APP_SETTINGS ||
+            client.app_id == LUMO_APP_NOTES ||
+            client.app_id == LUMO_APP_MAPS || is_terminal;
         int timeout_ms = client.app_id == LUMO_APP_CLOCK ? 1000 :
             client.app_id == LUMO_APP_SETTINGS ? 5000 :
-            is_terminal ? 500 : -1;
+            (is_terminal || client.app_id == LUMO_APP_NOTES ||
+             client.app_id == LUMO_APP_MAPS) ? 500 : -1;
 
         while (client.running) {
             struct pollfd pfds[2];
