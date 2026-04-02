@@ -83,8 +83,7 @@ static void draw_toggle(
 
     int tx = (int)w - PAD - 56;
     struct lumo_rect track = { tx, y, 44, 22 };
-    uint32_t track_c = on ? th.accent
-        : lumo_app_argb(0xFF, 0x5E, 0x3A, 0x56);
+    uint32_t track_c = on ? th.accent : th.card_stroke;
     lumo_app_fill_rounded_rect(px, w, h, &track, 11, track_c);
     struct lumo_rect knob = {
         on ? tx + 24 : tx + 2,
