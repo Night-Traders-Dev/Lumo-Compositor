@@ -46,7 +46,14 @@ typedef struct {
     GtkButton *new_tab_btn;
     GtkButton *close_tab_btn;
     GtkButton *bookmark_btn;
+    GtkButton *find_btn;
+    GtkButton *zoom_in_btn;
+    GtkButton *zoom_out_btn;
     GtkWidget *progress_bar;
+    GtkBox *find_bar;
+    GtkEntry *find_entry;
+    gboolean find_visible;
+    double zoom_level;
 
     LumoTab tabs[LUMO_MAX_TABS];
     int tab_count;
@@ -109,6 +116,7 @@ static void bookmarks_save(LumoBrowser *b) {
 static void switch_to_tab(LumoBrowser *b, int idx);
 static void update_tab_bar(LumoBrowser *b);
 static void update_nav_sensitivity(LumoBrowser *b);
+static int add_tab(LumoBrowser *b, const char *uri);
 
 /* ── Tab bar ───────────────────────────────────────────────────────── */
 
@@ -185,6 +193,76 @@ static WebKitWebView *create_web_view(void) {
     gtk_widget_set_hexpand(GTK_WIDGET(wv), TRUE);
 
     return wv;
+}
+
+/* ── New window / target=_blank → open in new tab ──────────────────── */
+
+static WebKitWebView *on_create_web_view(WebKitWebView *wv,
+    WebKitNavigationAction *nav, gpointer data)
+{
+    LumoBrowser *b = data;
+    (void)wv;
+    WebKitURIRequest *req = webkit_navigation_action_get_request(nav);
+    const char *uri = req ? webkit_uri_request_get_uri(req) : NULL;
+    int idx = add_tab(b, uri);
+    if (idx >= 0) {
+        switch_to_tab(b, idx);
+        return b->tabs[idx].web_view;
+    }
+    return NULL;
+}
+
+/* ── TLS error handling — allow self-signed certs on local network ── */
+
+static gboolean on_load_failed_with_tls(WebKitWebView *wv,
+    const char *failing_uri, GTlsCertificate *cert,
+    GTlsCertificateFlags errors, gpointer data)
+{
+    (void)data; (void)cert; (void)errors;
+    /* allow local network TLS errors */
+    if (failing_uri && (strstr(failing_uri, "localhost") ||
+            strstr(failing_uri, "192.168.") ||
+            strstr(failing_uri, "10.") ||
+            strstr(failing_uri, "127.0."))) {
+        WebKitNetworkSession *session =
+            webkit_web_view_get_network_session(wv);
+        webkit_network_session_allow_tls_certificate_for_host(session,
+            cert, g_uri_parse(failing_uri, G_URI_FLAGS_NONE, NULL)
+                ? g_uri_get_host(g_uri_parse(failing_uri,
+                    G_URI_FLAGS_NONE, NULL))
+                : "localhost");
+        webkit_web_view_load_uri(wv, failing_uri);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/* ── Download handling ─────────────────────────────────────────────── */
+
+static void on_download_decide_destination(WebKitDownload *download,
+    const char *suggested_filename, gpointer data)
+{
+    (void)data;
+    char path[2048];
+    const char *home = g_get_home_dir();
+    snprintf(path, sizeof(path), "file://%s/Downloads/%s",
+        home, suggested_filename);
+
+    /* create Downloads dir if needed */
+    char dir[1024];
+    snprintf(dir, sizeof(dir), "%s/Downloads", home);
+    g_mkdir_with_parents(dir, 0755);
+
+    webkit_download_set_destination(download, path);
+    fprintf(stderr, "lumo-browser: downloading to %s\n", path);
+}
+
+static void on_download_started(WebKitWebView *wv,
+    WebKitDownload *download, gpointer data)
+{
+    (void)wv;
+    g_signal_connect(download, "decide-destination",
+        G_CALLBACK(on_download_decide_destination), data);
 }
 
 /* ── Load progress ─────────────────────────────────────────────────── */
@@ -295,6 +373,12 @@ static int add_tab(LumoBrowser *b, const char *uri) {
         G_CALLBACK(on_tab_load_changed), b);
     g_signal_connect(tab->web_view, "notify::estimated-load-progress",
         G_CALLBACK(on_estimated_load_progress), b);
+    g_signal_connect(tab->web_view, "create",
+        G_CALLBACK(on_create_web_view), b);
+    g_signal_connect(tab->web_view, "load-failed-with-tls-errors",
+        G_CALLBACK(on_load_failed_with_tls), b);
+    g_signal_connect(tab->web_view, "download-started",
+        G_CALLBACK(on_download_started), b);
 
     char stack_name[16];
     snprintf(stack_name, sizeof(stack_name), "tab%d", idx);
@@ -429,6 +513,67 @@ static void on_add_bookmark(GtkButton *btn, gpointer data) {
     bookmarks_save(b);
 }
 
+/* ── Find in page ──────────────────────────────────────────────────── */
+
+static void on_find_text_changed(GtkEditable *editable, gpointer data) {
+    LumoBrowser *b = data;
+    const char *text = gtk_editable_get_text(editable);
+    if (b->active_tab < 0 || b->active_tab >= b->tab_count) return;
+
+    WebKitWebView *wv = b->tabs[b->active_tab].web_view;
+    WebKitFindController *fc = webkit_web_view_get_find_controller(wv);
+
+    if (text && text[0]) {
+        webkit_find_controller_search(fc, text,
+            WEBKIT_FIND_OPTIONS_CASE_INSENSITIVE |
+            WEBKIT_FIND_OPTIONS_WRAP_AROUND, 0);
+    } else {
+        webkit_find_controller_search_finish(fc);
+    }
+}
+
+static void on_find_activate(GtkEntry *entry, gpointer data) {
+    LumoBrowser *b = data;
+    (void)entry;
+    if (b->active_tab < 0 || b->active_tab >= b->tab_count) return;
+    WebKitFindController *fc = webkit_web_view_get_find_controller(
+        b->tabs[b->active_tab].web_view);
+    webkit_find_controller_search_next(fc);
+}
+
+static void on_toggle_find(GtkButton *btn, gpointer data) {
+    LumoBrowser *b = data; (void)btn;
+    b->find_visible = !b->find_visible;
+    gtk_widget_set_visible(GTK_WIDGET(b->find_bar), b->find_visible);
+    if (b->find_visible) {
+        gtk_widget_grab_focus(GTK_WIDGET(b->find_entry));
+    } else if (b->active_tab >= 0 && b->active_tab < b->tab_count) {
+        WebKitFindController *fc = webkit_web_view_get_find_controller(
+            b->tabs[b->active_tab].web_view);
+        webkit_find_controller_search_finish(fc);
+    }
+}
+
+/* ── Zoom controls ─────────────────────────────────────────────────── */
+
+static void on_zoom_in(GtkButton *btn, gpointer data) {
+    LumoBrowser *b = data; (void)btn;
+    if (b->active_tab < 0 || b->active_tab >= b->tab_count) return;
+    b->zoom_level += 0.1;
+    if (b->zoom_level > 3.0) b->zoom_level = 3.0;
+    webkit_web_view_set_zoom_level(b->tabs[b->active_tab].web_view,
+        b->zoom_level);
+}
+
+static void on_zoom_out(GtkButton *btn, gpointer data) {
+    LumoBrowser *b = data; (void)btn;
+    if (b->active_tab < 0 || b->active_tab >= b->tab_count) return;
+    b->zoom_level -= 0.1;
+    if (b->zoom_level < 0.5) b->zoom_level = 0.5;
+    webkit_web_view_set_zoom_level(b->tabs[b->active_tab].web_view,
+        b->zoom_level);
+}
+
 /* ── CSS theming ───────────────────────────────────────────────────── */
 
 static void apply_css(void) {
@@ -461,6 +606,11 @@ static void apply_css(void) {
         "  min-height: 3px; }\n"
         "progressbar progress { background: " LUMO_ACCENT ";"
         "  min-height: 3px; }\n"
+        ".find-bar { background: " LUMO_SURFACE "; padding: 4px; }\n"
+        ".find-entry { background: #1D0014; color: " LUMO_TEXT ";"
+        "  border: 2px solid " LUMO_BORDER "; border-radius: 12px;"
+        "  padding: 4px 12px; font-size: 13px; }\n"
+        ".find-entry:focus { border-color: " LUMO_ACCENT "; }\n"
     );
     gtk_style_context_add_provider_for_display(
         gdk_display_get_default(),
@@ -531,11 +681,41 @@ static void activate(GtkApplication *app, gpointer user_data) {
         G_CALLBACK(on_add_bookmark), b);
     g_signal_connect(b->url_bar, "activate", G_CALLBACK(on_url_activate), b);
 
+    b->find_btn = GTK_BUTTON(gtk_button_new_with_label("F"));
+    b->zoom_in_btn = GTK_BUTTON(gtk_button_new_with_label("A+"));
+    b->zoom_out_btn = GTK_BUTTON(gtk_button_new_with_label("A-"));
+
+    gtk_widget_add_css_class(GTK_WIDGET(b->find_btn), "nav-btn");
+    gtk_widget_add_css_class(GTK_WIDGET(b->zoom_in_btn), "nav-btn");
+    gtk_widget_add_css_class(GTK_WIDGET(b->zoom_out_btn), "nav-btn");
+
+    g_signal_connect(b->find_btn, "clicked", G_CALLBACK(on_toggle_find), b);
+    g_signal_connect(b->zoom_in_btn, "clicked", G_CALLBACK(on_zoom_in), b);
+    g_signal_connect(b->zoom_out_btn, "clicked", G_CALLBACK(on_zoom_out), b);
+
     gtk_box_append(b->toolbar, GTK_WIDGET(b->back_btn));
     gtk_box_append(b->toolbar, GTK_WIDGET(b->forward_btn));
     gtk_box_append(b->toolbar, GTK_WIDGET(b->reload_btn));
     gtk_box_append(b->toolbar, GTK_WIDGET(b->url_bar));
+    gtk_box_append(b->toolbar, GTK_WIDGET(b->find_btn));
+    gtk_box_append(b->toolbar, GTK_WIDGET(b->zoom_out_btn));
+    gtk_box_append(b->toolbar, GTK_WIDGET(b->zoom_in_btn));
     gtk_box_append(b->toolbar, GTK_WIDGET(b->bookmark_btn));
+
+    /* ── Find bar (hidden by default) ── */
+    b->find_bar = GTK_BOX(gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4));
+    gtk_widget_add_css_class(GTK_WIDGET(b->find_bar), "find-bar");
+    gtk_widget_set_visible(GTK_WIDGET(b->find_bar), FALSE);
+    b->find_visible = FALSE;
+    b->find_entry = GTK_ENTRY(gtk_entry_new());
+    gtk_widget_add_css_class(GTK_WIDGET(b->find_entry), "find-entry");
+    gtk_widget_set_hexpand(GTK_WIDGET(b->find_entry), TRUE);
+    gtk_entry_set_placeholder_text(b->find_entry, "Find in page...");
+    g_signal_connect(b->find_entry, "changed",
+        G_CALLBACK(on_find_text_changed), b);
+    g_signal_connect(b->find_entry, "activate",
+        G_CALLBACK(on_find_activate), b);
+    gtk_box_append(b->find_bar, GTK_WIDGET(b->find_entry));
 
     /* ── Progress bar ── */
     b->progress_bar = gtk_progress_bar_new();
@@ -552,12 +732,14 @@ static void activate(GtkApplication *app, gpointer user_data) {
     /* Progress bar between content and toolbar */
     gtk_box_append(b->main_box, b->progress_bar);
 
-    /* Toolbar and tab bar at the bottom of portrait buffer = right side
-     * of rotated display, away from the bottom-edge gesture zone */
+    /* Toolbar, find bar, and tab bar at the bottom of portrait buffer =
+     * right side of rotated display, away from the bottom-edge gesture zone */
+    gtk_box_append(b->main_box, GTK_WIDGET(b->find_bar));
     gtk_box_append(b->main_box, GTK_WIDGET(b->toolbar));
     gtk_box_append(b->main_box, GTK_WIDGET(b->tab_bar));
 
     /* ── First tab ── */
+    b->zoom_level = 1.0;
     b->active_tab = 0;
     on_new_tab(NULL, b);
 

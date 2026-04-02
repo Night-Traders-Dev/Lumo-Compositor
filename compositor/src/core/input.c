@@ -749,8 +749,10 @@ static void lumo_input_touch_down(
             !compositor->quick_settings_visible &&
             !compositor->time_panel_visible &&
             !compositor->notification_panel_visible;
-        if (app_focused && edge_zone == LUMO_EDGE_TOP) {
-            /* let the touch fall through to the app */
+        if (app_focused && (edge_zone == LUMO_EDGE_TOP ||
+                edge_zone == LUMO_EDGE_BOTTOM)) {
+            /* let the touch fall through to the app — the gesture
+             * handle hitbox still provides swipe-to-close access */
         } else {
             point->capture_edge = edge_zone;
             lumo_input_touch_point_begin_capture(compositor, point, &target,
@@ -961,7 +963,8 @@ static void lumo_input_touch_up(
                  * triggers, but allow taps on the status bar hitbox so
                  * panels remain accessible while apps are running. */
                 bool suppress = false;
-                if (point->capture_edge == LUMO_EDGE_TOP &&
+                if ((point->capture_edge == LUMO_EDGE_TOP ||
+                        point->capture_edge == LUMO_EDGE_BOTTOM) &&
                         !wl_list_empty(&compositor->toplevels) &&
                         !compositor->launcher_visible &&
                         !compositor->time_panel_visible &&
@@ -971,9 +974,10 @@ static void lumo_input_touch_up(
                          point->hitbox->kind != LUMO_HITBOX_EDGE_GESTURE)) {
                     suppress = true;
                     wlr_log(WLR_INFO,
-                        "input: touch %d top-edge tap suppressed "
-                        "(app focused, system edge zone)",
-                        point->touch_id);
+                        "input: touch %d edge tap suppressed "
+                        "(app focused, system edge zone=%s)",
+                        point->touch_id,
+                        lumo_edge_zone_name(point->capture_edge));
                 }
                 if (!suppress) {
                     lumo_input_touch_point_trigger_edge_action(compositor,
