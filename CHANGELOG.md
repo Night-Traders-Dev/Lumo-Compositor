@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.61] - 2026-04-02
+
+### Input System Audit — 6 Bug Fixes
+
+- **Bug #1**: Removed duplicate bottom-edge suppression block that had weaker conditions than the primary block, causing inconsistent touch routing when panels were visible.
+- **Bug #2**: Fixed fallback touch delivery sending coordinates (0,0) when no surface was hit-tested. Now correctly computes surface-local coordinates from the scene tree node position.
+- **Bug #3**: Fixed right-edge gesture (gesture handle) closing an app but not opening the launcher afterward. The early return after `close_focused_app` was removed — launcher now always opens after closing.
+- **Bug #4**: Added `wlr_seat_touch_notify_frame()` after `touch_notify_down` in `deliver_now()`. Some Wayland clients batch touch processing and require frame events.
+- **Bug #5**: Fixed replay logic gap where captured-but-not-triggered touches were silently dropped when a toplevel was focused but the launcher wasn't visible. Touches are now replayed to the launcher surface when visible.
+- Removed all pointer emulation code (was causing GTK4 input conflicts). Native touch events are now the sole input path for all apps.
+
+### Native SHM Browser
+
+- Rewrote browser as a native SHM app (`lumo-app --app browser`) instead of a separate GTK4/WebKitGTK binary. Launches instantly (~2s) like all other Lumo apps.
+- Toolbar: Home (H), Bookmark (*), URL bar (tap to search), Go/Reload (GO/R), Back (<), Forward (>).
+- Bookmarks persisted to `~/.lumo-browser-bookmarks` with default DuckDuckGo/Wikipedia/GitHub.
+- Quick links in editing mode: DuckDuckGo, Wikipedia, GitHub, YouTube.
+- OSK triggered when URL bar is tapped for text input.
+- URLs resolved via Epiphany (`epiphany-browser`) or `xdg-open` as subprocess.
+- GSK_RENDERER=cairo and GTK_USE_PORTAL=0 set for the GTK browser fallback to skip 20s+ renderer probing on riscv64.
+
+### Version
+
+- Bumped to 0.0.61.
+
 ## [0.0.60] - 2026-04-02
 
 ### Browser Features

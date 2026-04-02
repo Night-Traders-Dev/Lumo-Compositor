@@ -1787,9 +1787,6 @@ static void lumo_app_touch_handle_up(
             client->height > 0) {
         int btn = lumo_app_browser_button_at(client->width, client->height,
             client->touch_down_x, client->touch_down_y);
-        fprintf(stderr, "lumo-app: browser tap at (%.0f,%.0f) btn=%d\n",
-            client->touch_down_x, client->touch_down_y, btn);
-
         if (btn == 0) {
             /* URL bar tap — toggle editing */
             if (client->note_editing >= 0) {

@@ -799,27 +799,6 @@ static void lumo_input_touch_down(
         }
     }
 
-    if (edge_zone != LUMO_EDGE_NONE) {
-        /* suppress bottom-edge system zone when app is focused, but
-         * always allow the gesture handle hitbox through so the user
-         * can still swipe to close apps */
-        bool app_focused_2 = !wl_list_empty(&compositor->toplevels) &&
-            !compositor->launcher_visible;
-        bool is_gesture_handle = point->hitbox != NULL &&
-            point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE;
-        if (app_focused_2 && edge_zone == LUMO_EDGE_BOTTOM &&
-                !is_gesture_handle) {
-            /* fall through to surface delivery */
-        } else {
-            point->capture_edge = edge_zone;
-            lumo_input_touch_point_begin_capture(compositor, point, &target,
-                event->time_msec);
-            lumo_input_touch_debug_update(compositor, point,
-                LUMO_TOUCH_SAMPLE_DOWN, true, point->lx, point->ly);
-            return;
-        }
-    }
-
     /* --- shell surface redirect (only after hitboxes) --- */
 
     if (lumo_input_target_is_shell(&target)) {
@@ -897,10 +876,20 @@ static void lumo_input_touch_down(
         struct lumo_toplevel *tl;
         wl_list_for_each(tl, &compositor->toplevels, link) {
             if (tl->xdg_surface != NULL && tl->xdg_surface->surface != NULL) {
+                struct lumo_surface_target tl_target = {0};
+                tl_target.surface = tl->xdg_surface->surface;
+                tl_target.sx = point->lx;
+                tl_target.sy = point->ly;
+                if (tl->scene_tree != NULL) {
+                    int sx = 0, sy = 0;
+                    wlr_scene_node_coords(&tl->scene_tree->node, &sx, &sy);
+                    tl_target.sx = point->lx - (double)sx;
+                    tl_target.sy = point->ly - (double)sy;
+                }
                 lumo_input_touch_point_bind_surface(point,
                     tl->xdg_surface->surface);
-                lumo_input_touch_point_deliver_now(compositor, point, &target,
-                    event->time_msec);
+                lumo_input_touch_point_deliver_now(compositor, point,
+                    &tl_target, event->time_msec);
                 lumo_input_focus_surface(compositor, tl->xdg_surface->surface);
                 wlr_log(WLR_INFO,
                     "input: touch %d delivered to focused toplevel",
@@ -1029,14 +1018,8 @@ static void lumo_input_touch_up(
 
         if (!point->gesture_triggered && point->surface != NULL &&
                 point->capture_edge != LUMO_EDGE_NONE) {
-            /* don't replay edge taps to the launcher when an app is
-             * focused — that causes input bleed-through to tiles behind
-             * the active app. Only replay when the launcher drawer is
-             * actually open and visible. */
-            if (!compositor->launcher_visible &&
-                    !wl_list_empty(&compositor->toplevels)) {
-                /* drop the touch — the app stays in foreground */
-            } else {
+            /* replay captured-but-not-triggered touches to the surface */
+            if (compositor->launcher_visible) {
                 lumo_input_replay_touch_point(compositor, point);
             }
         }
