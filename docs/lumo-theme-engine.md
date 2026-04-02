@@ -3,27 +3,45 @@
 ## Overview
 
 The theme engine adapts all UI colors based on time of day and weather
-conditions. Colors are computed once per minute (on hour change) or when
-weather data arrives.
+conditions. Colors are computed using continuous interpolation between
+key-color stops placed at specific hours, with smoothstep easing for
+natural transitions. Weather shifts are blended in using exponential
+approach (8% per update) so condition changes fade in gradually rather
+than popping.
 
-## Time-of-Day Palettes
+## Time-of-Day Color Stops
 
-The base RGB values shift through 7 periods inspired by three mobile OS
-palettes:
+The engine defines 12 key-color stops across the 24-hour cycle. Between
+any two adjacent stops, colors are interpolated using smoothstep
+(`t*t*(3-2t)`) for a natural curve. This replaces the earlier discrete
+7-period system with a continuous gradient.
 
-| Period | Hours | Palette | Base RGB |
-|--------|-------|---------|----------|
-| Dawn | 5-7am | Sailfish teal | 0x14, 0x28, 0x38 |
-| Morning | 7-10am | Ubuntu + Sailfish | 0x30, 0x10, 0x28 |
-| Midday | 10am-2pm | Ubuntu aubergine | 0x2C, 0x00, 0x1E |
-| Afternoon | 2-5pm | webOS charcoal | 0x28, 0x14, 0x18 |
-| Sunset | 5-7pm | Ubuntu orange-red | 0x42, 0x0C, 0x16 |
-| Evening | 7-9pm | Sailfish petrol | 0x10, 0x18, 0x30 |
-| Night | 9pm-5am | Deep blend | 0x12, 0x08, 0x1A |
+| Stop | Hour | Palette | Base RGB |
+|------|------|---------|----------|
+| Midnight | 0:00 | Deep aubergine | 0x12, 0x08, 0x1A |
+| Pre-dawn | 4:00 | Slight blue lift | 0x10, 0x0C, 0x20 |
+| Dawn | 5:30 | Cool teal | 0x14, 0x28, 0x38 |
+| Early morning | 7:00 | Warm rose | 0x30, 0x10, 0x28 |
+| Mid-morning | 10:00 | Pure aubergine | 0x2C, 0x00, 0x1E |
+| Midday | 13:00 | Hold aubergine | 0x2C, 0x00, 0x1E |
+| Afternoon | 15:00 | Dusty warm | 0x28, 0x14, 0x18 |
+| Late afternoon | 17:00 | Sunset orange | 0x42, 0x0C, 0x16 |
+| Dusk | 19:00 | Purple | 0x30, 0x0A, 0x22 |
+| Twilight | 20:30 | Deep blue | 0x10, 0x18, 0x30 |
+| Night | 22:00 | Aubergine | 0x12, 0x08, 0x1A |
+| Wrap | 24:00 | (= midnight) | 0x12, 0x08, 0x1A |
+
+## Smooth Blending
+
+The engine maintains a running smooth color state (`lumo_smooth_r/g/b`).
+Each update computes the target color from time-of-day interpolation plus
+weather modification, then moves the current color 8% of the way toward
+the target (exponential approach). This prevents jarring color jumps when
+the weather condition changes or the time crosses a stop boundary.
 
 ## Weather Modifications
 
-Weather conditions shift the base RGB values:
+Weather conditions shift the interpolated base RGB values:
 
 | Code | Condition | Effect |
 |------|-----------|--------|

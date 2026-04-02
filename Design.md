@@ -4,12 +4,13 @@
 
 Lumo's shell is intentionally mobile-first and touch-first.
 
-The visual direction uses a dynamic theme engine that blends Ubuntu, Sailfish,
-and webOS palettes across 7 time-of-day periods and 7 weather conditions:
+The visual direction uses a continuous theme engine that interpolates Ubuntu,
+Sailfish, and webOS palettes across 12 time-of-day color stops with smoothstep
+easing, combined with 7 weather conditions blended via exponential approach:
 
 - Ubuntu Orange (`#E95420`) as the primary accent
 - Ubuntu Aubergine (`#2C001E`, `#77216F`) for backgrounds and panels
-- Sailfish and webOS tones mixed in by time-of-day (warm sunrise, cool midday, deep evening, dark night)
+- Sailfish and webOS tones interpolated continuously across the day (warm sunrise, cool midday, deep evening, dark night)
 - Weather-aware hue shifts (clear, cloudy, rainy, snowy, stormy, foggy, windy)
 - White for primary text and active elements
 
@@ -26,7 +27,7 @@ That means the shell should feel:
 - spacious, warm, and rich rather than busy
 - animated with confident slides and reveals instead of abrupt pops
 - readable from arm's length with large targets and strong contrast
-- time-aware with background hues that shift throughout the day
+- time-aware with background hues that shift continuously throughout the day via smoothstep interpolation
 
 ## Shell Surfaces
 
@@ -46,7 +47,7 @@ Design goals:
 Current app drawer labels:
 
 - Phone
-- Messages
+- Terminal
 - Browser
 - Camera
 - Maps
@@ -60,7 +61,9 @@ Current app drawer labels:
 
 ### Native Apps
 
-Launcher tiles now open native `lumo-app` clients instead of desktop wrappers.
+Launcher tiles now open native `lumo-app` clients or system applications.
+The Browser tile launches system Chromium (v122) via Wayland instead of a
+custom WebKitGTK binary.
 
 Design goals:
 
@@ -72,7 +75,7 @@ Design goals:
 Current native app set:
 
 - Phone
-- Messages
+- Terminal
 - Browser
 - Camera
 - Maps
@@ -231,10 +234,11 @@ Animation principles:
 
 - compositor state remains the source of truth for launcher visibility, keyboard visibility, scrim state, rotation, quick settings, time panel, and gesture thresholds
 - compositor state also owns touch-audit progress and per-device profile persistence
-- shell clients consume that state over the shell bridge protocol (up to 36 fields per state frame)
+- shell clients consume that state over the shell bridge protocol (up to 48 fields per state frame)
 - the shell protocol uses coalesced broadcasts via a dirty flag, flushed once per output frame
 - shell clients use double-buffered SHM rendering to avoid per-frame allocation overhead
 - the OSK is modularized into its own source file
+- input handling is modularized into input.c, input_touch.c, input_pointer.c, and input_internal.h
 - native apps are modularized into separate source files per app (app_terminal.c, app_clock.c, app_files.c, app_settings.c, app_notes.c, app_music.c, app_photos.c, app_videos.c)
 - the shared app rendering API lives in app_render.h with common helpers (fill, gradient, rounded rect, text, glyph table)
 - app clients use a poll-based event loop with configurable timeout for periodic redraws (1s for Clock, 5s for Settings)

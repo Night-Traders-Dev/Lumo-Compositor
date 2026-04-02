@@ -1,6 +1,6 @@
 # Lumo Compositor Security Audit
 
-Completed: 2026-03-28 (v0.0.52), updated 2026-03-30 (v0.0.57)
+Completed: 2026-03-28 (v0.0.52), updated 2026-03-30 (v0.0.57), current: v0.0.58
 
 ## Scope
 

@@ -13,6 +13,8 @@ src
 .gclient
 .gclient_entries
 .cipd/
+depot_tools/
+out/
 
 *.o
 *.a

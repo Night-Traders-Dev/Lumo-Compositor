@@ -17,13 +17,14 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
                                  |
     +----------------------------+----------------------------+
     |           Lumo Compositor Core (lumo-compositor)        |
-    | backend | input | output | protocol | shell_launch      |
+    | backend | input | input_touch | input_pointer | output  |
+    | protocol | shell_launch                                 |
     +----------------------------+----------------------------+
                                  |
                     wlroots 0.18 (DRM + libinput + scene)
                                  |
     +----------------------------+----------------------------+
-    |  App Clients: lumo-app (12 native) | lumo-browser (GTK) |
+    |  App Clients: lumo-app (12 native) | Chromium (v122)    |
     +-----------------------------------------------------+
 ```
 
@@ -34,19 +35,33 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
 - Initializes wlroots renderer and event loop
 - Manages session startup/shutdown
 
-### input.c (~2500 lines)
-- Touch coordinate transform with rotation support
-- Priority-based touch dispatch:
+### input.c + input_touch.c + input_pointer.c (~2900 lines total)
+
+Input is split into three files plus a shared internal header
+(`input_internal.h`, 169 lines):
+
+- `input.c` (1,366 lines) — common input setup, keyboard handling,
+  pinch-to-zoom gesture detection, virtual keyboard fallback
+- `input_touch.c` (963 lines) — touch coordinate transform with rotation,
+  priority-based touch dispatch, edge gesture detection
+- `input_pointer.c` (490 lines) — pointer/mouse event handling
+
+Priority-based touch dispatch:
   1. System bottom-edge zone (always priority for bottom swipes)
   2. Shell-reserved hitboxes (OSK keys, launcher scrim)
   3. Edge gesture hitboxes (gesture handle, top edge)
   4. System edge zones (left, right, top)
   5. Shell surface redirect (invisible launcher → toplevel)
   6. Normal surface targets (app toplevels)
-- Gesture detection with velocity (800px/s), distance (32px), angle (15°),
+- Gesture detection with velocity (800px/s), distance (32px), angle (15deg),
   and iOS-style projection on release
+- Pinch-to-zoom: two-finger gesture tracking with KEY_ZOOMIN/KEY_ZOOMOUT
+  events sent to focused app when scale crosses 0.1 boundaries
+- Top-edge touch passthrough to focused app when no panels are open
 - Virtual keyboard fallback for OSK → app key delivery
-- Auto-show keyboard for text-capable apps (messages, notes)
+- Auto-show keyboard via direct text_input_commit handler
+- Text-input-v3 keyboard auto-show: direct show in text_input_commit
+  handler, bypassing the refresh_keyboard_visibility list scan
 
 ### output.c
 - Output hotplug, rotation, and scene graph management
@@ -72,7 +87,7 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
 ### shell_protocol.c
 - Line-based frame protocol parser
 - Frame format: `LUMO/1 <kind> <name> id=<n>\n<key>=<value>\n...\n\n`
-- Max 36 fields, 512-byte line buffer
+- Max 48 fields, 512-byte line buffer
 - Token validation (no spaces/tabs in keys or values)
 
 ## Shell Layer (`src/shell/`)
@@ -81,9 +96,10 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
 - Spawns and supervises 5 shell client processes
 - Bridge protocol server (Unix socket at `$XDG_RUNTIME_DIR/lumo-shell-state.sock`)
 - State broadcast with dirty-flag coalescing (flushed per output frame)
-- 36 state fields: visibility, rotation, weather, volume, brightness, toast, etc.
+- 48 state fields: visibility, rotation, weather, volume, brightness, toast,
+  osk_page, etc.
 - Request handlers: activate_target, set_keyboard_visible, set_volume,
-  set_brightness, show_toast, cycle_rotation, reload_session
+  set_brightness, show_toast, cycle_rotation, reload_session, close_app
 - OSK key routing: shift toggle → page toggle → close → text-input-v3 → virtual keyboard fallback → search bar
 - Weather fetcher (fork + curl, 500ms poll timeout)
 - Volume/brightness control (fork + pactl/sysfs, non-blocking)
@@ -92,7 +108,7 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
 ### shell_client.c (~4000 lines)
 - Single binary, 5 modes: background, launcher, osk, gesture, status
 - SHM double-buffered rendering with force-recycle on size transitions
-- Dynamic theme engine (7 time-of-day palettes × 7 weather conditions)
+- Continuous theme engine (12 time-of-day color stops with smoothstep interpolation, 7 weather conditions, exponential approach blending)
 - Renderers:
   - **Background**: animated gradient with wave glow and light streaks
   - **Launcher**: GNOME 3.x grid (4×3), search bar with live filtering
@@ -139,17 +155,19 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
 - `app_videos.c`: library list with preview area
 - `app_ui.c`: shared rendering (fill_rect, gradient, rounded_rect, text, theme)
 
-### browser.c (separate binary: lumo-browser)
-- GTK4 + WebKitGTK 6.0 standalone Wayland client
-- Local HTML start page (instant load, no network)
-- Smart URL bar (auto-https, localhost→http, percent-encoded search)
-- Hardware acceleration disabled for riscv64 performance
-- Conditional build (only when webkitgtk-6.0 + gtk4 deps present)
+### Browser (system Chromium v122)
+- Browser tile launches system `chromium-browser` with Wayland flags
+- `--ozone-platform=wayland --single-process --disable-gpu --enable-wayland-ime`
+- DuckDuckGo Lite as start page
+- Text-input-v3 integration for OSK auto-show in input fields
+- `--single-process` required on riscv64 (multi-process hangs)
+- Chromium source in `chromium/` submodule for Lumo theme customization
+- Legacy `lumo-browser` (GTK4 + WebKitGTK 6.0) still builds conditionally as fallback
 
 ## Build System
 
 - Meson 0.58+ with C11
-- 20 build targets: compositor, shell, app, browser, screenshot, 5 test suites
+- 20+ build targets: compositor, shell, app, browser, screenshot, 6 test suites
 - Dependencies: wlroots-0.18, wayland-server/client, xkbcommon, libpng, libjpeg
 - Optional: webkitgtk-6.0 + gtk4 (browser), xwayland
 - Cross-compiles for riscv64 (tested on OrangePi RV2, Ubuntu 24.04)
@@ -171,6 +189,7 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
    disabled on hide. Launcher at LAYER_OVERLAY. Apps at xdg-shell layer.
    Fullscreen toplevels can occlude LAYER_TOP but not OVERLAY.
 
-5. **Weather-driven theme**: Single palette computation shared by background,
-   status bar, panels, drawer, and all app renderers via `lumo_theme_update()`
-   (shell) and `lumo_app_theme_get()` (apps).
+5. **Weather-driven theme**: Continuous time-of-day interpolation with
+   smoothstep easing plus smooth weather blending via exponential approach,
+   shared by background, status bar, panels, drawer, and all app renderers
+   via `lumo_theme_update()` (shell) and `lumo_app_theme_get()` (apps).

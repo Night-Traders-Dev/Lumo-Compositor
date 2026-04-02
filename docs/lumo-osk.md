@@ -75,6 +75,20 @@ hitbox list, giving it higher priority in the overlap region. This prevents
 touches on OSK keys from accidentally triggering launcher tiles behind the
 keyboard.
 
+## Page Toggle Broadcast
+
+The current OSK page (QWERTY or symbols) is broadcast to the shell client
+via the `osk_page` field in the state protocol frame. When the user taps
+the `123`/`ABC` key, the compositor updates `osk_page` and triggers a
+state broadcast so the shell renders the correct key labels immediately.
+
+## Key Press Visual Feedback
+
+In unified rendering mode, key press feedback is handled by calling
+`lumo_shell_client_redraw_unified()` when the active target (pressed key)
+changes. This ensures the pressed-key highlight renders without waiting
+for the next animation tick.
+
 ## State Reset
 
 When the keyboard is hidden:
@@ -82,6 +96,7 @@ When the keyboard is hidden:
 - Shift state resets to off
 - Page resets to QWERTY
 - `osk_shift_active` cleared in compositor
+- `osk_page` reset to 0 (QWERTY)
 - State broadcast to shell clients
 
 ## Implementation Files

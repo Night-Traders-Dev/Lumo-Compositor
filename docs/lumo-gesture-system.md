@@ -52,6 +52,27 @@ When a bottom-edge swipe is triggered, the compositor evaluates in order:
 The bottom-edge system zone is checked before hitboxes so that swipe-to-close
 works even when the OSK or launcher surface covers the gesture area.
 
+## Pinch-to-Zoom
+
+Two-finger pinch gestures are detected on app surfaces:
+
+- The compositor tracks two simultaneous touch points and computes
+  inter-finger distance each frame
+- When the scale ratio crosses a 0.1 boundary, KEY_ZOOMIN or KEY_ZOOMOUT
+  is sent to the focused app via `wlr_seat_keyboard_notify_key()`
+- The original single-touch delivery is cancelled via
+  `wlr_seat_touch_send_cancel` to prevent accidental taps during pinch
+- Auto-shown keyboard is hidden when a pinch begins
+- Terminal font scale adjusts in real-time (scale 1-6, default 2)
+- Zoom state persists across pinch gestures (cumulative)
+
+## Top-Edge Touch Passthrough
+
+Top-edge touches pass through to the focused app when no panels (quick
+settings or time panel) are currently open. This allows app controls near
+the top of the screen (e.g., browser tab close buttons) to receive taps
+without being captured by the system edge zone.
+
 ## Easing Curves
 
 Animations use Material Design curves:

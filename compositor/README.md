@@ -5,7 +5,7 @@ binaries (shell, apps, browser, screenshot).
 
 The source tree is grouped by category:
 
-- `src/core/` — backend startup, compositor lifecycle, input dispatch, output management, XWayland
+- `src/core/` — backend startup, compositor lifecycle, input dispatch (input.c + input_touch.c + input_pointer.c), output management, XWayland
 - `src/apps/` — native touch-first application clients (terminal, clock, files, settings, notes, music, photos, videos, browser)
 - `src/protocol/` — xdg-shell/layer-shell management, text-input-v3, bridge protocol parser
 - `src/shell/` — shell launch/supervision, shell client rendering (5 modes), OSK layout, UI geometry

@@ -2,7 +2,7 @@
 
 All apps are built as a single `lumo-app` binary with `--app <name>` to
 select the app. They use xdg-shell as Wayland clients with SHM rendering.
-The browser is a separate `lumo-browser` binary using GTK4+WebKitGTK.
+The browser tile launches system Chromium (v122) via Wayland.
 
 ## OSK Input
 
@@ -56,6 +56,10 @@ renders with proper case distinction.
 - OSK auto-shows on focus
 - Text-input-v3 for OSK key delivery to PTY
 - Shift key support: uppercase letters and shifted symbols (shift+1=!, shift+2=@, etc.)
+- Text wrapping at display width boundary
+- Top-down layout: scrollback renders from header downward, prompt follows last output line
+- Pinch-to-zoom font scaling (scale 1-6, default 2)
+- `\r` (carriage return) handled correctly without wiping line buffer
 - `exit` command closes the terminal app window and returns to desktop
 
 ### Clock
@@ -109,12 +113,13 @@ placeholders. All follow the dynamic time/weather theme.
 
 ### Browser
 
-- Standalone `lumo-browser` binary using GTK4 + WebKitGTK 6.0
-- URL bar with smart input: URLs, domains (auto-https), localhost (auto-http), search queries (percent-encoded, DuckDuckGo Lite)
-- Back/Forward/Reload navigation buttons
-- Fullscreen Wayland client, hardware acceleration disabled for riscv64
-- Falls back to `lumo-app --app browser` stub if WebKitGTK not available
-- Built conditionally — only compiled when `webkitgtk-6.0` and `gtk4` deps are present
+- System Chromium (v122) launched via `chromium-browser` with Wayland flags
+- `--ozone-platform=wayland --single-process --disable-gpu --enable-wayland-ime`
+- `--single-process` is required on riscv64 (multi-process renderer hangs)
+- DuckDuckGo Lite as default start page
+- Text-input-v3 integration for OSK auto-show in input fields
+- Chromium source added as git submodule under `chromium/` for Lumo theme customization
+- Falls back to `lumo-app --app browser` stub if Chromium is not installed
 
 ## Theme Integration
 

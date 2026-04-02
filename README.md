@@ -227,7 +227,7 @@ The project is at v0.0.58 with a functional mobile shell running on OrangePi RV2
 Current capabilities:
 
 - full DRM compositor with pixman software rendering
-- dynamic theme engine blending Ubuntu, Sailfish, and webOS palettes by time of day and weather
+- continuous theme engine with smoothstep time-of-day interpolation across 12 color stops, exponential-approach weather blending, Ubuntu/Sailfish/webOS palettes
 - animated procedural background with weather-aware hue shifts (fetches wttr.in every 5 min)
 - boot chime on shell startup
 - GNOME 3.x style app drawer with 4x3 grid, search bar, and translucent overlay
@@ -238,7 +238,7 @@ Current capabilities:
 - on-screen keyboard (Lomiri style) with shift key, close button, QWERTY + symbols pages, virtual keyboard fallback
 - full uppercase/lowercase bitmap font rendering in both shell and app surfaces
 - functional Browser (system Chromium v122 via Wayland, single-process mode for riscv64, text-input-v3 OSK integration, DuckDuckGo Lite start page)
-- functional Terminal with real PTY shell (/bin/sh via forkpty), text wrapping, pinch-to-zoom font scaling, blinking cursor, menu, exit closes app
+- functional Terminal with real PTY shell (/bin/sh via forkpty), text wrapping, top-down layout, pinch-to-zoom font scaling (1-6x), blinking cursor, menu, exit closes app
 - functional Clock with 4 tabs (Clock, Alarm, Stopwatch, Timer), persistent settings
 - functional Files with directory browsing, scroll, navigation, file sizes
 - functional Settings with 8 categorized sub-pages
