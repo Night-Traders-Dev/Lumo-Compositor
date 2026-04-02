@@ -252,7 +252,7 @@ Current capabilities:
 - shell child supervision with automatic respawn
 - double-buffered SHM rendering for shell clients
 - toast notifications (Android-style pills)
-- 5 test suites: compositor, shell, app, screenshot, and fuzz/stress
+- 6 test suites: compositor, shell, app, screenshot, fuzz/stress, and perf
 - multiple security audits: 40+ issues fixed across all subsystems
 
 Next milestones:

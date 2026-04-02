@@ -153,6 +153,19 @@ case "$touch_quirks_mode" in
     ;;
 esac
 
+# Verify version.h and meson.build are in sync
+version_h="$project_dir/include/lumo/version.h"
+if [[ -f "$version_h" ]]; then
+  header_version=$(grep 'LUMO_VERSION_STRING' "$version_h" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+  meson_version=$(grep "version:" "$project_dir/meson.build" | head -1 | sed "s/.*'\(.*\)'.*/\1/")
+  if [[ -n "$header_version" && -n "$meson_version" && "$header_version" != "$meson_version" ]]; then
+    printf 'build.sh: VERSION MISMATCH: version.h=%s meson.build=%s\n' \
+      "$header_version" "$meson_version" >&2
+    printf 'build.sh: edit include/lumo/version.h and meson.build to match\n' >&2
+    exit 1
+  fi
+fi
+
 if [[ -z "$buildtype" ]]; then
   :
 else

@@ -1,3 +1,6 @@
+## Version is defined in include/lumo/version.h (single source of truth).
+## Keep this project version in sync — the build.sh script and CI should
+## verify they match.  To bump the version, edit version.h and this line.
 project(
   'lumo-compositor',
   'c',
