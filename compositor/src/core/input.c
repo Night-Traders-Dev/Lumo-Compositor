@@ -738,8 +738,7 @@ static void lumo_input_touch_down(
             !compositor->launcher_visible &&
             !compositor->quick_settings_visible &&
             !compositor->time_panel_visible;
-        if (app_focused && edge_zone == LUMO_EDGE_TOP &&
-                target.surface != NULL) {
+        if (app_focused && edge_zone == LUMO_EDGE_TOP) {
             /* let the touch fall through to the app */
         } else {
             point->capture_edge = edge_zone;
@@ -786,8 +785,7 @@ static void lumo_input_touch_down(
                 !wl_list_empty(&compositor->toplevels) &&
                 !compositor->launcher_visible &&
                 !compositor->quick_settings_visible &&
-                !compositor->time_panel_visible &&
-                target.surface != NULL) {
+                !compositor->time_panel_visible) {
             suppress_top = true;
         }
         if (!suppress_top) {

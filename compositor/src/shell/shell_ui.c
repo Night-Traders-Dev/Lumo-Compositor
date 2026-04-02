@@ -24,7 +24,7 @@ static const char *const lumo_shell_launcher_labels[] = {
 static const char *const lumo_shell_launcher_commands[] = {
     "lumo-app:phone",
     "lumo-app:messages",
-    "chromium-browser --ozone-platform=wayland --no-sandbox --disable-gpu --single-process --no-first-run --start-maximized --touch-events=enabled --enable-wayland-ime --enable-features=WaylandTextInputV3 --load-extension=/home/orangepi/.local/share/lumo/extensions/lumo-theme",
+    "chromium-browser --ozone-platform=wayland --no-sandbox --disable-gpu --single-process --no-first-run --start-maximized --touch-events=enabled --enable-wayland-ime --enable-features=WaylandTextInputV3 --load-extension=/home/orangepi/.local/share/lumo/extensions/lumo-theme --user-agent='Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36'",
     "lumo-app:camera",
     "lumo-app:maps",
     "lumo-app:music",
