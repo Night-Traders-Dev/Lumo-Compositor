@@ -1545,24 +1545,50 @@ static void lumo_app_touch_handle_up(
             client->height > 0) {
         int row = lumo_app_notes_row_at(client->width, client->height,
             client->touch_down_x, client->touch_down_y);
-        if (row >= 0 && row < client->note_count) {
-            if (client->note_editing == row) {
-                /* tap on editing note = stop editing */
+
+        /* editor mode: done button or delete-in-editor */
+        if (client->note_editing >= 0) {
+            if (row == -4) {
+                /* done — exit editor */
                 client->note_editing = -1;
-            } else if (client->selected_row == row) {
-                /* tap on selected = start editing */
+                lumo_app_notes_save(client);
+                (void)lumo_app_client_redraw(client);
+                lumo_app_sync_text_input_state(client, false);
+                return;
+            } else if (row == -5) {
+                /* delete in editor */
+                int del = client->note_editing;
+                client->note_editing = -1;
+                for (int i = del; i < client->note_count - 1; i++) {
+                    memcpy(client->notes[i], client->notes[i + 1],
+                        sizeof(client->notes[0]));
+                }
+                client->note_count--;
+                client->notes[client->note_count][0] = '\0';
+                client->selected_row = -1;
+                lumo_app_notes_save(client);
+                (void)lumo_app_client_redraw(client);
+                lumo_app_sync_text_input_state(client, false);
+                return;
+            }
+            /* any other tap in editor: ignore (let OSK handle input) */
+            return;
+        }
+
+        if (row >= 0 && row < client->note_count) {
+            if (client->selected_row == row) {
+                /* tap on selected = start editing (open editor) */
                 client->note_editing = row;
             } else {
-                /* tap on unselected = select it, stop editing */
+                /* tap on unselected = select it */
                 client->selected_row = row;
                 client->note_editing = -1;
             }
             (void)lumo_app_client_redraw(client);
         } else if (row == -3) {
-            /* delete selected note */
+            /* delete selected note (list view) */
             if (client->selected_row >= 0 &&
-                    client->selected_row < client->note_count &&
-                    client->note_editing < 0) {
+                    client->selected_row < client->note_count) {
                 int del = client->selected_row;
                 for (int i = del; i < client->note_count - 1; i++) {
                     memcpy(client->notes[i], client->notes[i + 1],
@@ -1693,30 +1719,44 @@ static void lumo_app_touch_handle_up(
 
         if (btn == 1) {
             client->clock_tab = 0; /* compass */
+            client->note_editing = -1;
             (void)lumo_app_client_redraw(client);
         } else if (btn == 2) {
             client->clock_tab = 1; /* places */
+            client->note_editing = -1;
             (void)lumo_app_client_redraw(client);
         } else if (btn == 3) {
             client->clock_tab = 2; /* info */
+            client->note_editing = -1;
             (void)lumo_app_client_redraw(client);
         } else if (btn == 0 && client->clock_tab == 1) {
-            /* add place */
+            /* add place — create and immediately start editing */
             if (client->note_count < 8) {
-                snprintf(client->notes[client->note_count],
-                    sizeof(client->notes[0]), "PLACE %d",
-                    client->note_count + 1);
+                client->notes[client->note_count][0] = '\0';
                 client->note_count++;
+                client->selected_row = client->note_count - 1;
+                client->note_editing = client->note_count - 1;
                 lumo_app_places_save(client);
                 (void)lumo_app_client_redraw(client);
             }
         } else if (btn >= 100 && client->clock_tab == 1) {
             int row = btn - 100;
-            if (row < client->note_count) {
-                client->selected_row = row;
+            if (row >= 0 && row < client->note_count) {
+                if (client->note_editing == row) {
+                    /* tap editing place = stop editing */
+                    client->note_editing = -1;
+                } else if (client->selected_row == row) {
+                    /* tap selected = start editing */
+                    client->note_editing = row;
+                } else {
+                    /* tap unselected = select, stop editing */
+                    client->selected_row = row;
+                    client->note_editing = -1;
+                }
                 (void)lumo_app_client_redraw(client);
             }
         }
+        lumo_app_sync_text_input_state(client, client->note_editing >= 0);
     }
 
     if (client->app_id == LUMO_APP_SETTINGS && client->width > 0 &&
@@ -2037,14 +2077,18 @@ static void lumo_app_text_input_delete_surrounding(void *data,
             for (uint32_t i = 0; i < before; i++) {
                 lumo_app_term_write(client, "\x7f", 1);
             }
-        } else if (client->app_id == LUMO_APP_NOTES &&
+        } else if ((client->app_id == LUMO_APP_NOTES ||
+                client->app_id == LUMO_APP_MAPS) &&
                 client->note_editing >= 0 &&
                 client->note_editing < client->note_count) {
             size_t len = strlen(client->notes[client->note_editing]);
             for (uint32_t i = 0; i < before && len > 0; i++) {
                 client->notes[client->note_editing][--len] = '\0';
             }
-            lumo_app_notes_save(client);
+            if (client->app_id == LUMO_APP_MAPS)
+                lumo_app_places_save(client);
+            else
+                lumo_app_notes_save(client);
             (void)lumo_app_client_redraw(client);
         }
     }
@@ -2068,8 +2112,9 @@ static void lumo_app_text_input_done(void *data,
                     lumo_app_term_write(client, &ch, 1);
                 }
             }
-        } else if (client->app_id == LUMO_APP_NOTES) {
-            /* OSK text for notes app */
+        } else if (client->app_id == LUMO_APP_NOTES ||
+                client->app_id == LUMO_APP_MAPS) {
+            /* OSK text for notes/maps app */
             if (client->note_editing >= 0 &&
                     client->note_editing < client->note_count) {
                 size_t cur = strlen(client->notes[client->note_editing]);
@@ -2078,7 +2123,10 @@ static void lumo_app_text_input_done(void *data,
                     memcpy(client->notes[client->note_editing] + cur,
                         client->pending_commit, add);
                     client->notes[client->note_editing][cur + add] = '\0';
-                    lumo_app_notes_save(client);
+                    if (client->app_id == LUMO_APP_MAPS)
+                        lumo_app_places_save(client);
+                    else
+                        lumo_app_notes_save(client);
                     (void)lumo_app_client_redraw(client);
                 }
             }

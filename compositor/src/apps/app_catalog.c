@@ -106,11 +106,11 @@ bool lumo_app_wants_osk(enum lumo_app_id app_id, int note_editing) {
     case LUMO_APP_MESSAGES:
         return true;
     case LUMO_APP_NOTES:
+    case LUMO_APP_MAPS:
         return note_editing >= 0;
     case LUMO_APP_PHONE:
     case LUMO_APP_BROWSER:
     case LUMO_APP_CAMERA:
-    case LUMO_APP_MAPS:
     case LUMO_APP_MUSIC:
     case LUMO_APP_PHOTOS:
     case LUMO_APP_VIDEOS:
