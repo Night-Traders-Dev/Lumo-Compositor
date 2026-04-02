@@ -456,12 +456,6 @@ static void lumo_input_touch_motion(
     if (!point->captured && point->delivered && point->surface != NULL) {
         wlr_seat_touch_notify_motion(compositor->seat, event->time_msec,
             event->touch_id, target.sx, target.sy);
-        /* pointer emulation motion for toplevel GTK4 apps */
-        if (event->touch_id == 0) {
-            wlr_seat_pointer_notify_motion(compositor->seat,
-                event->time_msec, target.sx, target.sy);
-            wlr_seat_pointer_notify_frame(compositor->seat);
-        }
         point->lx = lx;
         point->ly = ly;
         point->sx = target.sx;
@@ -806,11 +800,15 @@ static void lumo_input_touch_down(
     }
 
     if (edge_zone != LUMO_EDGE_NONE) {
-        /* suppress bottom-edge capture when app is focused — let the
-         * touch reach the app for toolbar interactions */
+        /* suppress bottom-edge system zone when app is focused, but
+         * always allow the gesture handle hitbox through so the user
+         * can still swipe to close apps */
         bool app_focused_2 = !wl_list_empty(&compositor->toplevels) &&
             !compositor->launcher_visible;
-        if (app_focused_2 && edge_zone == LUMO_EDGE_BOTTOM) {
+        bool is_gesture_handle = point->hitbox != NULL &&
+            point->hitbox->kind == LUMO_HITBOX_EDGE_GESTURE;
+        if (app_focused_2 && edge_zone == LUMO_EDGE_BOTTOM &&
+                !is_gesture_handle) {
             /* fall through to surface delivery */
         } else {
             point->capture_edge = edge_zone;
@@ -1066,25 +1064,6 @@ static void lumo_input_touch_up(
     if (point->delivered && point->surface != NULL) {
         wlr_seat_touch_notify_up(compositor->seat, event->time_msec,
             event->touch_id);
-
-        /* pointer emulation release for toplevel GTK4 apps */
-        if (event->touch_id == 0) {
-            bool is_toplevel = false;
-            struct lumo_toplevel *tl;
-            wl_list_for_each(tl, &compositor->toplevels, link) {
-                if (tl->xdg_surface != NULL &&
-                        tl->xdg_surface->surface == point->surface) {
-                    is_toplevel = true;
-                    break;
-                }
-            }
-            if (is_toplevel) {
-                wlr_seat_pointer_notify_button(compositor->seat,
-                    event->time_msec, BTN_LEFT,
-                    WL_POINTER_BUTTON_STATE_RELEASED);
-                wlr_seat_pointer_notify_frame(compositor->seat);
-            }
-        }
     }
 
     if (point->delivered || point->captured) {

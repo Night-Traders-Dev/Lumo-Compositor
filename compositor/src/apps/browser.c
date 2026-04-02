@@ -386,8 +386,7 @@ static int add_tab(LumoBrowser *b, const char *uri) {
         G_CALLBACK(on_create_web_view), b);
     g_signal_connect(tab->web_view, "load-failed-with-tls-errors",
         G_CALLBACK(on_load_failed_with_tls), b);
-    g_signal_connect(tab->web_view, "download-started",
-        G_CALLBACK(on_download_started), b);
+    /* download-started is on the WebKitNetworkSession, not the WebView */
 
     char stack_name[16];
     snprintf(stack_name, sizeof(stack_name), "tab%d", idx);
@@ -765,6 +764,11 @@ int main(int argc, char **argv) {
     setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1", 0);
     /* limit to one web process to reduce fork/exec overhead on slow CPU */
     setenv("WEBKIT_PROCESS_COUNT_LIMIT", "1", 0);
+    /* force Cairo renderer — skip EGL/GL/Vulkan probing which always
+     * fails on riscv64 and wastes ~20s during startup */
+    setenv("GSK_RENDERER", "cairo", 0);
+    /* disable portal timeout (another 30s stall) */
+    setenv("GTK_USE_PORTAL", "0", 0);
 
     app = gtk_application_new("com.lumo.browser",
         G_APPLICATION_DEFAULT_FLAGS);
