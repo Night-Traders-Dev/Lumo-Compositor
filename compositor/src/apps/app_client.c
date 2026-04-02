@@ -2879,9 +2879,10 @@ static void lumo_app_browser_launch_url(const char *url) {
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
-        /* try epiphany first, then lumo-browser GTK, then xdg-open */
+        /* lumo-webview is our embedded fullscreen WebKit renderer */
+        execlp("lumo-webview", "lumo-webview", resolved, (char *)NULL);
+        /* fallback to system browsers */
         execlp("epiphany", "epiphany", resolved, (char *)NULL);
-        execlp("lumo-browser", "lumo-browser", resolved, (char *)NULL);
         execlp("xdg-open", "xdg-open", resolved, (char *)NULL);
         _exit(127);
     }

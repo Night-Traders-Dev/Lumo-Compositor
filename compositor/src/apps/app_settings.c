@@ -491,6 +491,45 @@ static void render_storage(
     }
 }
 
+/* read VmRSS (resident memory) from /proc/<pid>/status in kB */
+static unsigned long get_pid_rss(pid_t pid) {
+    char path[64], line[256];
+    FILE *fp;
+    snprintf(path, sizeof(path), "/proc/%d/status", (int)pid);
+    fp = fopen(path, "r");
+    if (!fp) return 0;
+    unsigned long rss = 0;
+    while (fgets(line, sizeof(line), fp)) {
+        if (sscanf(line, "VmRSS: %lu kB", &rss) == 1) break;
+    }
+    fclose(fp);
+    return rss;
+}
+
+/* find PID by command name via /proc scan */
+static pid_t find_pid(const char *name) {
+    DIR *d = opendir("/proc");
+    if (!d) return 0;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        int p = atoi(ent->d_name);
+        if (p <= 0) continue;
+        char path[64], cmd[256];
+        snprintf(path, sizeof(path), "/proc/%d/comm", p);
+        FILE *fp = fopen(path, "r");
+        if (!fp) continue;
+        cmd[0] = '\0';
+        if (fgets(cmd, sizeof(cmd), fp)) {
+            char *nl = strchr(cmd, '\n');
+            if (nl) *nl = '\0';
+        }
+        fclose(fp);
+        if (strcmp(cmd, name) == 0) { closedir(d); return (pid_t)p; }
+    }
+    closedir(d);
+    return 0;
+}
+
 static void render_memory(
     const struct lumo_app_render_context *ctx,
     uint32_t *px, uint32_t w, uint32_t h
@@ -513,6 +552,49 @@ static void render_memory(
     draw_info(px, w, h, y, "CACHE", buf); y += 34;
     if (total > 0)
         draw_bar(px, w, h, y, used, total);
+    y += 24;
+
+    /* Lumo process memory breakdown */
+    struct lumo_app_theme theme;
+    lumo_app_theme_get(&theme);
+    lumo_app_fill_rect(px, w, h, 12, y, (int)w - 24, 1, theme.separator);
+    y += 8;
+    lumo_app_draw_text(px, w, h, 16, y, 2, theme.accent, "LUMO PROCESSES");
+    y += 22;
+
+    static const struct { const char *comm; const char *label; } procs[] = {
+        {"lumo-composit", "COMPOSITOR"},
+        {"lumo-shell",    "SHELL (x5)"},
+        {"lumo-app",      "NATIVE APP"},
+        {"lumo-webview",  "WEB VIEW"},
+        {"lumo-browser",  "BROWSER GTK"},
+        {"WebKitWebProce", "WEBKIT PROC"},
+    };
+    unsigned long lumo_total = 0;
+    for (int i = 0; i < (int)(sizeof(procs) / sizeof(procs[0])) &&
+            y + 22 < (int)h - 10; i++) {
+        pid_t pid = find_pid(procs[i].comm);
+        if (pid > 0) {
+            unsigned long rss = get_pid_rss(pid);
+            lumo_total += rss;
+            if (rss >= 1024) {
+                snprintf(buf, sizeof(buf), "%lu.%lu MB",
+                    rss / 1024, (rss % 1024) * 10 / 1024);
+            } else {
+                snprintf(buf, sizeof(buf), "%lu KB", rss);
+            }
+            draw_info(px, w, h, y, procs[i].label, buf);
+        } else {
+            draw_info(px, w, h, y, procs[i].label, "--");
+        }
+        y += 22;
+    }
+    y += 6;
+    if (lumo_total > 0) {
+        snprintf(buf, sizeof(buf), "%lu.%lu MB",
+            lumo_total / 1024, (lumo_total % 1024) * 10 / 1024);
+        draw_info(px, w, h, y, "LUMO TOTAL", buf);
+    }
 }
 
 static void render_general(

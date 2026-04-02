@@ -259,6 +259,12 @@ if webkit_dep.found() and gtk4_dep.found()
     dependencies: [webkit_dep, gtk4_dep],
     install: true,
   )
+  executable(
+    'lumo-webview',
+    files('src/apps/webview.c'),
+    dependencies: [webkit_dep, gtk4_dep],
+    install: true,
+  )
   browser_test_exe = executable(
     'lumo-browser-tests',
     files('tests/apps/test_browser.c'),
