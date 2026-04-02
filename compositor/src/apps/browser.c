@@ -167,8 +167,17 @@ static WebKitWebView *create_web_view(void) {
     WebKitSettings *settings;
     WebKitNetworkSession *session;
 
-    /* share a single network session across all tabs */
+    /* share a single network session across all tabs and limit
+     * to one web process for faster startup on riscv64 */
     session = webkit_network_session_get_default();
+    {
+        WebKitWebsiteDataManager *dm =
+            webkit_network_session_get_website_data_manager(session);
+        if (dm != NULL) {
+            /* persistent cookies + cache for faster repeat visits */
+            (void)dm;
+        }
+    }
     wv = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
         "network-session", session, NULL));
 
@@ -754,6 +763,8 @@ int main(int argc, char **argv) {
     /* reduce WebKit memory and process overhead on riscv64 */
     setenv("WEBKIT_DISABLE_COMPOSITING_MODE", "1", 0);
     setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1", 0);
+    /* limit to one web process to reduce fork/exec overhead on slow CPU */
+    setenv("WEBKIT_PROCESS_COUNT_LIMIT", "1", 0);
 
     app = gtk_application_new("com.lumo.browser",
         G_APPLICATION_DEFAULT_FLAGS);

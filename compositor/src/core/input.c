@@ -456,6 +456,12 @@ static void lumo_input_touch_motion(
     if (!point->captured && point->delivered && point->surface != NULL) {
         wlr_seat_touch_notify_motion(compositor->seat, event->time_msec,
             event->touch_id, target.sx, target.sy);
+        /* pointer emulation for GTK4 drag/scroll */
+        if (event->touch_id == 0) {
+            wlr_seat_pointer_notify_motion(compositor->seat,
+                event->time_msec, target.sx, target.sy);
+            wlr_seat_pointer_notify_frame(compositor->seat);
+        }
         point->lx = lx;
         point->ly = ly;
         point->sx = target.sx;
@@ -1060,6 +1066,13 @@ static void lumo_input_touch_up(
     if (point->delivered && point->surface != NULL) {
         wlr_seat_touch_notify_up(compositor->seat, event->time_msec,
             event->touch_id);
+
+        /* pointer emulation: send button release for GTK4 compat */
+        if (event->touch_id == 0) {
+            wlr_seat_pointer_notify_button(compositor->seat,
+                event->time_msec, BTN_LEFT, WL_POINTER_BUTTON_STATE_RELEASED);
+            wlr_seat_pointer_notify_frame(compositor->seat);
+        }
     }
 
     if (point->delivered || point->captured) {
