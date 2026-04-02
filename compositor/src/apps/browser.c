@@ -268,21 +268,6 @@ static int add_tab(LumoBrowser *b, const char *uri) {
 }
 
 static void switch_to_tab(LumoBrowser *b, int idx) {
-    /* when called from signal, extract index from button data */
-    if (idx == 0 || (idx > 0 && idx < b->tab_count)) {
-        /* direct call with valid index */
-    } else {
-        /* called from button signal — 'b' is actually the browser,
-         * we need to find the button that was clicked */
-        GtkWidget *btn = gtk_event_controller_get_widget(
-            GTK_EVENT_CONTROLLER(g_object_get_data(G_OBJECT(b), "last-controller")));
-        if (btn) {
-            idx = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(btn), "tab-index"));
-        } else {
-            idx = 0;
-        }
-    }
-
     if (idx < 0 || idx >= b->tab_count) return;
     b->active_tab = idx;
 
