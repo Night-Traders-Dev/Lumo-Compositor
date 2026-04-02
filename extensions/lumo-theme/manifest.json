@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Lumo Theme",
+  "version": "0.0.58",
+  "description": "Ubuntu Orange + Aubergine theme for Lumo Compositor's mobile browser",
+  "permissions": [],
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "css": ["lumo-content.css"],
+      "run_at": "document_start"
+    }
+  ],
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "theme": {
+    "colors": {
+      "frame": [44, 0, 30],
+      "frame_inactive": [18, 8, 26],
+      "toolbar": [34, 10, 24],
+      "tab_background_inactive": [28, 4, 20],
+      "tab_text": [255, 255, 255],
+      "bookmark_text": [174, 167, 159],
+      "ntp_background": [18, 8, 26],
+      "ntp_text": [255, 255, 255],
+      "button_background": [233, 84, 32],
+      "omnibox_background": [24, 6, 18],
+      "omnibox_text": [255, 255, 255],
+      "toolbar_button_icon": [174, 167, 159],
+      "tab_background_inactive_frame_active": [28, 4, 20],
+      "tab_background_inactive_frame_inactive": [18, 8, 26]
+    },
+    "tints": {
+      "buttons": [0.04, 0.60, 0.80],
+      "frame_incognito": [0.83, 0.50, 0.20]
+    }
+  }
+}
