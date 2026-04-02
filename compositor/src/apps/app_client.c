@@ -2080,7 +2080,11 @@ static void lumo_app_sync_text_input_state(
 
     if (wants_osk) {
         if (flush_pending && client->display != NULL) {
-            wl_display_dispatch_pending(client->display);
+            /* roundtrip ensures the compositor's text_input_enter
+             * event arrives before we enable — without this, the
+             * compositor ignores the enable because no surface has
+             * entered text-input yet */
+            wl_display_roundtrip(client->display);
         }
         zwp_text_input_v3_enable(client->text_input);
         zwp_text_input_v3_set_content_type(client->text_input,

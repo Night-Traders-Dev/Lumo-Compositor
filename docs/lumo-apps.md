@@ -146,11 +146,10 @@ renders with proper case distinction.
 - Bookmarks: persistent to `~/.lumo-bookmarks`, star button to save current page
 - Default bookmarks: DuckDuckGo, Wikipedia, GitHub
 - Custom start page with search box and quick links
-- Downloads: auto-saves to `~/Downloads/`, creates directory if missing
-- New window handling: target=_blank links open in new tab
-- TLS: allows self-signed certs on local network (localhost, 192.168.*, etc.)
-- Progress bar: themed orange, 3px, auto-hides on load completion
-- Performance tuning for riscv64: hardware accel off, media/WebGL/WebAudio disabled, shared network session
+- All-in-one: native SHM toolbar (instant) + `lumo-webview` subprocess for web content
+- `lumo-webview`: minimal fullscreen WebKitGTK renderer, GSK_RENDERER=cairo pre-set
+- Flow: tap URL bar → OSK → type URL → Enter/GO → fullscreen web page → swipe to close
+- Performance tuning for riscv64: hardware accel off, media/WebGL disabled
 - Mobile user-agent (Android 14 / Chrome 131)
 - Builds natively on device — no cross-compilation needed
 

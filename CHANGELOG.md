@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.62] - 2026-04-02
+
+### All-in-One Browser
+
+- Added `lumo-webview` — minimal fullscreen WebKitGTK renderer launched as subprocess when user navigates to a URL from the native SHM browser. No toolbar, just web content. `GSK_RENDERER=cairo` and `GTK_USE_PORTAL=0` pre-set to skip renderer probing.
+- Browser now uses `lumo-webview` → `epiphany` → `xdg-open` fallback chain for URL launching.
+- Flow: tap URL bar → OSK opens → type URL → press Enter/GO → fullscreen web page appears → swipe gesture handle to close and return to browser home.
+
+### OSK Trigger Fix
+
+- Fixed OSK not appearing when tapping the browser URL bar. The `wl_display_dispatch_pending` call was insufficient — the compositor's `text_input_enter` event hadn't arrived yet. Changed to `wl_display_roundtrip` which blocks until the compositor responds, ensuring the text-input protocol handshake completes before enable+commit.
+
+### Settings Memory Panel
+
+- Added Lumo process memory breakdown to the Settings Memory sub-page. Shows VmRSS (resident memory) for: COMPOSITOR, SHELL (x5), NATIVE APP, WEB VIEW, BROWSER GTK, WEBKIT PROC. Scans `/proc/<pid>/status` for each process. Shows individual and total Lumo memory usage.
+
+### Version
+
+- Bumped to 0.0.62.
+
 ## [0.0.61] - 2026-04-02
 
 ### Input System Audit — 6 Bug Fixes
