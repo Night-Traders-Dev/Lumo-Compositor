@@ -1,3 +1,4 @@
+#define _DEFAULT_SOURCE
 #include "lumo/compositor.h"
 #include "lumo/shell_protocol.h"
 
@@ -2161,9 +2162,22 @@ int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
     wlr_log(WLR_INFO, "shell: launching clients from %s", state->binary_path);
 
     for (size_t i = 0; i < sizeof(modes) / sizeof(modes[0]); i++) {
-        if (!lumo_shell_spawn_tracked_process(compositor, state, modes[i])) {
-            lumo_shell_autostart_stop(compositor);
-            return -1;
+        bool spawned = false;
+        for (int attempt = 0; attempt < 3 && !spawned; attempt++) {
+            if (attempt > 0) {
+                wlr_log(WLR_INFO, "shell: retry %d for %s",
+                    attempt, lumo_shell_mode_name(modes[i]));
+                usleep(100000); /* 100ms between retries */
+            }
+            spawned = lumo_shell_spawn_tracked_process(compositor, state,
+                modes[i]);
+        }
+        if (!spawned) {
+            wlr_log(WLR_ERROR, "shell: failed to spawn %s after 3 attempts"
+                " — continuing with remaining clients",
+                lumo_shell_mode_name(modes[i]));
+            /* continue instead of aborting — partial shell is better
+             * than no shell at all */
         }
     }
 

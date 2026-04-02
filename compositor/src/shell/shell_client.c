@@ -5,6 +5,7 @@
  * event loop, and main(). Rendering, input, drawing primitives, and
  * protocol handling live in their own shell_*.c modules.
  */
+#define _DEFAULT_SOURCE
 #include "shell_client_internal.h"
 #include "lumo/version.h"
 
@@ -1194,10 +1195,21 @@ int main(int argc, char **argv) {
         lumo_shell_print_usage(argv[0]); return 1;
     }
 
-    client.display = wl_display_connect(NULL);
+    /* retry Wayland connection — the compositor may not have entered
+     * its event loop yet when we're spawned during autostart */
+    for (int attempt = 0; attempt < 5; attempt++) {
+        client.display = wl_display_connect(NULL);
+        if (client.display != NULL) break;
+        if (attempt < 4) {
+            fprintf(stderr,
+                "lumo-shell: Wayland connect attempt %d failed, retrying...\n",
+                attempt + 1);
+            usleep(100000); /* 100ms */
+        }
+    }
     if (client.display == NULL) {
         fprintf(stderr,
-            "lumo-shell: failed to connect to Wayland display\n");
+            "lumo-shell: failed to connect to Wayland display after 5 attempts\n");
         return 1;
     }
 

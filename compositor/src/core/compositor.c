@@ -317,6 +317,12 @@ int lumo_compositor_run(struct lumo_compositor *compositor) {
         return -1;
     }
 
+    /* Flush the display event sources so the Wayland socket is fully
+     * ready before spawning shell clients.  Without this, child
+     * processes can race with socket readiness and fail to connect. */
+    wl_display_flush_clients(compositor->display);
+    wlr_log(WLR_INFO, "compositor: Wayland socket '%s' ready", socket);
+
     if (lumo_shell_autostart_start(compositor) != 0) {
         wlr_log(WLR_ERROR, "shell: failed to autostart shell clients");
         return -1;

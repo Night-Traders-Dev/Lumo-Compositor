@@ -606,6 +606,19 @@ static void test_step_progress(TestState *s) {
 
 /* ── Test runner ── */
 
+/* helper: take a screenshot if lumo-screenshot is available */
+static void take_screenshot(const char *label) {
+    char cmd[512];
+    char path[256];
+    snprintf(path, sizeof(path), "/tmp/lumo-test-%s.png", label);
+    snprintf(cmd, sizeof(cmd),
+        "WAYLAND_DISPLAY=lumo-shell XDG_RUNTIME_DIR=/run/user/1001 "
+        "/usr/local/bin/lumo-screenshot %s 2>/dev/null", path);
+    if (system(cmd) == 0) {
+        fprintf(stderr, "  [screenshot] %s\n", path);
+    }
+}
+
 static gboolean quit_after_tests(gpointer data) {
     TestState *s = data;
     fprintf(stderr, "\n══════════════════════════════════════\n");
@@ -700,17 +713,38 @@ static void test_gtk_activate(GtkApplication *app, gpointer user_data) {
 
     /* run all test steps synchronously */
     test_step_widgets(s);
+    take_screenshot("01-widgets");
+
     test_step_url_bar(s);
     test_step_tabs(s);
+    take_screenshot("02-tabs");
+
     test_step_webview(s);
+    take_screenshot("03-webview");
+
     test_step_find(s);
+    /* re-show find bar for screenshot */
+    gtk_widget_set_visible(GTK_WIDGET(s->find_bar), TRUE);
+    gtk_editable_set_text(GTK_EDITABLE(s->find_entry), "Lumo");
+    take_screenshot("04-find");
+    gtk_widget_set_visible(GTK_WIDGET(s->find_bar), FALSE);
+
     test_step_zoom(s);
     test_step_css(s);
     test_step_signals(s);
-    test_step_progress(s);
 
-    /* quit after one event loop iteration */
-    g_timeout_add(200, quit_after_tests, s);
+    test_step_progress(s);
+    /* show progress for screenshot */
+    gtk_progress_bar_set_fraction(
+        GTK_PROGRESS_BAR(s->progress_bar), 0.65);
+    gtk_widget_set_visible(s->progress_bar, TRUE);
+    take_screenshot("05-progress");
+    gtk_widget_set_visible(s->progress_bar, FALSE);
+
+    take_screenshot("06-final");
+
+    /* quit after a brief pause so screenshots can capture */
+    g_timeout_add(500, quit_after_tests, s);
 }
 
 static int test_gtk_ui(void) {
