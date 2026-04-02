@@ -17,9 +17,6 @@ leans toward:
   The compositor sources are grouped by category under `src/apps`, `src/core`,
   `src/protocol`, `src/shell`, and `src/tools`, with matching grouped test
   directories.
-- `chromium/` is a git submodule containing Chromium v122.0.6261.128 source
-  with Lumo theme modifications (color mixer, touch optimizations).
-  Clone with `git submodule update --init --depth 1` to fetch.
 - `docs/` contains the architecture and migration notes.
 - `Design.md` captures the touch-first shell direction and visual language.
 - `CHANGELOG.md` tracks semver-style progress starting at `0.0.1`.
@@ -120,8 +117,9 @@ sessions still bring up touchscreen and keyboard devices alongside the scanout
 backend.
 The current reserved edge behavior is:
 
-- top-left edge opens the time/date panel
-- top-right edge opens the quick settings panel
+- top-left third opens the notification panel
+- top-center third opens the time/date/weather panel
+- top-right third opens the quick settings panel
 - left edge dismisses any open panel, launcher, audit, or keyboard state
 - right edge opens the launcher
 - bottom gesture handle toggles the launcher drawer
@@ -222,7 +220,7 @@ More detailed notes live in:
 
 ## Status
 
-The project is at v0.0.58 with a functional mobile shell running on OrangePi RV2 hardware.
+The project is at v0.0.59 with a functional mobile shell running on OrangePi RV2 hardware.
 
 Current capabilities:
 
@@ -233,16 +231,21 @@ Current capabilities:
 - GNOME 3.x style app drawer with 4x3 grid, search bar, and translucent overlay
 - functional search: type on OSK to filter apps by name in real-time
 - status bar with live clock, WiFi signal bars, and LUMO branding
+- three top panels triggered by status bar thirds: notifications (left), time/date/weather (center), quick settings (right)
+- notification panel with ring buffer (8 max), accent-colored dots, reverse-chronological display
 - quick settings panel with WiFi, display, volume/brightness sliders, session info, reload/rotate
 - time/date panel with large clock, date, weather (temperature, condition, humidity, wind)
 - on-screen keyboard (Lomiri style) with shift key, close button, QWERTY + symbols pages, virtual keyboard fallback
 - full uppercase/lowercase bitmap font rendering in both shell and app surfaces
-- functional Browser (system Chromium v122 via Wayland, single-process mode for riscv64, text-input-v3 OSK integration, DuckDuckGo Lite start page)
+- functional Browser (custom WebKitGTK 6.0 + GTK4, tabbed browsing, Lumo-themed CSS, bookmarks, smart URL bar, DuckDuckGo search)
 - functional Terminal with real PTY shell (/bin/sh via forkpty), text wrapping, top-down layout, pinch-to-zoom font scaling (1-6x), blinking cursor, menu, exit closes app
 - functional Clock with 4 tabs (Clock, Alarm, Stopwatch, Timer), persistent settings
 - functional Files with directory browsing, scroll, navigation, file sizes
 - functional Settings with 8 categorized sub-pages
-- functional Notes with three-state editing, OSK input, persistence
+- functional Notes with full-screen editor, word-wrap, delete, OSK input, persistence
+- functional Phone with dialer pad, contacts, call log
+- functional Camera with V4L2 detection, viewfinder UI, gallery
+- functional Maps with compass, saved places, location info
 - functional Music player (scans ~/Music, playback via mpv)
 - functional Photos with PNG/JPEG decoding, fullscreen viewer, grid with scroll
 - functional Videos (scans ~/Videos, playback via mpv)
@@ -252,12 +255,13 @@ Current capabilities:
 - shell child supervision with automatic respawn
 - double-buffered SHM rendering for shell clients
 - toast notifications (Android-style pills)
-- 6 test suites: compositor, shell, app, screenshot, fuzz/stress, and perf
+- functional Clock with alarm sound (pw-play/aplay), timer countdown, visual alarm indicator
+- 7 test suites: compositor, shell, app, browser, screenshot, fuzz/stress, and perf
 - multiple security audits: 40+ issues fixed across all subsystems
 
 Next milestones:
 
 - custom login screen to replace GDM greeter
 - window management UX for third-party Wayland apps
-- notification system
+- browser history and find-in-page
 - Vulkan/EGL rendering path when hardware supports it

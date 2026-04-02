@@ -24,7 +24,6 @@
 
 typedef struct {
     WebKitWebView *web_view;
-    GtkWidget *tab_button;
     char title[128];
     char uri[2048];
 } LumoTab;
@@ -45,8 +44,9 @@ typedef struct {
     GtkButton *forward_btn;
     GtkButton *reload_btn;
     GtkButton *new_tab_btn;
+    GtkButton *close_tab_btn;
     GtkButton *bookmark_btn;
-    GtkButton *menu_btn;
+    GtkWidget *progress_bar;
 
     LumoTab tabs[LUMO_MAX_TABS];
     int tab_count;
@@ -54,9 +54,6 @@ typedef struct {
 
     LumoBookmark bookmarks[LUMO_MAX_BOOKMARKS];
     int bookmark_count;
-
-    GtkWidget *bookmark_popover;
-    GtkWidget *menu_popover;
 } LumoBrowser;
 
 /* URL handling: see browser_url.h for lumo_url_encode / lumo_resolve_url */
@@ -70,7 +67,6 @@ static void bookmarks_load(LumoBrowser *b) {
     snprintf(path, sizeof(path), "%s/.lumo-bookmarks", home);
     fp = fopen(path, "r");
     if (!fp) {
-        /* default bookmarks */
         snprintf(b->bookmarks[0].title, 64, "DuckDuckGo");
         snprintf(b->bookmarks[0].uri, 2048, "https://duckduckgo.com/");
         snprintf(b->bookmarks[1].title, 64, "Wikipedia");
@@ -103,15 +99,18 @@ static void bookmarks_save(LumoBrowser *b) {
     snprintf(path, sizeof(path), "%s/.lumo-bookmarks", home);
     fp = fopen(path, "w");
     if (!fp) return;
-    for (int i = 0; i < b->bookmark_count; i++) {
+    for (int i = 0; i < b->bookmark_count; i++)
         fprintf(fp, "%s|%s\n", b->bookmarks[i].title, b->bookmarks[i].uri);
-    }
     fclose(fp);
 }
 
-/* ── Tab management ────────────────────────────────────────────────── */
+/* ── Forward declarations ──────────────────────────────────────────── */
 
 static void switch_to_tab(LumoBrowser *b, int idx);
+static void update_tab_bar(LumoBrowser *b);
+static void update_nav_sensitivity(LumoBrowser *b);
+
+/* ── Tab bar ───────────────────────────────────────────────────────── */
 
 static void on_tab_clicked(GtkButton *btn, gpointer data) {
     LumoBrowser *b = data;
@@ -120,27 +119,23 @@ static void on_tab_clicked(GtkButton *btn, gpointer data) {
 }
 
 static void update_tab_bar(LumoBrowser *b) {
-    /* remove all children except the + and X buttons at the end */
+    /* remove only the dynamic tab buttons (named "lumo-tab-*") */
     GtkWidget *child = gtk_widget_get_first_child(GTK_WIDGET(b->tab_bar));
     while (child) {
         GtkWidget *next = gtk_widget_get_next_sibling(child);
-        const char *name = gtk_widget_get_name(child);
-        if (name == NULL || strncmp(name, "tab-btn-", 8) == 0)
+        if (child != GTK_WIDGET(b->new_tab_btn) &&
+                child != GTK_WIDGET(b->close_tab_btn)) {
             gtk_box_remove(b->tab_bar, child);
+        }
         child = next;
     }
 
-    /* insert tab buttons at the beginning (before + and X) */
-    GtkWidget *first = gtk_widget_get_first_child(GTK_WIDGET(b->tab_bar));
     for (int i = b->tab_count - 1; i >= 0; i--) {
         char label[48];
-        char wname[24];
         const char *title = b->tabs[i].title[0] ? b->tabs[i].title : "New Tab";
-        snprintf(label, sizeof(label), "%.20s", title);
-        snprintf(wname, sizeof(wname), "tab-btn-%d", i);
+        snprintf(label, sizeof(label), "%.18s", title);
 
         GtkWidget *btn = gtk_button_new_with_label(label);
-        gtk_widget_set_name(btn, wname);
         gtk_widget_set_hexpand(btn, TRUE);
 
         if (i == b->active_tab) {
@@ -149,22 +144,27 @@ static void update_tab_bar(LumoBrowser *b) {
             gtk_widget_add_css_class(btn, "tab-inactive");
         }
 
-        g_object_set_data(G_OBJECT(btn), "tab-index",
-            GINT_TO_POINTER(i));
+        g_object_set_data(G_OBJECT(btn), "tab-index", GINT_TO_POINTER(i));
         g_signal_connect(btn, "clicked", G_CALLBACK(on_tab_clicked), b);
 
-        b->tabs[i].tab_button = btn;
-        if (first)
-            gtk_box_insert_child_after(b->tab_bar, btn, NULL);
-        else
-            gtk_box_prepend(b->tab_bar, btn);
+        /* insert before the + and X buttons */
+        gtk_box_insert_child_after(b->tab_bar, btn, NULL);
     }
 }
 
-static WebKitWebView *create_web_view(LumoBrowser *b) {
-    WebKitWebView *wv = WEBKIT_WEB_VIEW(webkit_web_view_new());
-    WebKitSettings *settings = webkit_web_view_get_settings(wv);
+/* ── WebView creation ──────────────────────────────────────────────── */
 
+static WebKitWebView *create_web_view(void) {
+    WebKitWebView *wv;
+    WebKitSettings *settings;
+    WebKitNetworkSession *session;
+
+    /* share a single network session across all tabs */
+    session = webkit_network_session_get_default();
+    wv = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
+        "network-session", session, NULL));
+
+    settings = webkit_web_view_get_settings(wv);
     webkit_settings_set_enable_javascript(settings, TRUE);
     webkit_settings_set_enable_smooth_scrolling(settings, FALSE);
     webkit_settings_set_hardware_acceleration_policy(settings,
@@ -173,6 +173,9 @@ static WebKitWebView *create_web_view(LumoBrowser *b) {
     webkit_settings_set_enable_webaudio(settings, FALSE);
     webkit_settings_set_enable_media_stream(settings, FALSE);
     webkit_settings_set_enable_webgl(settings, FALSE);
+
+    /* reduce memory: limit web process count */
+    webkit_web_view_set_is_muted(wv, TRUE);
 
     webkit_settings_set_user_agent(settings,
         "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
@@ -183,6 +186,26 @@ static WebKitWebView *create_web_view(LumoBrowser *b) {
 
     return wv;
 }
+
+/* ── Load progress ─────────────────────────────────────────────────── */
+
+static void on_estimated_load_progress(WebKitWebView *wv,
+    GParamSpec *pspec, gpointer data)
+{
+    LumoBrowser *b = data;
+    (void)pspec;
+    double progress = webkit_web_view_get_estimated_load_progress(wv);
+
+    /* only update for active tab */
+    if (b->active_tab >= 0 && b->active_tab < b->tab_count &&
+            b->tabs[b->active_tab].web_view == wv) {
+        gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(b->progress_bar),
+            progress);
+        gtk_widget_set_visible(b->progress_bar, progress < 1.0);
+    }
+}
+
+/* ── Tab load events ───────────────────────────────────────────────── */
 
 static void on_tab_load_changed(WebKitWebView *wv,
     WebKitLoadEvent event, gpointer data)
@@ -208,21 +231,70 @@ static void on_tab_load_changed(WebKitWebView *wv,
                 "%s", title);
             update_tab_bar(b);
         }
+        if (idx == b->active_tab)
+            update_nav_sensitivity(b);
     }
 }
+
+/* ── Navigation sensitivity ────────────────────────────────────────── */
+
+static void update_nav_sensitivity(LumoBrowser *b) {
+    if (b->active_tab < 0 || b->active_tab >= b->tab_count) return;
+    WebKitWebView *wv = b->tabs[b->active_tab].web_view;
+    gtk_widget_set_sensitive(GTK_WIDGET(b->back_btn),
+        webkit_web_view_can_go_back(wv));
+    gtk_widget_set_sensitive(GTK_WIDGET(b->forward_btn),
+        webkit_web_view_can_go_forward(wv));
+}
+
+/* ── Tab management ────────────────────────────────────────────────── */
+
+static const char *start_page_html =
+    "<!DOCTYPE html><html><head>"
+    "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+    "<style>"
+    "body{background:" LUMO_BG ";color:" LUMO_TEXT ";font-family:sans-serif;"
+    "display:flex;flex-direction:column;align-items:center;"
+    "justify-content:center;height:90vh;margin:0}"
+    "h1{color:" LUMO_ACCENT ";font-size:2em;margin-bottom:0.2em}"
+    "form{width:80%;max-width:400px}"
+    "input{width:100%;padding:12px;font-size:1.1em;border:2px solid " LUMO_BORDER ";"
+    "border-radius:24px;background:#1d0014;color:" LUMO_TEXT ";text-align:center}"
+    "input:focus{border-color:" LUMO_ACCENT ";outline:none}"
+    ".bookmarks{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px;"
+    "justify-content:center}"
+    ".bm{background:" LUMO_SURFACE ";color:" LUMO_DIM ";padding:10px 18px;"
+    "border-radius:16px;text-decoration:none;font-size:0.9em;"
+    "border:1px solid " LUMO_BORDER "}"
+    ".bm:hover{border-color:" LUMO_ACCENT ";color:" LUMO_TEXT "}"
+    "p{color:" LUMO_DIM ";font-size:0.8em;margin-top:2em}"
+    "</style></head><body>"
+    "<h1>Lumo Browser</h1>"
+    "<form action='https://duckduckgo.com/' method='get'>"
+    "<input name='q' placeholder='Search the web...' autofocus>"
+    "</form>"
+    "<div class='bookmarks'>"
+    "<a class='bm' href='https://duckduckgo.com/'>DuckDuckGo</a>"
+    "<a class='bm' href='https://en.m.wikipedia.org/'>Wikipedia</a>"
+    "<a class='bm' href='https://github.com/'>GitHub</a>"
+    "</div>"
+    "<p>Lumo Browser v0.0.59 | WebKit</p>"
+    "</body></html>";
 
 static int add_tab(LumoBrowser *b, const char *uri) {
     if (b->tab_count >= LUMO_MAX_TABS) return -1;
     int idx = b->tab_count++;
     LumoTab *tab = &b->tabs[idx];
 
-    tab->web_view = create_web_view(b);
+    tab->web_view = create_web_view();
     tab->title[0] = '\0';
     snprintf(tab->uri, sizeof(tab->uri), "%s",
         uri ? uri : "about:blank");
 
     g_signal_connect(tab->web_view, "load-changed",
         G_CALLBACK(on_tab_load_changed), b);
+    g_signal_connect(tab->web_view, "notify::estimated-load-progress",
+        G_CALLBACK(on_estimated_load_progress), b);
 
     char stack_name[16];
     snprintf(stack_name, sizeof(stack_name), "tab%d", idx);
@@ -231,6 +303,9 @@ static int add_tab(LumoBrowser *b, const char *uri) {
 
     if (uri && uri[0])
         webkit_web_view_load_uri(tab->web_view, uri);
+    else
+        webkit_web_view_load_html(tab->web_view, start_page_html,
+            "about:lumo");
 
     return idx;
 }
@@ -246,7 +321,10 @@ static void switch_to_tab(LumoBrowser *b, int idx) {
     const char *uri = webkit_web_view_get_uri(b->tabs[idx].web_view);
     if (uri)
         gtk_editable_set_text(GTK_EDITABLE(b->url_bar), uri);
+    else
+        gtk_editable_set_text(GTK_EDITABLE(b->url_bar), "about:lumo");
 
+    update_nav_sensitivity(b);
     update_tab_bar(b);
 }
 
@@ -266,13 +344,15 @@ static void on_url_activate(GtkEntry *entry, gpointer data) {
 
 static void on_back(GtkButton *btn, gpointer data) {
     LumoBrowser *b = data; (void)btn;
-    if (b->active_tab >= 0 && b->active_tab < b->tab_count)
+    if (b->active_tab >= 0 && b->active_tab < b->tab_count &&
+            webkit_web_view_can_go_back(b->tabs[b->active_tab].web_view))
         webkit_web_view_go_back(b->tabs[b->active_tab].web_view);
 }
 
 static void on_forward(GtkButton *btn, gpointer data) {
     LumoBrowser *b = data; (void)btn;
-    if (b->active_tab >= 0 && b->active_tab < b->tab_count)
+    if (b->active_tab >= 0 && b->active_tab < b->tab_count &&
+            webkit_web_view_can_go_forward(b->tabs[b->active_tab].web_view))
         webkit_web_view_go_forward(b->tabs[b->active_tab].web_view);
 }
 
@@ -285,43 +365,7 @@ static void on_reload(GtkButton *btn, gpointer data) {
 static void on_new_tab(GtkButton *btn, gpointer data) {
     LumoBrowser *b = data; (void)btn;
     int idx = add_tab(b, NULL);
-    if (idx >= 0) {
-        switch_to_tab(b, idx);
-        /* load start page */
-        webkit_web_view_load_html(b->tabs[idx].web_view,
-            "<!DOCTYPE html><html><head>"
-            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-            "<style>"
-            "body{background:" LUMO_BG ";color:" LUMO_TEXT ";font-family:sans-serif;"
-            "display:flex;flex-direction:column;align-items:center;"
-            "justify-content:center;height:90vh;margin:0}"
-            "h1{color:" LUMO_ACCENT ";font-size:2em;margin-bottom:0.2em}"
-            "form{width:80%;max-width:400px}"
-            "input{width:100%;padding:12px;font-size:1.1em;border:2px solid " LUMO_BORDER ";"
-            "border-radius:24px;background:#1d0014;color:" LUMO_TEXT ";text-align:center}"
-            "input:focus{border-color:" LUMO_ACCENT ";outline:none}"
-            ".bookmarks{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px;"
-            "justify-content:center}"
-            ".bm{background:" LUMO_SURFACE ";color:" LUMO_DIM ";padding:10px 18px;"
-            "border-radius:16px;text-decoration:none;font-size:0.9em;"
-            "border:1px solid " LUMO_BORDER "}"
-            ".bm:hover{border-color:" LUMO_ACCENT ";color:" LUMO_TEXT "}"
-            "p{color:" LUMO_DIM ";font-size:0.8em;margin-top:2em}"
-            "</style></head><body>"
-            "<h1>Lumo Browser</h1>"
-            "<form action='https://duckduckgo.com/' method='get'>"
-            "<input name='q' placeholder='Search the web...' autofocus>"
-            "</form>"
-            "<div class='bookmarks'>"
-            "<a class='bm' href='https://duckduckgo.com/'>DuckDuckGo</a>"
-            "<a class='bm' href='https://en.m.wikipedia.org/'>Wikipedia</a>"
-            "<a class='bm' href='https://github.com/'>GitHub</a>"
-            "</div>"
-            "<p>Lumo Browser v0.0.59 | WebKit</p>"
-            "</body></html>",
-            "about:lumo");
-        update_tab_bar(b);
-    }
+    if (idx >= 0) switch_to_tab(b, idx);
 }
 
 static void on_close_tab(GtkButton *btn, gpointer data) {
@@ -331,23 +375,37 @@ static void on_close_tab(GtkButton *btn, gpointer data) {
         return;
     }
     int idx = b->active_tab;
+
+    /* remove the web view from stack */
     char stack_name[16];
     snprintf(stack_name, sizeof(stack_name), "tab%d", idx);
     GtkWidget *child = gtk_stack_get_child_by_name(b->view_stack, stack_name);
     if (child) gtk_stack_remove(b->view_stack, child);
 
+    /* shift tabs down */
     for (int i = idx; i < b->tab_count - 1; i++)
         b->tabs[i] = b->tabs[i + 1];
     b->tab_count--;
+
+    /* fix stack names for shifted tabs — re-add with correct names */
+    for (int i = idx; i < b->tab_count; i++) {
+        char old_name[16], new_name[16];
+        snprintf(old_name, sizeof(old_name), "tab%d", i + 1);
+        snprintf(new_name, sizeof(new_name), "tab%d", i);
+        GtkWidget *w = gtk_stack_get_child_by_name(b->view_stack, old_name);
+        if (w) {
+            g_object_ref(w);
+            gtk_stack_remove(b->view_stack, w);
+            gtk_stack_add_named(b->view_stack, w, new_name);
+            g_object_unref(w);
+        }
+    }
 
     if (b->active_tab >= b->tab_count)
         b->active_tab = b->tab_count - 1;
     if (b->active_tab < 0) b->active_tab = 0;
 
-    /* re-add remaining tabs to stack with correct names */
-    /* (simplified: just switch to the active one) */
     switch_to_tab(b, b->active_tab);
-    update_tab_bar(b);
 }
 
 static void on_add_bookmark(GtkButton *btn, gpointer data) {
@@ -360,7 +418,6 @@ static void on_add_bookmark(GtkButton *btn, gpointer data) {
     const char *uri = webkit_web_view_get_uri(tab->web_view);
     if (!uri || !uri[0]) return;
 
-    /* check for duplicate */
     for (int i = 0; i < b->bookmark_count; i++) {
         if (strcmp(b->bookmarks[i].uri, uri) == 0) return;
     }
@@ -390,15 +447,20 @@ static void apply_css(void) {
         ".tab-inactive:hover { color: " LUMO_TEXT "; border-color: " LUMO_ACCENT "; }\n"
         ".nav-btn { background: " LUMO_SURFACE "; color: " LUMO_DIM ";"
         "  border-radius: 8px; padding: 4px 10px;"
-        "  border: 1px solid " LUMO_BORDER "; min-width: 32px; min-height: 32px; }\n"
+        "  border: 1px solid " LUMO_BORDER "; min-width: 36px; min-height: 36px; }\n"
         ".nav-btn:hover { color: " LUMO_ACCENT "; border-color: " LUMO_ACCENT "; }\n"
+        ".nav-btn:disabled { opacity: 0.3; }\n"
         ".accent-btn { background: " LUMO_ACCENT "; color: " LUMO_TEXT ";"
         "  border-radius: 8px; padding: 4px 10px;"
-        "  border: none; min-width: 32px; min-height: 32px; }\n"
+        "  border: none; min-width: 36px; min-height: 36px; }\n"
         ".url-entry { background: #1D0014; color: " LUMO_TEXT ";"
         "  border: 2px solid " LUMO_BORDER "; border-radius: 20px;"
         "  padding: 6px 16px; font-size: 14px; }\n"
         ".url-entry:focus { border-color: " LUMO_ACCENT "; }\n"
+        "progressbar trough { background: " LUMO_SURFACE ";"
+        "  min-height: 3px; }\n"
+        "progressbar progress { background: " LUMO_ACCENT ";"
+        "  min-height: 3px; }\n"
     );
     gtk_style_context_add_provider_for_display(
         gdk_display_get_default(),
@@ -429,21 +491,15 @@ static void activate(GtkApplication *app, gpointer user_data) {
 
     b->new_tab_btn = GTK_BUTTON(gtk_button_new_with_label("+"));
     gtk_widget_add_css_class(GTK_WIDGET(b->new_tab_btn), "accent-btn");
-    g_signal_connect(b->new_tab_btn, "clicked",
-        G_CALLBACK(on_new_tab), b);
+    g_signal_connect(b->new_tab_btn, "clicked", G_CALLBACK(on_new_tab), b);
+
+    b->close_tab_btn = GTK_BUTTON(gtk_button_new_with_label("X"));
+    gtk_widget_add_css_class(GTK_WIDGET(b->close_tab_btn), "nav-btn");
+    g_signal_connect(b->close_tab_btn, "clicked", G_CALLBACK(on_close_tab), b);
+
+    /* + and X are appended to tab_bar; tab buttons are inserted before them */
     gtk_box_append(b->tab_bar, GTK_WIDGET(b->new_tab_btn));
-
-    GtkButton *close_tab_btn = GTK_BUTTON(gtk_button_new_with_label("X"));
-    gtk_widget_add_css_class(GTK_WIDGET(close_tab_btn), "nav-btn");
-    g_signal_connect(close_tab_btn, "clicked",
-        G_CALLBACK(on_close_tab), b);
-    gtk_box_append(b->tab_bar, GTK_WIDGET(close_tab_btn));
-
-    /* Tab bar and toolbar are appended AFTER the web view so they
-     * render at the bottom of the portrait buffer.  After the
-     * compositor's 90° rotation this becomes the RIGHT side of the
-     * landscape display — away from the bottom-edge gesture zone
-     * which would otherwise capture touches meant for the UI. */
+    gtk_box_append(b->tab_bar, GTK_WIDGET(b->close_tab_btn));
 
     /* ── Toolbar ── */
     b->toolbar = GTK_BOX(gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4));
@@ -459,6 +515,10 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_widget_add_css_class(GTK_WIDGET(b->reload_btn), "nav-btn");
     gtk_widget_add_css_class(GTK_WIDGET(b->bookmark_btn), "nav-btn");
 
+    /* start disabled until page loads */
+    gtk_widget_set_sensitive(GTK_WIDGET(b->back_btn), FALSE);
+    gtk_widget_set_sensitive(GTK_WIDGET(b->forward_btn), FALSE);
+
     b->url_bar = GTK_ENTRY(gtk_entry_new());
     gtk_widget_add_css_class(GTK_WIDGET(b->url_bar), "url-entry");
     gtk_editable_set_text(GTK_EDITABLE(b->url_bar), "about:lumo");
@@ -469,8 +529,7 @@ static void activate(GtkApplication *app, gpointer user_data) {
     g_signal_connect(b->reload_btn, "clicked", G_CALLBACK(on_reload), b);
     g_signal_connect(b->bookmark_btn, "clicked",
         G_CALLBACK(on_add_bookmark), b);
-    g_signal_connect(b->url_bar, "activate",
-        G_CALLBACK(on_url_activate), b);
+    g_signal_connect(b->url_bar, "activate", G_CALLBACK(on_url_activate), b);
 
     gtk_box_append(b->toolbar, GTK_WIDGET(b->back_btn));
     gtk_box_append(b->toolbar, GTK_WIDGET(b->forward_btn));
@@ -478,21 +537,27 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_box_append(b->toolbar, GTK_WIDGET(b->url_bar));
     gtk_box_append(b->toolbar, GTK_WIDGET(b->bookmark_btn));
 
-    /* ── View stack (tab content) — first in layout so it occupies
-     * the top of the portrait buffer (= left/main area after rotation) ── */
+    /* ── Progress bar ── */
+    b->progress_bar = gtk_progress_bar_new();
+    gtk_widget_set_visible(b->progress_bar, FALSE);
+
+    /* ── View stack (tab content) — first so it fills the main area ── */
     b->view_stack = GTK_STACK(gtk_stack_new());
     gtk_stack_set_transition_type(b->view_stack,
         GTK_STACK_TRANSITION_TYPE_CROSSFADE);
-    gtk_stack_set_transition_duration(b->view_stack, 150);
+    gtk_stack_set_transition_duration(b->view_stack, 100);
     gtk_widget_set_vexpand(GTK_WIDGET(b->view_stack), TRUE);
     gtk_box_append(b->main_box, GTK_WIDGET(b->view_stack));
 
-    /* Toolbar and tab bar after web view — renders at the bottom of
-     * portrait buffer, which is the RIGHT side of rotated display */
+    /* Progress bar between content and toolbar */
+    gtk_box_append(b->main_box, b->progress_bar);
+
+    /* Toolbar and tab bar at the bottom of portrait buffer = right side
+     * of rotated display, away from the bottom-edge gesture zone */
     gtk_box_append(b->main_box, GTK_WIDGET(b->toolbar));
     gtk_box_append(b->main_box, GTK_WIDGET(b->tab_bar));
 
-    /* ── First tab with start page ── */
+    /* ── First tab ── */
     b->active_tab = 0;
     on_new_tab(NULL, b);
 
@@ -504,10 +569,9 @@ int main(int argc, char **argv) {
     LumoBrowser browser = {0};
     int status;
 
-    /* reduce WebKit memory overhead on riscv64 */
+    /* reduce WebKit memory and process overhead on riscv64 */
     setenv("WEBKIT_DISABLE_COMPOSITING_MODE", "1", 0);
     setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1", 0);
-    setenv("G_SLICE", "always-malloc", 0);
 
     app = gtk_application_new("com.lumo.browser",
         G_APPLICATION_DEFAULT_FLAGS);

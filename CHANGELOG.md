@@ -34,6 +34,24 @@ All notable changes to this project will be documented in this file.
 - Maps places tab now triggers the OSK when editing a place name. Uses the same `lumo_app_wants_osk` pattern as Notes.
 - Added test coverage for OSK trigger policy: `test_notes_osk_trigger` and `test_maps_osk_trigger` verify hit-test zones and `wants_osk` returns.
 
+### Browser Rewrite
+
+- Replaced system Chromium with custom `lumo-browser` built on WebKitGTK 6.0 + GTK4.
+- Full Lumo-themed UI via GTK4 CSS: purple/orange/aubergine color scheme matching the shell.
+- Tabbed browsing with GtkStack: up to 8 tabs, + button to add, X to close.
+- Smart URL bar: auto-detects schemes, localhost, domains, and search queries (DuckDuckGo).
+- Bookmark system: star button saves current page to `~/.lumo-bookmarks`, persisted across sessions.
+- Custom Lumo start page with search box and quick bookmark links.
+- Performance tuning for riscv64: hardware acceleration off, media/WebGL/WebAudio disabled, mobile user-agent.
+- Toolbar positioned at bottom of portrait buffer (right side after rotation) to avoid bottom-edge gesture zone.
+- Removed Chromium submodule (47GB on host, 20GB on device) and all cross-compile infrastructure.
+- Installed Epiphany (GNOME Web) as secondary browser option.
+- Added comprehensive browser test suite: URL resolution, encoding, bookmark persistence, and GTK UI component tests.
+
+### Panel Fix
+
+- Fixed top-edge panel zone calculation for rotated displays. Uses `wlr_output_layout_get_box` for rotated width instead of `wlr_output->width` which returns native/unrotated dimensions.
+
 ### Version
 
 - Bumped to 0.0.59. Single source of truth in `compositor/include/lumo/version.h`.

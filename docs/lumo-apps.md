@@ -134,15 +134,25 @@ renders with proper case distinction.
 - Device location info: GPS status, coordinates (Ashland KY), timezone, altitude
 - "CONNECT USB GPS FOR LIVE TRACKING" prompt for future serial GPS support
 
-### Browser
+### Browser (lumo-browser)
 
-- System Chromium (v122) launched via `chromium-browser` with Wayland flags
-- `--ozone-platform=wayland --single-process --disable-gpu --enable-wayland-ime`
-- `--single-process` is required on riscv64 (multi-process renderer hangs)
-- DuckDuckGo Lite as default start page
-- Text-input-v3 integration for OSK auto-show in input fields
-- Chromium source added as git submodule under `chromium/` for Lumo theme customization
-- Falls back to `lumo-app --app browser` stub if Chromium is not installed
+- Custom WebKitGTK 6.0 + GTK4 browser with full Lumo-themed UI
+- Tabbed browsing: up to 8 tabs with tab bar, + button, X to close
+- GTK4 CSS theming: Lumo purple/orange/aubergine color scheme
+- Smart URL bar: auto-detects URLs, domains, localhost, search queries (DuckDuckGo)
+- Navigation: back, forward, reload buttons
+- Bookmarks: persistent to `~/.lumo-bookmarks`, star button to save current page
+- Default bookmarks: DuckDuckGo, Wikipedia, GitHub
+- Custom start page with search box and quick links
+- Performance tuning for riscv64: hardware accel off, media/WebGL/WebAudio disabled
+- Mobile user-agent (Android 14 / Chrome 131)
+- Builds natively on device — no cross-compilation needed
+
+### Epiphany (GNOME Web)
+
+- Installed as secondary browser (`epiphany-browser`)
+- WebKit-based, GTK-native, Wayland-compatible
+- Can be launched manually from terminal
 
 ## Theme Integration
 
