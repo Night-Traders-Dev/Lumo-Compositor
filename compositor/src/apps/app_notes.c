@@ -11,7 +11,9 @@ int lumo_app_notes_row_at(
     int max_rows = ((int)height - header_y - 70) / row_h;
     (void)width;
     /* add button at bottom */
-    if (y >= (double)((int)height - 60) && y < (double)height - 20) return -2;
+    if (y >= (double)((int)height - 60) && y < (double)height - 16) return -2;
+    /* delete button (above add) */
+    if (y >= (double)((int)height - 108) && y < (double)((int)height - 68)) return -3;
     if (x < 16.0 || x > (double)width - 16.0) return -1;
     if (y < header_y) return -1;
     int idx = (int)(y - header_y) / row_h;
@@ -105,6 +107,15 @@ void lumo_app_render_notes(
             theme.text_dim, "NO NOTES YET");
         lumo_app_draw_text(pixels, width, height, 16, row_y + 42, 2,
             theme.text_dim, "TAP + TO CREATE ONE");
+    }
+
+    /* delete button (only when a note is selected but not editing) */
+    if (selected >= 0 && editing < 0 && note_count > 0) {
+        struct lumo_rect del_btn = {12, (int)height - 104, (int)width - 24, 36};
+        lumo_app_fill_rounded_rect(pixels, width, height, &del_btn, 14,
+            0xFFDC3545);
+        lumo_app_draw_text_centered(pixels, width, height, &del_btn, 2,
+            theme.text, "DELETE NOTE");
     }
 
     /* add button */

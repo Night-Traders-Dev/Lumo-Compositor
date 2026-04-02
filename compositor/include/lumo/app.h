@@ -60,6 +60,7 @@ struct lumo_app_render_context {
     uint32_t alarm_hour;
     uint32_t alarm_min;
     bool alarm_enabled;
+    bool alarm_firing;
     int selected_row;
     bool file_info_visible;
     char file_info_name[256];
@@ -140,6 +141,18 @@ int lumo_app_notes_row_at(
     uint32_t height,
     double x,
     double y
+);
+int lumo_app_phone_button_at(
+    uint32_t width, uint32_t height,
+    double x, double y, int tab
+);
+int lumo_app_camera_button_at(
+    uint32_t width, uint32_t height,
+    double x, double y, bool gallery_mode
+);
+int lumo_app_maps_button_at(
+    uint32_t width, uint32_t height,
+    double x, double y, int tab
 );
 
 #endif

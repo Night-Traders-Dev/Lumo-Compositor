@@ -129,6 +129,17 @@ static void lumo_app_clock_save(const struct lumo_app_client *client);
 static void lumo_app_clock_load(struct lumo_app_client *client);
 static void lumo_app_settings_save(const struct lumo_app_client *client);
 static void lumo_app_settings_load(struct lumo_app_client *client);
+static void lumo_app_contacts_save(const struct lumo_app_client *client);
+static void lumo_app_contacts_load(struct lumo_app_client *client);
+static void lumo_app_places_save(const struct lumo_app_client *client);
+static void lumo_app_places_load(struct lumo_app_client *client);
+/* new app hit-test functions (defined in app_phone.c, app_camera.c, app_maps.c) */
+int lumo_app_phone_button_at(uint32_t width, uint32_t height,
+    double x, double y, int tab);
+int lumo_app_camera_button_at(uint32_t width, uint32_t height,
+    double x, double y, bool gallery_mode);
+int lumo_app_maps_button_at(uint32_t width, uint32_t height,
+    double x, double y, int tab);
 static void lumo_app_sync_text_input_state(
     struct lumo_app_client *client,
     bool flush_pending
@@ -824,6 +835,7 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             sw_elapsed += now_ms - client->stopwatch_start_ms;
         }
         /* compute timer remaining */
+        uint32_t timer_remaining = client->timer_total_sec;
         if (client->timer_running && client->timer_start_ms > 0) {
             struct timespec ts;
             clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -832,7 +844,22 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             uint64_t elapsed_sec = (now_ms - client->timer_start_ms) / 1000;
             if (elapsed_sec >= client->timer_total_sec) {
                 client->timer_running = false;
-                client->timer_total_sec = 0;
+                timer_remaining = 0;
+                /* timer finished — flash accent to signal completion */
+            } else {
+                timer_remaining = client->timer_total_sec -
+                    (uint32_t)elapsed_sec;
+            }
+        }
+        /* check alarm: fire visual indicator when current time matches */
+        bool alarm_firing = false;
+        if (client->alarm_enabled) {
+            time_t now_t = time(NULL);
+            struct tm tm_now;
+            localtime_r(&now_t, &tm_now);
+            if ((uint32_t)tm_now.tm_hour == client->alarm_hour &&
+                    (uint32_t)tm_now.tm_min == client->alarm_min) {
+                alarm_firing = true;
             }
         }
         struct lumo_app_render_context ctx = {
@@ -844,11 +871,12 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             .stopwatch_elapsed_ms = sw_elapsed,
             .clock_tab = client->clock_tab,
             .timer_total_sec = client->timer_total_sec,
-            .timer_remaining_sec = client->timer_total_sec,
+            .timer_remaining_sec = timer_remaining,
             .timer_running = client->timer_running,
             .alarm_hour = client->alarm_hour,
             .alarm_min = client->alarm_min,
             .alarm_enabled = client->alarm_enabled,
+            .alarm_firing = alarm_firing,
             .selected_row = client->selected_row,
             .file_info_visible = client->file_info_visible,
             .settings = client->settings,
@@ -1530,6 +1558,23 @@ static void lumo_app_touch_handle_up(
                 client->note_editing = -1;
             }
             (void)lumo_app_client_redraw(client);
+        } else if (row == -3) {
+            /* delete selected note */
+            if (client->selected_row >= 0 &&
+                    client->selected_row < client->note_count &&
+                    client->note_editing < 0) {
+                int del = client->selected_row;
+                for (int i = del; i < client->note_count - 1; i++) {
+                    memcpy(client->notes[i], client->notes[i + 1],
+                        sizeof(client->notes[0]));
+                }
+                client->note_count--;
+                client->notes[client->note_count][0] = '\0';
+                client->selected_row = -1;
+                client->note_editing = -1;
+                lumo_app_notes_save(client);
+                (void)lumo_app_client_redraw(client);
+            }
         } else if (row == -2) {
             if (client->note_count < 8) {
                 client->notes[client->note_count][0] = '\0';
@@ -1542,6 +1587,136 @@ static void lumo_app_touch_handle_up(
             }
         }
         lumo_app_sync_text_input_state(client, client->note_editing >= 0);
+    }
+
+    /* Phone app touch handling */
+    if (client->app_id == LUMO_APP_PHONE && client->width > 0 &&
+            client->height > 0) {
+        int btn = lumo_app_phone_button_at(client->width, client->height,
+            client->touch_down_x, client->touch_down_y, client->clock_tab);
+
+        if (btn == 15) {
+            /* dialer tab */
+            client->clock_tab = 0;
+            (void)lumo_app_client_redraw(client);
+        } else if (btn == 14) {
+            /* contacts tab */
+            client->clock_tab = 1;
+            (void)lumo_app_client_redraw(client);
+        } else if (btn == 16) {
+            /* log tab */
+            client->clock_tab = 2;
+            (void)lumo_app_client_redraw(client);
+        } else if (client->clock_tab == 0) {
+            /* dialer mode */
+            if (btn >= 0 && btn <= 9) {
+                /* digit */
+                if (client->term_input_len < 20) {
+                    client->term_input[client->term_input_len++] =
+                        (char)('0' + btn);
+                    client->term_input[client->term_input_len] = '\0';
+                    (void)lumo_app_client_redraw(client);
+                }
+            } else if (btn == 10) {
+                /* * */
+                if (client->term_input_len < 20) {
+                    client->term_input[client->term_input_len++] = '*';
+                    client->term_input[client->term_input_len] = '\0';
+                    (void)lumo_app_client_redraw(client);
+                }
+            } else if (btn == 11) {
+                /* # */
+                if (client->term_input_len < 20) {
+                    client->term_input[client->term_input_len++] = '#';
+                    client->term_input[client->term_input_len] = '\0';
+                    (void)lumo_app_client_redraw(client);
+                }
+            } else if (btn == 13) {
+                /* backspace */
+                if (client->term_input_len > 0) {
+                    client->term_input[--client->term_input_len] = '\0';
+                    (void)lumo_app_client_redraw(client);
+                }
+            } else if (btn == 12) {
+                /* call button — save number as contact if non-empty */
+                if (client->term_input_len > 0 && client->note_count < 8) {
+                    snprintf(client->notes[client->note_count],
+                        sizeof(client->notes[0]), "%s", client->term_input);
+                    client->note_count++;
+                    lumo_app_contacts_save(client);
+                }
+                client->term_input_len = 0;
+                client->term_input[0] = '\0';
+                (void)lumo_app_client_redraw(client);
+            }
+        } else if (client->clock_tab == 1) {
+            /* contacts tab */
+            if (btn >= 100) {
+                int row = btn - 100;
+                if (row < client->note_count) {
+                    client->selected_row = row;
+                    (void)lumo_app_client_redraw(client);
+                }
+            }
+        }
+    }
+
+    /* Camera app touch handling */
+    if (client->app_id == LUMO_APP_CAMERA && client->width > 0 &&
+            client->height > 0) {
+        int btn = lumo_app_camera_button_at(client->width, client->height,
+            client->touch_down_x, client->touch_down_y,
+            client->photo_viewing);
+
+        if (btn == 1) {
+            /* toggle gallery mode */
+            client->photo_viewing = !client->photo_viewing;
+            if (client->photo_viewing) {
+                /* scan Pictures directory for captured photos */
+                static const char *img_exts[] = {".jpg", ".jpeg", ".png",
+                    ".bmp"};
+                lumo_app_scan_media(client, "Pictures",
+                    img_exts, sizeof(img_exts) / sizeof(img_exts[0]));
+            }
+            (void)lumo_app_client_redraw(client);
+        } else if (btn == 0 && !client->photo_viewing) {
+            /* capture button — placeholder, increment count */
+            (void)lumo_app_client_redraw(client);
+        }
+    }
+
+    /* Maps app touch handling */
+    if (client->app_id == LUMO_APP_MAPS && client->width > 0 &&
+            client->height > 0) {
+        int btn = lumo_app_maps_button_at(client->width, client->height,
+            client->touch_down_x, client->touch_down_y, client->clock_tab);
+
+        if (btn == 1) {
+            client->clock_tab = 0; /* compass */
+            (void)lumo_app_client_redraw(client);
+        } else if (btn == 2) {
+            client->clock_tab = 1; /* places */
+            (void)lumo_app_client_redraw(client);
+        } else if (btn == 3) {
+            client->clock_tab = 2; /* info */
+            (void)lumo_app_client_redraw(client);
+        } else if (btn == 0 && client->clock_tab == 1) {
+            /* add place */
+            if (client->note_count < 8) {
+                snprintf(client->notes[client->note_count],
+                    sizeof(client->notes[0]), "PLACE %d",
+                    client->note_count + 1);
+                client->note_count++;
+                lumo_app_places_save(client);
+                (void)lumo_app_client_redraw(client);
+            }
+        } else if (btn >= 100 && client->clock_tab == 1) {
+            int row = btn - 100;
+            if (row < client->note_count) {
+                client->selected_row = row;
+                (void)lumo_app_client_redraw(client);
+            }
+        }
     }
 
     if (client->app_id == LUMO_APP_SETTINGS && client->width > 0 &&
@@ -2411,6 +2586,74 @@ static void lumo_app_settings_save(const struct lumo_app_client *client) {
     fclose(fp);
 }
 
+/* Phone contacts — stored in ~/.lumo-contacts, reuses notes[] array */
+static void lumo_app_contacts_load(struct lumo_app_client *client) {
+    const char *home = getenv("HOME");
+    char path[1100];
+    FILE *fp;
+    if (home == NULL) return;
+    snprintf(path, sizeof(path), "%s/.lumo-contacts", home);
+    fp = fopen(path, "r");
+    if (fp == NULL) return;
+    client->note_count = 0;
+    while (client->note_count < 8 &&
+            fgets(client->notes[client->note_count],
+                sizeof(client->notes[0]), fp) != NULL) {
+        char *nl = strchr(client->notes[client->note_count], '\n');
+        if (nl) *nl = '\0';
+        if (client->notes[client->note_count][0] != '\0')
+            client->note_count++;
+    }
+    fclose(fp);
+}
+
+static void lumo_app_contacts_save(const struct lumo_app_client *client) {
+    const char *home = getenv("HOME");
+    char path[1100];
+    FILE *fp;
+    if (home == NULL) return;
+    snprintf(path, sizeof(path), "%s/.lumo-contacts", home);
+    fp = fopen(path, "w");
+    if (fp == NULL) return;
+    for (int i = 0; i < client->note_count; i++)
+        fprintf(fp, "%s\n", client->notes[i]);
+    fclose(fp);
+}
+
+/* Maps places — stored in ~/.lumo-places, reuses notes[] array */
+static void lumo_app_places_load(struct lumo_app_client *client) {
+    const char *home = getenv("HOME");
+    char path[1100];
+    FILE *fp;
+    if (home == NULL) return;
+    snprintf(path, sizeof(path), "%s/.lumo-places", home);
+    fp = fopen(path, "r");
+    if (fp == NULL) return;
+    client->note_count = 0;
+    while (client->note_count < 8 &&
+            fgets(client->notes[client->note_count],
+                sizeof(client->notes[0]), fp) != NULL) {
+        char *nl = strchr(client->notes[client->note_count], '\n');
+        if (nl) *nl = '\0';
+        if (client->notes[client->note_count][0] != '\0')
+            client->note_count++;
+    }
+    fclose(fp);
+}
+
+static void lumo_app_places_save(const struct lumo_app_client *client) {
+    const char *home = getenv("HOME");
+    char path[1100];
+    FILE *fp;
+    if (home == NULL) return;
+    snprintf(path, sizeof(path), "%s/.lumo-places", home);
+    fp = fopen(path, "w");
+    if (fp == NULL) return;
+    for (int i = 0; i < client->note_count; i++)
+        fprintf(fp, "%s\n", client->notes[i]);
+    fclose(fp);
+}
+
 static void lumo_app_settings_load(struct lumo_app_client *client) {
     const char *home = getenv("HOME");
     char path[1100], line[128];
@@ -2493,6 +2736,17 @@ int main(int argc, char **argv) {
 
     if (client.app_id == LUMO_APP_NOTES) {
         lumo_app_notes_load(&client);
+    }
+    if (client.app_id == LUMO_APP_PHONE) {
+        lumo_app_contacts_load(&client);
+    }
+    if (client.app_id == LUMO_APP_MAPS) {
+        lumo_app_places_load(&client);
+    }
+    if (client.app_id == LUMO_APP_CAMERA) {
+        static const char *img_exts[] = {".jpg", ".jpeg", ".png", ".bmp"};
+        lumo_app_scan_media(&client, "Pictures",
+            img_exts, sizeof(img_exts) / sizeof(img_exts[0]));
     }
     if (client.app_id == LUMO_APP_CLOCK) {
         lumo_app_clock_load(&client);

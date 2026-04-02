@@ -197,6 +197,9 @@ app_sources = files(
   'src/apps/app_music.c',
   'src/apps/app_photos.c',
   'src/apps/app_videos.c',
+  'src/apps/app_phone.c',
+  'src/apps/app_camera.c',
+  'src/apps/app_maps.c',
   'src/apps/app_client.c',
 ) + xdg_client_protocol_files + text_input_client_protocol_files
 
@@ -241,7 +244,7 @@ executable(
   'lumo-app',
   app_sources,
   include_directories: lumo_inc,
-  dependencies: app_deps + [libutil, libpng, libjpeg],
+  dependencies: app_deps + [libutil, libpng, libjpeg, libm],
   install: true,
 )
 
@@ -319,6 +322,9 @@ app_test_exe = executable(
     'src/apps/app_music.c',
     'src/apps/app_photos.c',
     'src/apps/app_videos.c',
+    'src/apps/app_phone.c',
+    'src/apps/app_camera.c',
+    'src/apps/app_maps.c',
     'tests/apps/test_app.c',
   ),
   include_directories: lumo_inc,
@@ -352,6 +358,9 @@ fuzz_test_sources = files(
   'src/apps/app_music.c',
   'src/apps/app_photos.c',
   'src/apps/app_videos.c',
+  'src/apps/app_phone.c',
+  'src/apps/app_camera.c',
+  'src/apps/app_maps.c',
   'tests/core/test_fuzz.c',
 ) + lumo_sources
 
@@ -379,6 +388,9 @@ perf_test_sources = files(
   'src/apps/app_music.c',
   'src/apps/app_photos.c',
   'src/apps/app_videos.c',
+  'src/apps/app_phone.c',
+  'src/apps/app_camera.c',
+  'src/apps/app_maps.c',
   'tests/core/test_perf.c',
 )
 

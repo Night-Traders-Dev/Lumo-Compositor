@@ -127,23 +127,40 @@ static void draw_alarm_tab(uint32_t *pixels, uint32_t width, uint32_t height,
     uint32_t ah = ctx != NULL ? ctx->alarm_hour : 6;
     uint32_t am = ctx != NULL ? ctx->alarm_min : 30;
     bool enabled = ctx != NULL ? ctx->alarm_enabled : false;
+    bool firing = ctx != NULL ? ctx->alarm_firing : false;
     char alarm_buf[8];
 
     snprintf(alarm_buf, sizeof(alarm_buf), "%02u:%02u", ah, am);
 
+    /* alarm firing banner */
+    if (firing) {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        bool flash = (ts.tv_nsec / 500000000) == 0;
+        struct lumo_rect banner = {12, 96, (int)width - 24, 36};
+        lumo_app_fill_rounded_rect(pixels, width, height, &banner, 12,
+            flash ? theme->accent : 0xFFFF2222);
+        lumo_app_draw_text_centered(pixels, width, height, &banner, 2,
+            theme->text, "!! ALARM RINGING !!");
+        y += 30;
+    }
+
     /* large alarm time */
     {
         int tw = (int)strlen(alarm_buf) * 8 * 6 - 8;
+        uint32_t time_color = firing ? 0xFFFF4444 :
+            (enabled ? theme->accent : theme->text_dim);
         lumo_app_draw_text(pixels, width, height,
-            cx - tw / 2, y, 8, enabled ? theme->accent : theme->text_dim,
-            alarm_buf);
+            cx - tw / 2, y, 8, time_color, alarm_buf);
     }
     y += 80;
 
-    /* toggle */
+    /* toggle / dismiss */
     {
-        const char *label = enabled ? "ALARM ON" : "ALARM OFF";
-        uint32_t btn_color = enabled ? theme->accent : theme->card_bg;
+        const char *label = firing ? "DISMISS" :
+            (enabled ? "ALARM ON" : "ALARM OFF");
+        uint32_t btn_color = firing ? 0xFFFF2222 :
+            (enabled ? theme->accent : theme->card_bg);
         struct lumo_rect btn = {cx - 80, y, 160, 36};
         lumo_app_fill_rounded_rect(pixels, width, height, &btn, 18,
             btn_color);
@@ -239,6 +256,20 @@ static void draw_timer_tab(uint32_t *pixels, uint32_t width,
     char tm_buf[8];
 
     snprintf(tm_buf, sizeof(tm_buf), "%02u:%02u", mins, secs);
+
+    /* timer finished indicator */
+    bool finished = !running && total == 0 && remaining == 0;
+    if (finished) {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        bool flash = (ts.tv_nsec / 500000000) == 0;
+        struct lumo_rect banner = {12, 96, (int)width - 24, 36};
+        lumo_app_fill_rounded_rect(pixels, width, height, &banner, 12,
+            flash ? theme->accent : 0xFF28A745);
+        lumo_app_draw_text_centered(pixels, width, height, &banner, 2,
+            theme->text, "TIMER COMPLETE!");
+        y += 30;
+    }
 
     /* large timer display */
     {

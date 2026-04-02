@@ -513,6 +513,12 @@ void lumo_app_render(
         lumo_app_render_photos(ctx, pixels, width, height); return;
     case LUMO_APP_VIDEOS:
         lumo_app_render_videos(ctx, pixels, width, height); return;
+    case LUMO_APP_PHONE:
+        lumo_app_render_phone(ctx, pixels, width, height); return;
+    case LUMO_APP_CAMERA:
+        lumo_app_render_camera(ctx, pixels, width, height); return;
+    case LUMO_APP_MAPS:
+        lumo_app_render_maps(ctx, pixels, width, height); return;
     default:
         lumo_app_render_stub(ctx, pixels, width, height); return;
     }
