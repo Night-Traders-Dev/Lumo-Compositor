@@ -539,6 +539,27 @@ static bool lumo_shell_bridge_build_state_frame(
             compositor->time_panel_visible)) {
         return false;
     }
+    if (!lumo_shell_protocol_frame_add_bool(frame,
+            "notification_panel_visible",
+            compositor->notification_panel_visible)) {
+        return false;
+    }
+    {
+        int nc = compositor->notification_count;
+        if (nc > 8) nc = 8;
+        if (!lumo_shell_protocol_frame_add_u32(frame, "notification_count",
+                (uint32_t)nc)) {
+            return false;
+        }
+        for (int i = 0; i < nc; i++) {
+            char key[24];
+            snprintf(key, sizeof(key), "notif_%d", i);
+            if (!lumo_shell_protocol_frame_add_string(frame, key,
+                    compositor->notifications[i])) {
+                return false;
+            }
+        }
+    }
     if (!lumo_shell_protocol_frame_add_string(frame, "scrim_state",
             lumo_scrim_state_name(compositor->scrim_state))) {
         return false;
@@ -1136,6 +1157,10 @@ static void lumo_shell_bridge_handle_request_frame(
         case LUMO_SHELL_TARGET_GESTURE_HANDLE:
             wlr_log(WLR_INFO,
                 "shell: activate_target gesture handle requested");
+            if (client->compositor->notification_panel_visible) {
+                lumo_protocol_set_notification_panel_visible(
+                    client->compositor, false);
+            }
             if (client->compositor->time_panel_visible) {
                 lumo_protocol_set_time_panel_visible(client->compositor,
                     false);
@@ -1335,6 +1360,9 @@ static void lumo_shell_bridge_handle_request_frame(
     }
 
     if (strcmp(frame->name, "capture_screenshot") == 0) {
+        if (client->compositor->notification_panel_visible) {
+            lumo_protocol_set_notification_panel_visible(client->compositor, false);
+        }
         if (client->compositor->quick_settings_visible) {
             lumo_protocol_set_quick_settings_visible(client->compositor, false);
         }

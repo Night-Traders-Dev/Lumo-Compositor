@@ -154,7 +154,8 @@ static bool lumo_shell_client_should_be_visible(
         return client->compositor_launcher_visible ||
             client->compositor_touch_audit_active ||
             client->compositor_quick_settings_visible ||
-            client->compositor_time_panel_visible;
+            client->compositor_time_panel_visible ||
+            client->compositor_notification_panel_visible;
     case LUMO_SHELL_MODE_OSK:
         return client->compositor_keyboard_visible;
     case LUMO_SHELL_MODE_GESTURE:
@@ -275,12 +276,16 @@ static void lumo_shell_client_update_input_region(
             wl_region_add(region, rect.x, rect.y, rect.width, rect.height);
         if (!client->compositor_launcher_visible &&
                 (client->compositor_quick_settings_visible ||
-                    client->compositor_time_panel_visible)) {
+                    client->compositor_time_panel_visible ||
+                    client->compositor_notification_panel_visible)) {
             if (client->compositor_quick_settings_visible &&
                     lumo_shell_quick_settings_panel_rect(width, height, &rect))
                 wl_region_add(region, rect.x, rect.y, rect.width, rect.height);
             if (client->compositor_time_panel_visible &&
                     lumo_shell_time_panel_rect(width, height, &rect))
+                wl_region_add(region, rect.x, rect.y, rect.width, rect.height);
+            if (client->compositor_notification_panel_visible &&
+                    lumo_shell_notification_panel_rect(width, height, &rect))
                 wl_region_add(region, rect.x, rect.y, rect.width, rect.height);
         }
         break;
@@ -293,7 +298,8 @@ static void lumo_shell_client_update_input_region(
         break;
     case LUMO_SHELL_MODE_STATUS:
         if (client->compositor_quick_settings_visible ||
-                client->compositor_time_panel_visible)
+                client->compositor_time_panel_visible ||
+                client->compositor_notification_panel_visible)
             wl_region_add(region, 0, 0, (int)width, (int)height);
         break;
     case LUMO_SHELL_MODE_BACKGROUND:

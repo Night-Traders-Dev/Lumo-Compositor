@@ -655,6 +655,26 @@ bool lumo_shell_time_panel_rect(
     return lumo_shell_time_panel_geometry(output_width, output_height, rect);
 }
 
+bool lumo_shell_notification_panel_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+) {
+    int panel_w;
+    if (rect == NULL || output_width == 0 || output_height <= 56) {
+        return false;
+    }
+    panel_w = (int)(output_width / 3);
+    if (panel_w < 220) panel_w = 220;
+    if (panel_w > (int)output_width - 16) panel_w = (int)output_width - 16;
+    if (panel_w <= 0) return false;
+    rect->x = 8;
+    rect->y = 52;
+    rect->width = panel_w;
+    rect->height = (int)output_height - 56;
+    return rect->height > 0;
+}
+
 size_t lumo_shell_launcher_filtered_tile_count(const char *query) {
     return lumo_shell_launcher_collect_filtered_tiles(query, NULL, 0);
 }

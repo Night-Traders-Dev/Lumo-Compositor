@@ -269,6 +269,36 @@ static void lumo_shell_client_apply_state_frame(
         }
     }
 
+    if (lumo_shell_protocol_frame_get_bool(frame,
+            "notification_panel_visible", &bool_value)) {
+        if (client->compositor_notification_panel_visible != bool_value) {
+            client->compositor_notification_panel_visible = bool_value;
+            changed = true;
+            if (client->mode == LUMO_SHELL_MODE_STATUS ||
+                    client->mode == LUMO_SHELL_MODE_LAUNCHER) {
+                layout_changed = true;
+            }
+        }
+    }
+
+    {
+        uint32_t nc = 0;
+        if (lumo_shell_protocol_frame_get_u32(frame, "notification_count",
+                &nc) && nc <= 8) {
+            client->notification_count = (int)nc;
+            for (int i = 0; i < (int)nc; i++) {
+                char key[24];
+                const char *nval = NULL;
+                snprintf(key, sizeof(key), "notif_%d", i);
+                if (lumo_shell_protocol_frame_get(frame, key, &nval) &&
+                        nval != NULL) {
+                    snprintf(client->notifications[i], 128, "%s", nval);
+                }
+            }
+            changed = true;
+        }
+    }
+
     if (lumo_shell_protocol_frame_get(frame, "scrim_state", &value)) {
         if (lumo_shell_remote_scrim_parse(value,
                 &client->compositor_scrim_state)) {

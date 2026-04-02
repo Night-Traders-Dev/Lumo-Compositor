@@ -259,13 +259,72 @@ static void lumo_draw_launcher(
      * the launcher slide-up animation — render at full opacity
      * immediately so panels appear without delay */
     if (client != NULL && (client->compositor_quick_settings_visible ||
-            client->compositor_time_panel_visible) &&
+            client->compositor_time_panel_visible ||
+            client->compositor_notification_panel_visible) &&
             !client->compositor_launcher_visible) {
         int bar_h = 48;
 
         if (client->compositor_quick_settings_visible) {
             lumo_draw_quick_settings_panel(pixels, width, height, bar_h,
                 client);
+        }
+        if (client->compositor_notification_panel_visible) {
+            struct lumo_rect np = {0};
+            if (lumo_shell_notification_panel_rect(width, height, &np)) {
+                uint32_t np_bg = lumo_theme.panel_bg;
+                uint32_t np_stroke = lumo_theme.panel_stroke;
+                uint32_t np_label = lumo_theme.text_secondary;
+                uint32_t np_text = lumo_theme.text_primary;
+                uint32_t np_accent = lumo_theme.accent;
+                int ny = np.y + 16;
+
+                lumo_fill_rounded_rect(pixels, width, height, &np, 18,
+                    np_bg);
+                lumo_draw_outline(pixels, width, height, &np, 1,
+                    np_stroke);
+
+                /* header */
+                lumo_draw_text(pixels, width, height, np.x + 16, ny, 3,
+                    np_accent, "NOTIFICATIONS");
+                ny += 30;
+                {
+                    struct lumo_rect sep = {np.x + 12, ny, np.width - 24, 1};
+                    lumo_fill_rect(pixels, width, height, sep.x, sep.y,
+                        sep.width, sep.height, np_stroke);
+                }
+                ny += 10;
+
+                if (client->notification_count == 0) {
+                    lumo_draw_text(pixels, width, height, np.x + 16, ny,
+                        2, np_label, "NO NOTIFICATIONS");
+                    ny += 22;
+                    lumo_draw_text(pixels, width, height, np.x + 16, ny,
+                        2, np_label, "ALL CLEAR");
+                } else {
+                    for (int i = client->notification_count - 1;
+                            i >= 0 && ny + 44 < np.y + np.height; i--) {
+                        struct lumo_rect card = {
+                            np.x + 8, ny, np.width - 16, 40
+                        };
+                        lumo_fill_rounded_rect(pixels, width, height,
+                            &card, 10, lumo_argb(0x30,
+                                (uint8_t)lumo_theme.base_r,
+                                (uint8_t)lumo_theme.base_g,
+                                (uint8_t)lumo_theme.base_b));
+
+                        /* notification dot */
+                        lumo_fill_rect(pixels, width, height,
+                            card.x + 8, card.y + 16, 6, 6, np_accent);
+
+                        /* notification text */
+                        lumo_draw_text(pixels, width, height,
+                            card.x + 20, card.y + 12, 2, np_text,
+                            client->notifications[i]);
+
+                        ny += 48;
+                    }
+                }
+            }
         }
         if (client->compositor_time_panel_visible) {
             uint32_t tp_bg = lumo_theme.panel_bg;

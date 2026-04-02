@@ -94,6 +94,7 @@ struct lumo_app_client {
     uint32_t alarm_hour;
     uint32_t alarm_min;
     bool alarm_enabled;
+    bool alarm_sound_played; /* prevents repeating sound within same minute */
     int selected_row;
     bool file_info_visible;
     char file_info_name[256];
@@ -860,6 +861,23 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             if ((uint32_t)tm_now.tm_hour == client->alarm_hour &&
                     (uint32_t)tm_now.tm_min == client->alarm_min) {
                 alarm_firing = true;
+                /* play alarm sound once per trigger */
+                if (!client->alarm_sound_played) {
+                    client->alarm_sound_played = true;
+                    pid_t pid = fork();
+                    if (pid == 0) {
+                        /* try pw-play first, fall back to aplay */
+                        execlp("pw-play", "pw-play",
+                            "/usr/share/sounds/freedesktop/stereo/alarm-clock-elapsed.oga",
+                            (char *)NULL);
+                        execlp("aplay", "aplay", "-q",
+                            "/usr/share/sounds/alsa/Front_Center.wav",
+                            (char *)NULL);
+                        _exit(0);
+                    }
+                }
+            } else {
+                client->alarm_sound_played = false;
             }
         }
         struct lumo_app_render_context ctx = {

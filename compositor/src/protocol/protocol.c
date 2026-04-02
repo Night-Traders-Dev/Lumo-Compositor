@@ -1336,6 +1336,54 @@ void lumo_protocol_set_time_panel_visible(
     lumo_protocol_mark_layers_dirty(compositor);
 }
 
+void lumo_protocol_set_notification_panel_visible(
+    struct lumo_compositor *compositor,
+    bool visible
+) {
+    if (compositor == NULL ||
+            compositor->notification_panel_visible == visible) {
+        return;
+    }
+
+    compositor->notification_panel_visible = visible;
+    wlr_log(WLR_INFO, "protocol: notification_panel %s",
+        visible ? "visible" : "hidden");
+    lumo_shell_state_broadcast_launcher_visible(compositor,
+        compositor->launcher_visible);
+    lumo_protocol_mark_layers_dirty(compositor);
+}
+
+void lumo_protocol_push_notification(
+    struct lumo_compositor *compositor,
+    const char *text
+) {
+    if (compositor == NULL || text == NULL) return;
+    int idx = compositor->notification_count;
+    if (idx >= 8) {
+        /* shift oldest out */
+        for (int i = 0; i < 7; i++) {
+            memcpy(compositor->notifications[i],
+                compositor->notifications[i + 1], 128);
+            compositor->notification_timestamps[i] =
+                compositor->notification_timestamps[i + 1];
+        }
+        idx = 7;
+    } else {
+        compositor->notification_count++;
+    }
+    snprintf(compositor->notifications[idx], 128, "%s", text);
+    {
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        compositor->notification_timestamps[idx] =
+            (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
+    }
+    wlr_log(WLR_INFO, "protocol: notification pushed: %s", text);
+    lumo_shell_state_broadcast_launcher_visible(compositor,
+        compositor->launcher_visible);
+    lumo_protocol_mark_layers_dirty(compositor);
+}
+
 void lumo_protocol_set_scrim_state(
     struct lumo_compositor *compositor,
     enum lumo_scrim_state state

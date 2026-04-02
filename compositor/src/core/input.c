@@ -632,7 +632,8 @@ static void lumo_input_touch_down(
         return;
     }
 
-    if (compositor->quick_settings_visible || compositor->time_panel_visible) {
+    if (compositor->quick_settings_visible || compositor->time_panel_visible ||
+            compositor->notification_panel_visible) {
         bool in_panel = false;
         struct lumo_rect panel_rect = {0};
         struct lumo_output *o = lumo_input_first_output(compositor);
@@ -654,6 +655,12 @@ static void lumo_input_touch_down(
                     lumo_rect_contains(&panel_rect, point->lx, point->ly)) {
                 in_panel = true;
             }
+            if (!in_panel && compositor->notification_panel_visible &&
+                    lumo_shell_notification_panel_rect((uint32_t)ow,
+                        (uint32_t)oh, &panel_rect) &&
+                    lumo_rect_contains(&panel_rect, point->lx, point->ly)) {
+                in_panel = true;
+            }
         }
 
         if (!in_panel) {
@@ -662,6 +669,9 @@ static void lumo_input_touch_down(
             }
             if (compositor->time_panel_visible) {
                 lumo_protocol_set_time_panel_visible(compositor, false);
+            }
+            if (compositor->notification_panel_visible) {
+                lumo_protocol_set_notification_panel_visible(compositor, false);
             }
             wlr_log(WLR_INFO,
                 "input: touch %d dismissed panel (outside tap)",
@@ -737,7 +747,8 @@ static void lumo_input_touch_down(
         bool app_focused = !wl_list_empty(&compositor->toplevels) &&
             !compositor->launcher_visible &&
             !compositor->quick_settings_visible &&
-            !compositor->time_panel_visible;
+            !compositor->time_panel_visible &&
+            !compositor->notification_panel_visible;
         if (app_focused && edge_zone == LUMO_EDGE_TOP) {
             /* let the touch fall through to the app */
         } else {
@@ -772,7 +783,8 @@ static void lumo_input_touch_down(
                 !wl_list_empty(&compositor->toplevels) &&
                 !compositor->launcher_visible &&
                 !compositor->quick_settings_visible &&
-                !compositor->time_panel_visible) {
+                !compositor->time_panel_visible &&
+                !compositor->notification_panel_visible) {
             suppress_top = true;
         }
         if (!suppress_top) {
@@ -800,6 +812,7 @@ static void lumo_input_touch_down(
         bool shell_ui_active = compositor->launcher_visible ||
             compositor->quick_settings_visible ||
             compositor->time_panel_visible ||
+            compositor->notification_panel_visible ||
             compositor->touch_audit_active;
         if (!shell_ui_active && !wl_list_empty(&compositor->toplevels)) {
             struct lumo_toplevel *tl;
@@ -953,6 +966,7 @@ static void lumo_input_touch_up(
                         !compositor->launcher_visible &&
                         !compositor->time_panel_visible &&
                         !compositor->quick_settings_visible &&
+                        !compositor->notification_panel_visible &&
                         (point->hitbox == NULL ||
                          point->hitbox->kind != LUMO_HITBOX_EDGE_GESTURE)) {
                     suppress = true;

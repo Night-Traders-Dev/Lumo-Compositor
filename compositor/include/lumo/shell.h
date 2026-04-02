@@ -212,6 +212,11 @@ bool lumo_shell_time_panel_rect(
     uint32_t output_height,
     struct lumo_rect *rect
 );
+bool lumo_shell_notification_panel_rect(
+    uint32_t output_width,
+    uint32_t output_height,
+    struct lumo_rect *rect
+);
 size_t lumo_shell_launcher_filtered_tile_count(const char *query);
 bool lumo_shell_launcher_filtered_tile_rect(
     uint32_t output_width,

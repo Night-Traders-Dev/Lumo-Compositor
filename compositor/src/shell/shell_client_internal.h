@@ -112,6 +112,9 @@ struct lumo_shell_client {
     bool compositor_keyboard_visible;
     bool compositor_quick_settings_visible;
     bool compositor_time_panel_visible;
+    bool compositor_notification_panel_visible;
+    char notifications[8][128];
+    int notification_count;
     enum lumo_shell_remote_scrim_state compositor_scrim_state;
     uint32_t compositor_rotation_degrees;
     double compositor_gesture_threshold;

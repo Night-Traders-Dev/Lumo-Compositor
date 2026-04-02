@@ -851,6 +851,11 @@ struct lumo_compositor {
     bool launcher_visible;
     bool quick_settings_visible;
     bool time_panel_visible;
+    bool notification_panel_visible;
+    /* notification store — ring buffer of recent notifications */
+    char notifications[8][128];
+    int notification_count;
+    uint64_t notification_timestamps[8];
     enum lumo_rotation active_rotation;
     enum lumo_scrim_state scrim_state;
     double gesture_threshold;
@@ -1053,6 +1058,14 @@ void lumo_protocol_set_quick_settings_visible(
 void lumo_protocol_set_time_panel_visible(
     struct lumo_compositor *compositor,
     bool visible
+);
+void lumo_protocol_set_notification_panel_visible(
+    struct lumo_compositor *compositor,
+    bool visible
+);
+void lumo_protocol_push_notification(
+    struct lumo_compositor *compositor,
+    const char *text
 );
 void lumo_protocol_mark_layers_dirty(struct lumo_compositor *compositor);
 bool lumo_protocol_layer_surface_commit_needs_reconfigure(

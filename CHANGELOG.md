@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.59] - 2026-04-02
+
+### New Native Apps
+
+- **Phone**: Full dialer pad with T9-style digit buttons and letter sub-labels, contacts list (persisted to `~/.lumo-contacts`), call log tab. Dialing a number saves it as a contact.
+- **Camera**: V4L2 camera detection with viewfinder UI (crosshair, corner brackets, live indicator). Graceful "NO CAMERA FOUND" fallback with connection instructions. Gallery mode to browse `~/Pictures`. Capture button with circular shutter design.
+- **Maps**: Compass rose with cardinal/intercardinal ticks, saved places list (persisted to `~/.lumo-places`) with tap-to-select and tap-again-to-edit, device location info tab showing GPS status, coordinates (38.4784N 82.6379W), timezone, and altitude.
+
+### Notification Panel
+
+- Added left-side notification panel, triggered by tapping the left third of the status bar. Displays notifications in reverse-chronological order with accent-colored dots.
+- Restructured top-edge panel triggers from halves to thirds: left=notifications, center=date/time/weather, right=quick settings. All three panels are mutually exclusive.
+- Notifications are stored in a ring buffer (8 max) on the compositor and broadcast to shell clients via the state protocol.
+
+### Clock App Fixes
+
+- Fixed timer countdown: `timer_remaining_sec` was always set to `timer_total_sec` in the render context, so the displayed time never counted down. Now properly computed from elapsed time.
+- Added alarm firing indicator: flashing "!! ALARM RINGING !!" banner with red/accent alternation when the current time matches the set alarm.
+- Added alarm sound: forks `pw-play` (PipeWire) or `aplay` (ALSA) to play `alarm-clock-elapsed.oga` when the alarm fires. Sound plays once per trigger minute.
+- Added timer completion indicator: "TIMER COMPLETE!" banner when timer reaches zero.
+
+### Notes App Improvements
+
+- Added full-screen editor (Google Keep style): tapping a note opens a large text area with word-wrap, blinking cursor, character count (0/128), "DONE" button, and "DELETE" button.
+- Added delete note functionality in both list view (red "DELETE NOTE" button when a note is selected) and editor view.
+- Notes and Maps apps now have 500ms periodic redraws for cursor blink animation.
+
+### OSK Integration
+
+- Maps places tab now triggers the OSK when editing a place name. Uses the same `lumo_app_wants_osk` pattern as Notes.
+- Added test coverage for OSK trigger policy: `test_notes_osk_trigger` and `test_maps_osk_trigger` verify hit-test zones and `wants_osk` returns.
+
+### Version
+
+- Bumped to 0.0.59. Single source of truth in `compositor/include/lumo/version.h`.
+
 ## [0.0.58] - 2026-03-31
 
 ### App Drawer Close Fix
