@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.60] - 2026-04-02
+
+### Browser Features
+
+- Added find-in-page: "F" button toggles search bar with live incremental search via `WebKitFindController`. Enter key advances to next match. Themed with Lumo purple/orange.
+- Added page zoom controls: "A+" and "A-" buttons adjust zoom level 0.5x–3.0x via `webkit_web_view_set_zoom_level`.
+- Added target=_blank handling: links that open new windows now open in a new tab via `create` signal → `add_tab`.
+- Added download manager: files download to `~/Downloads/` automatically, directory created if missing. Uses `WebKitDownload` decide-destination signal.
+- Added TLS error bypass for local network (localhost, 192.168.*, 10.*, 127.0.*) — allows self-signed certs on development servers.
+- Added progress bar (themed orange, 3px) between web content and toolbar, auto-hides on load completion.
+- Added back/forward button sensitivity — grayed out (opacity 0.3) when navigation unavailable.
+
+### Browser Bug Fixes
+
+- Fixed tab close corrupting GtkStack child names — remaining tabs are properly re-added with sequential names after removal.
+- Fixed tab bar button cleanup — now compares widget pointers instead of unreliable `gtk_widget_get_name` type names.
+- Shared `WebKitNetworkSession` across all tabs to reduce memory and connection overhead.
+- Extracted URL handling into `browser_url.h` shared header for testability.
+- Added comprehensive browser test suite (URL resolution, encoding, bookmark persistence, GTK UI components).
+
+### Bottom-Edge Touch Fix
+
+- Fixed app toolbar buttons being captured by the bottom-edge gesture zone. When a toplevel app is focused, bottom-edge system zone touches now fall through to the app surface instead of being captured as gestures. The gesture handle hitbox (`LUMO_HITBOX_EDGE_GESTURE`) still provides swipe-to-close functionality.
+- Fixed suppressed edge taps being silently dropped — they are now replayed to the focused app surface so GTK buttons, input fields, and other touch targets in the bottom region of the display receive input.
+- This fix applies to ALL apps, not just the browser — any app with interactive elements near the bottom edge of the rotated display will now receive touches correctly.
+
+### Chromium Removal
+
+- Removed Chromium v122 submodule (47GB on host, 20GB on OrangePi) and all cross-compile infrastructure.
+- Replaced with custom `lumo-browser` built on WebKitGTK 6.0 + GTK4 — builds natively on device in seconds.
+- Installed Epiphany (GNOME Web) as secondary browser.
+- Removed `extensions/lumo-theme/` Chrome extension directory.
+
+### Version
+
+- Bumped to 0.0.60. Single source of truth in `compositor/include/lumo/version.h`.
+
 ## [0.0.59] - 2026-04-02
 
 ### New Native Apps

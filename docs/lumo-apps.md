@@ -140,11 +140,17 @@ renders with proper case distinction.
 - Tabbed browsing: up to 8 tabs with tab bar, + button, X to close
 - GTK4 CSS theming: Lumo purple/orange/aubergine color scheme
 - Smart URL bar: auto-detects URLs, domains, localhost, search queries (DuckDuckGo)
-- Navigation: back, forward, reload buttons
+- Navigation: back, forward, reload buttons (back/forward gray out when unavailable)
+- Find in page: "F" button toggles search bar with live incremental search, Enter for next match
+- Page zoom: "A+" / "A-" buttons, range 0.5x–3.0x
 - Bookmarks: persistent to `~/.lumo-bookmarks`, star button to save current page
 - Default bookmarks: DuckDuckGo, Wikipedia, GitHub
 - Custom start page with search box and quick links
-- Performance tuning for riscv64: hardware accel off, media/WebGL/WebAudio disabled
+- Downloads: auto-saves to `~/Downloads/`, creates directory if missing
+- New window handling: target=_blank links open in new tab
+- TLS: allows self-signed certs on local network (localhost, 192.168.*, etc.)
+- Progress bar: themed orange, 3px, auto-hides on load completion
+- Performance tuning for riscv64: hardware accel off, media/WebGL/WebAudio disabled, shared network session
 - Mobile user-agent (Android 14 / Chrome 131)
 - Builds natively on device — no cross-compilation needed
 

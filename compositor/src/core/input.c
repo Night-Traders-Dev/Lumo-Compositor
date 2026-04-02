@@ -800,12 +800,20 @@ static void lumo_input_touch_down(
     }
 
     if (edge_zone != LUMO_EDGE_NONE) {
-        point->capture_edge = edge_zone;
-        lumo_input_touch_point_begin_capture(compositor, point, &target,
-            event->time_msec);
-        lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
-            true, point->lx, point->ly);
-        return;
+        /* suppress bottom-edge capture when app is focused — let the
+         * touch reach the app for toolbar interactions */
+        bool app_focused_2 = !wl_list_empty(&compositor->toplevels) &&
+            !compositor->launcher_visible;
+        if (app_focused_2 && edge_zone == LUMO_EDGE_BOTTOM) {
+            /* fall through to surface delivery */
+        } else {
+            point->capture_edge = edge_zone;
+            lumo_input_touch_point_begin_capture(compositor, point, &target,
+                event->time_msec);
+            lumo_input_touch_debug_update(compositor, point,
+                LUMO_TOUCH_SAMPLE_DOWN, true, point->lx, point->ly);
+            return;
+        }
     }
 
     /* --- shell surface redirect (only after hitboxes) --- */
@@ -982,6 +990,17 @@ static void lumo_input_touch_up(
                 if (!suppress) {
                     lumo_input_touch_point_trigger_edge_action(compositor,
                         point, event->time_msec);
+                } else {
+                    /* edge was suppressed — replay to the focused app */
+                    point->capture_edge = LUMO_EDGE_NONE;
+                    point->gesture_triggered = true;
+                    if (point->surface != NULL) {
+                        lumo_input_replay_touch_point(compositor, point);
+                        wlr_log(WLR_INFO,
+                            "input: touch %d replayed to app "
+                            "(suppressed edge tap)",
+                            point->touch_id);
+                    }
                 }
                 if (lumo_hitbox_is_shell_gesture(point->hitbox)) {
                     wlr_log(WLR_INFO,

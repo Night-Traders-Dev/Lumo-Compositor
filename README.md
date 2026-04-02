@@ -123,7 +123,8 @@ The current reserved edge behavior is:
 - left edge dismisses any open panel, launcher, audit, or keyboard state
 - right edge opens the launcher
 - bottom gesture handle toggles the launcher drawer
-- bottom-edge upward swipe: closes launcher (if open) → hides keyboard (if visible) → closes focused app → opens launcher
+- bottom-edge swipe (via gesture handle): closes launcher (if open) → hides keyboard (if visible) → closes focused app → opens launcher
+- bottom-edge taps pass through to the focused app when no launcher is open (allows toolbar interaction)
 - tapping outside an open panel dismisses it
 
 Touch rotation is corrected dynamically from the active output transform inside
@@ -220,7 +221,7 @@ More detailed notes live in:
 
 ## Status
 
-The project is at v0.0.59 with a functional mobile shell running on OrangePi RV2 hardware.
+The project is at v0.0.60 with a functional mobile shell running on OrangePi RV2 hardware.
 
 Current capabilities:
 

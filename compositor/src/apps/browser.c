@@ -356,7 +356,7 @@ static const char *start_page_html =
     "<a class='bm' href='https://en.m.wikipedia.org/'>Wikipedia</a>"
     "<a class='bm' href='https://github.com/'>GitHub</a>"
     "</div>"
-    "<p>Lumo Browser v0.0.59 | WebKit</p>"
+    "<p>Lumo Browser v0.0.60 | WebKit</p>"
     "</body></html>";
 
 static int add_tab(LumoBrowser *b, const char *uri) {
