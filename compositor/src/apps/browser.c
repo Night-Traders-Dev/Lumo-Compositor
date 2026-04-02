@@ -471,7 +471,11 @@ static void activate(GtkApplication *app, gpointer user_data) {
         G_CALLBACK(on_close_tab), b);
     gtk_box_append(b->tab_bar, GTK_WIDGET(close_tab_btn));
 
-    gtk_box_append(b->main_box, GTK_WIDGET(b->tab_bar));
+    /* Tab bar and toolbar are appended AFTER the web view so they
+     * render at the bottom of the portrait buffer.  After the
+     * compositor's 90° rotation this becomes the RIGHT side of the
+     * landscape display — away from the bottom-edge gesture zone
+     * which would otherwise capture touches meant for the UI. */
 
     /* ── Toolbar ── */
     b->toolbar = GTK_BOX(gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 4));
@@ -506,15 +510,19 @@ static void activate(GtkApplication *app, gpointer user_data) {
     gtk_box_append(b->toolbar, GTK_WIDGET(b->url_bar));
     gtk_box_append(b->toolbar, GTK_WIDGET(b->bookmark_btn));
 
-    gtk_box_append(b->main_box, GTK_WIDGET(b->toolbar));
-
-    /* ── View stack (tab content) ── */
+    /* ── View stack (tab content) — first in layout so it occupies
+     * the top of the portrait buffer (= left/main area after rotation) ── */
     b->view_stack = GTK_STACK(gtk_stack_new());
     gtk_stack_set_transition_type(b->view_stack,
         GTK_STACK_TRANSITION_TYPE_CROSSFADE);
     gtk_stack_set_transition_duration(b->view_stack, 150);
     gtk_widget_set_vexpand(GTK_WIDGET(b->view_stack), TRUE);
     gtk_box_append(b->main_box, GTK_WIDGET(b->view_stack));
+
+    /* Toolbar and tab bar after web view — renders at the bottom of
+     * portrait buffer, which is the RIGHT side of rotated display */
+    gtk_box_append(b->main_box, GTK_WIDGET(b->toolbar));
+    gtk_box_append(b->main_box, GTK_WIDGET(b->tab_bar));
 
     /* ── First tab with start page ── */
     b->active_tab = 0;
