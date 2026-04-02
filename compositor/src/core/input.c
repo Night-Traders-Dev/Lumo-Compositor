@@ -456,7 +456,7 @@ static void lumo_input_touch_motion(
     if (!point->captured && point->delivered && point->surface != NULL) {
         wlr_seat_touch_notify_motion(compositor->seat, event->time_msec,
             event->touch_id, target.sx, target.sy);
-        /* pointer emulation for GTK4 drag/scroll */
+        /* pointer emulation motion for toplevel GTK4 apps */
         if (event->touch_id == 0) {
             wlr_seat_pointer_notify_motion(compositor->seat,
                 event->time_msec, target.sx, target.sy);
@@ -1067,11 +1067,23 @@ static void lumo_input_touch_up(
         wlr_seat_touch_notify_up(compositor->seat, event->time_msec,
             event->touch_id);
 
-        /* pointer emulation: send button release for GTK4 compat */
+        /* pointer emulation release for toplevel GTK4 apps */
         if (event->touch_id == 0) {
-            wlr_seat_pointer_notify_button(compositor->seat,
-                event->time_msec, BTN_LEFT, WL_POINTER_BUTTON_STATE_RELEASED);
-            wlr_seat_pointer_notify_frame(compositor->seat);
+            bool is_toplevel = false;
+            struct lumo_toplevel *tl;
+            wl_list_for_each(tl, &compositor->toplevels, link) {
+                if (tl->xdg_surface != NULL &&
+                        tl->xdg_surface->surface == point->surface) {
+                    is_toplevel = true;
+                    break;
+                }
+            }
+            if (is_toplevel) {
+                wlr_seat_pointer_notify_button(compositor->seat,
+                    event->time_msec, BTN_LEFT,
+                    WL_POINTER_BUTTON_STATE_RELEASED);
+                wlr_seat_pointer_notify_frame(compositor->seat);
+            }
         }
     }
 
