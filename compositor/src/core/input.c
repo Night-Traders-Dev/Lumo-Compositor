@@ -753,25 +753,11 @@ static void lumo_input_touch_down(
     /* --- hitbox checks (edges, gestures, OSK, launcher) --- */
 
     if (lumo_input_hitbox_is_shell_reserved(point->hitbox)) {
-        /* When a toplevel app is focused and no shell UI panels are open,
-         * suppress shell hitbox capture so touches go to the app instead
-         * of bleeding through to launcher tiles or other shell surfaces.
-         * OSK hitboxes are always allowed so the keyboard works with apps. */
-        bool app_blocks_shell = !wl_list_empty(&compositor->toplevels) &&
-            !compositor->launcher_visible &&
-            !compositor->quick_settings_visible &&
-            !compositor->time_panel_visible &&
-            !compositor->touch_audit_active &&
-            point->hitbox != NULL &&
-            point->hitbox->kind != LUMO_HITBOX_OSK_KEY;
-        if (!app_blocks_shell) {
-            lumo_input_touch_point_begin_capture(compositor, point, &target,
-                event->time_msec);
-            lumo_input_touch_debug_update(compositor, point,
-                LUMO_TOUCH_SAMPLE_DOWN, true, point->lx, point->ly);
-            return;
-        }
-        /* fall through — touch will be delivered to the focused app */
+        lumo_input_touch_point_begin_capture(compositor, point, &target,
+            event->time_msec);
+        lumo_input_touch_debug_update(compositor, point, LUMO_TOUCH_SAMPLE_DOWN,
+            true, point->lx, point->ly);
+        return;
     }
 
     if (!compositor->touch_audit_active &&
@@ -781,7 +767,8 @@ static void lumo_input_touch_down(
          * no panels are open, so app controls at the top of the screen
          * (e.g. browser tab close) receive touch input */
         bool suppress_top = false;
-        if (lumo_hitbox_edge_zone(point->hitbox) == LUMO_EDGE_TOP &&
+        enum lumo_edge_zone hb_edge = lumo_hitbox_edge_zone(point->hitbox);
+        if (hb_edge == LUMO_EDGE_TOP &&
                 !wl_list_empty(&compositor->toplevels) &&
                 !compositor->launcher_visible &&
                 !compositor->quick_settings_visible &&
