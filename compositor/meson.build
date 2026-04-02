@@ -258,6 +258,22 @@ if webkit_dep.found() and gtk4_dep.found()
     dependencies: [webkit_dep, gtk4_dep],
     install: true,
   )
+  browser_test_exe = executable(
+    'lumo-browser-tests',
+    files('tests/apps/test_browser.c'),
+    c_args: ['-DLUMO_TEST_GTK'],
+    dependencies: [webkit_dep, gtk4_dep],
+    install: false,
+  )
+  test('lumo-browser', browser_test_exe)
+else
+  # headless-only browser tests (no GTK/WebKit)
+  browser_test_headless = executable(
+    'lumo-browser-tests',
+    files('tests/apps/test_browser.c'),
+    install: false,
+  )
+  test('lumo-browser', browser_test_headless)
 endif
 
 executable(

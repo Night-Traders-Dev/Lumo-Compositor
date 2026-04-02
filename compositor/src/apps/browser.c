@@ -6,6 +6,7 @@
 #include <webkit/webkit.h>
 #include <string.h>
 #include <stdio.h>
+#include "browser_url.h"
 
 #define LUMO_BROWSER_TITLE "Lumo Browser"
 #define LUMO_MAX_TABS 8
@@ -58,40 +59,7 @@ typedef struct {
     GtkWidget *menu_popover;
 } LumoBrowser;
 
-/* ── URL handling ──────────────────────────────────────────────────── */
-
-static void url_encode(const char *src, char *dst, size_t dst_size) {
-    static const char *safe =
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~";
-    size_t j = 0;
-    for (size_t i = 0; src[i] && j + 3 < dst_size; i++) {
-        if (strchr(safe, src[i])) {
-            dst[j++] = src[i];
-        } else if (src[i] == ' ') {
-            dst[j++] = '+';
-        } else {
-            snprintf(dst + j, dst_size - j, "%%%02X",
-                (unsigned char)src[i]);
-            j += 3;
-        }
-    }
-    dst[j] = '\0';
-}
-
-static void resolve_url(const char *text, char *url, size_t url_size) {
-    if (strstr(text, "://") != NULL) {
-        snprintf(url, url_size, "%s", text);
-    } else if (strstr(text, "localhost") != NULL) {
-        snprintf(url, url_size, "http://%s", text);
-    } else if (strchr(text, '.') != NULL && strchr(text, ' ') == NULL) {
-        snprintf(url, url_size, "https://%s", text);
-    } else {
-        char encoded[2048];
-        url_encode(text, encoded, sizeof(encoded));
-        snprintf(url, url_size,
-            "https://duckduckgo.com/?q=%s", encoded);
-    }
-}
+/* URL handling: see browser_url.h for lumo_url_encode / lumo_resolve_url */
 
 /* ── Bookmark persistence ──────────────────────────────────────────── */
 
@@ -290,7 +258,7 @@ static void on_url_activate(GtkEntry *entry, gpointer data) {
     if (!text || !text[0]) return;
 
     char url[4096];
-    resolve_url(text, url, sizeof(url));
+    lumo_resolve_url(text, url, sizeof(url));
 
     if (b->active_tab >= 0 && b->active_tab < b->tab_count)
         webkit_web_view_load_uri(b->tabs[b->active_tab].web_view, url);
