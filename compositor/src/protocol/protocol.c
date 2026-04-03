@@ -1399,9 +1399,12 @@ void lumo_protocol_set_sidebar_visible(
         return;
     compositor->sidebar_visible = visible;
     wlr_log(WLR_INFO, "protocol: sidebar %s", visible ? "visible" : "hidden");
-    /* use the generic full-state broadcast (sidebar_visible is included) */
+    /* broadcast state so shell shows/hides the sidebar surface */
     lumo_shell_state_broadcast_launcher_visible(compositor,
         compositor->launcher_visible);
+    /* re-arrange layers so the sidebar surface gets correct scene position */
+    lumo_protocol_mark_layers_dirty(compositor);
+    lumo_protocol_refresh_shell_hitboxes(compositor);
 }
 
 void lumo_protocol_set_scrim_state(
