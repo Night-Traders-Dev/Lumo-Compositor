@@ -2,6 +2,57 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.69] - 2026-04-03
+
+### Sidebar Multitasking Bar (Ubuntu Touch-style)
+
+- Added left-edge sidebar showing running app icons with app drawer button.
+- Tap app icon to switch, long-press for Open/Close context menu.
+- AI-generated Lumo icon (flowing light ribbons) as app drawer button.
+- Sidebar auto-hides after 10 seconds, dismisses on outside tap.
+- Theme-matching gradient colors that transition with time-of-day/weather.
+- Sidebar renders below status bar to avoid visual overlap.
+
+### Gesture Rework
+
+- **Bottom swipe** → go home (minimize all running apps, not close).
+- **Right swipe** → back gesture (minimize focused app).
+- **Left swipe** → show sidebar.
+- Removed bottom gesture handle pill indicator (invisible edge zone only).
+- Gesture handle tap now goes home instead of opening app drawer.
+
+### Performance: Wave Animation CPU 200% → 0%
+
+- Pre-rendered 60-second seamless wave loop into RAM (146 MB, 600 frames at 10fps).
+- 2-second crossfade at loop boundary ensures infinite seamless playback.
+- Playback is memcpy from pre-rendered buffer — zero wave computation at runtime.
+- Background shell CPU dropped from 200% to 0% (was 8 threads computing waves at 30fps).
+- Compositor CPU dropped from 92% to 21%.
+- Row-skip optimization in composite pass skips rows with no wave glow (~50% of frame).
+- Background stops rendering entirely when an app covers it (scrim-aware).
+
+### Smooth Gradient Transitions
+
+- Background gradient smoothly interpolates between hour palettes based on current minute.
+- No hard color jumps at hour boundaries — continuous lerp between current and next palette.
+- Weather hue shifts applied to both endpoints of the interpolation.
+
+### Half-Resolution Wave Rendering
+
+- Waves computed at 400×640 (quarter pixels) then upscaled 2× onto full-res gradient.
+- Soft glow effect masks upscaling artifacts — visually identical to full-res.
+- Two-pass pipeline: Pass 0 (wave glow) + Pass 1 (gradient fill + composite).
+
+### Panel Fixes
+
+- Time/date/weather panel centered horizontally under its trigger zone.
+- Panel visibility fix: launcher surface now redraws when panels are active.
+- Removed NVMe surface cache writes from render loop (was 120 MB/s I/O blocking).
+
+### Version
+
+- Bumped to 0.0.69.
+
 ## [0.0.68] - 2026-04-03
 
 ### Lumo OS Identity

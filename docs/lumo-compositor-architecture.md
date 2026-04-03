@@ -6,26 +6,26 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
 ## System Overview
 
 ```text
-                 +----------------------------------+
-                 |        Shell Clients (5)          |
-                 | background | launcher | osk |     |
-                 | gesture    | status              |
-                 +---------------+------------------+
-                                 |
-                    bridge protocol (Unix socket)
-                    + standard Wayland protocols
-                                 |
-    +----------------------------+----------------------------+
-    |           Lumo Compositor Core (lumo-compositor)        |
-    | backend | input | input_touch | input_pointer | output  |
-    | protocol | shell_launch                                 |
-    +----------------------------+----------------------------+
-                                 |
-                    wlroots 0.18 (DRM + libinput + scene)
-                                 |
-    +----------------------------+----------------------------+
-    |  App Clients: lumo-app (12 native) | Chromium (v122)    |
-    +-----------------------------------------------------+
+                 +--------------------------------------+
+                 |          Shell Clients (6)            |
+                 | background | launcher | osk | sidebar |
+                 | gesture    | status                   |
+                 +----------------+---------------------+
+                                  |
+                     bridge protocol (Unix socket)
+                     + standard Wayland protocols
+                                  |
+    +-----------------------------+-----------------------------+
+    |            Lumo Compositor Core (lumo-compositor)         |
+    | backend | input | input_touch | input_pointer | output    |
+    | protocol | shell_launch                                   |
+    +-----------------------------+-----------------------------+
+                                  |
+                     wlroots 0.18 (DRM + libinput + scene)
+                                  |
+    +-----------------------------+-----------------------------+
+    |  App Clients: lumo-app (12 native) | lumo-browser (SHM)  |
+    +-------------------------------------------------------+
 ```
 
 ## Compositor Core (`src/core/`)

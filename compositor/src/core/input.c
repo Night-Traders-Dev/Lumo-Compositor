@@ -681,6 +681,30 @@ static void lumo_input_touch_down(
         }
     }
 
+    /* tap outside the sidebar to dismiss it */
+    if (compositor->sidebar_visible) {
+        struct lumo_output *o = lumo_input_first_output(compositor);
+        bool in_sidebar = false;
+        if (o != NULL && o->wlr_output != NULL) {
+            int ow = 0, oh = 0;
+            wlr_output_effective_resolution(o->wlr_output, &ow, &oh);
+            /* sidebar is on the left edge, same width as configured */
+            uint32_t sw = (uint32_t)ow / 5;
+            if (sw < 160) sw = 160;
+            if (sw > 220) sw = 220;
+            if (point->lx >= 0.0 && point->lx < (double)sw)
+                in_sidebar = true;
+        }
+        if (!in_sidebar) {
+            lumo_protocol_set_sidebar_visible(compositor, false);
+            wlr_log(WLR_INFO,
+                "input: touch %d dismissed sidebar (outside tap)",
+                point->touch_id);
+            lumo_input_remove_touch_point(compositor, point);
+            return;
+        }
+    }
+
     /* tap outside the launcher panel to dismiss the app drawer */
     if (compositor->launcher_visible) {
         bool in_launcher = false;

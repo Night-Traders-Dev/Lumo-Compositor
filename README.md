@@ -9,7 +9,10 @@ leans toward:
 - large hit targets and reserved edge zones
 - screen rotation and coordinate mapping
 - native Wayland apps plus optional xWayland compatibility
-- compositor-owned state for launcher, OSK, scrim, and focus handling
+- compositor-owned state for launcher, OSK, sidebar, scrim, and focus handling
+- pre-rendered PS4 Flow wave animated background (60s seamless loop, 0% CPU)
+- sidebar multitasking bar with running app icons and AI-generated Lumo icon
+- mobile gesture navigation: bottom=home, right=back, left=sidebar
 
 ## Current Layout
 

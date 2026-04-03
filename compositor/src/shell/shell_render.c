@@ -2118,12 +2118,14 @@ static void lumo_draw_sidebar(
         lumo_fill_rounded_rect(pixels, width, height,
             &icon_rect, 10, fill);
 
-        /* draw first letter of app_id as icon placeholder */
+        /* draw app name initial — strip "lumo-" prefix if present */
         char initial[2] = {0, 0};
         const char *app_id = client->running_app_ids[i];
-        if (app_id[0] != '\0') {
-            initial[0] = app_id[0];
-            /* uppercase */
+        const char *name = app_id;
+        if (strncmp(name, "lumo-", 5) == 0 && name[5] != '\0')
+            name = name + 5;
+        if (name[0] != '\0') {
+            initial[0] = name[0];
             if (initial[0] >= 'a' && initial[0] <= 'z')
                 initial[0] -= 32;
         } else {

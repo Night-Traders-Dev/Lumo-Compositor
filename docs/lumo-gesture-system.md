@@ -8,10 +8,10 @@ captured for gesture detection.
 
 | Edge | Zone | Action |
 |------|------|--------|
-| Bottom | Gesture handle (48-80px) | Tap: toggle launcher. Swipe up: close launcher/keyboard/app (priority chain) |
-| Top | Top 32px | Left half: toggle time panel. Right half: toggle quick settings |
-| Left | Left 32px | Dismiss: cascades through audit → panels → launcher → keyboard |
-| Right | Right 32px | Open launcher |
+| Bottom | Gesture handle (48-80px) | Go home: minimize all apps, close launcher/keyboard/sidebar |
+| Top | Top 32px | Left third: notifications. Center third: time panel. Right third: quick settings |
+| Left | Left 32px | Show sidebar (running apps multitasking bar, auto-hides after 10s) |
+| Right | Right 32px | Back: minimize focused app, close panels/keyboard/sidebar |
 
 ## Detection Algorithm
 
@@ -31,14 +31,34 @@ The gesture handle at the bottom (48-80px tall) uses capture-and-wait:
 Edge tap replays are **dropped** when a toplevel is focused and the launcher
 is hidden, preventing input bleed-through to tiles behind the active app.
 
-## Bottom-Edge Swipe Action Chain
+## Bottom-Edge Swipe Action Chain (Go Home)
 
 When a bottom-edge swipe is triggered, the compositor evaluates in order:
 
 1. **Launcher visible** → close launcher (and keyboard if showing)
-2. **Keyboard visible** (no launcher) → close keyboard
-3. **App focused** → close focused app
-4. **Nothing to close** → open launcher
+2. **Sidebar visible** → close sidebar
+3. **Keyboard visible** → close keyboard
+4. **Apps running** → minimize all (disable scene nodes, clear focus)
+
+## Right-Edge Swipe Action Chain (Back)
+
+1. Dismiss any open panels (notifications, time, quick settings)
+2. Close sidebar if visible
+3. Close keyboard if visible
+4. Close launcher if visible
+5. **App focused** → minimize focused app (hide but keep alive)
+
+## Left-Edge Swipe Action (Sidebar)
+
+Shows the sidebar multitasking bar. Auto-hides after 10 seconds.
+Tapping outside the sidebar dismisses it immediately.
+The sidebar shows running app icons and the Lumo app drawer button.
+
+## Sidebar Interactions
+
+- **Tap app icon** → switch to that app (re-enable scene node, give focus)
+- **Long-press app icon (>500ms)** → context menu: Open / Close
+- **Tap drawer button (Lumo icon)** → open app drawer (launcher)
 
 ## Touch Dispatch Order
 
