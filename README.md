@@ -221,7 +221,7 @@ More detailed notes live in:
 
 ## Status
 
-The project is at v0.0.67 with a functional mobile shell running on OrangePi RV2 hardware.
+The project is at v0.0.68 (Lumo OS) running on OrangePi RV2 hardware.
 
 Current capabilities:
 

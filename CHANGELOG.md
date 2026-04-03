@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.68] - 2026-04-03
+
+### Lumo OS Identity
+
+- Branded the system as "Lumo OS 0.0.68" — `/etc/os-release` and `/etc/lsb-release` now show Lumo instead of Ubuntu. Package management (apt) still works via Ubuntu noble repos.
+- Created Lumo Plymouth boot theme: aubergine-to-dark gradient background, orange "LUMO" text, version display, status messages during boot, progress bar.
+- Theme installed at `/usr/share/plymouth/themes/lumo/` with `plymouthd.conf` set to use it.
+
+### Boot Preloader
+
+- Created `lumo-preload.service` — systemd oneshot that runs before GDM to warm caches:
+  - Sets CPU governor to performance on all 8 cores
+  - Tunes VM (swappiness=10, vfs_cache_pressure=50)
+  - Preloads WebKit and GTK4 shared libraries into page cache
+  - Initializes LumoCache directories on NVMe
+  - Reads cached surfaces from NVMe into page cache for instant restore
+  - Reports progress to Plymouth during boot splash
+- Service enabled at `graphical.target` via `Before=gdm.service`.
+
+### LumoCache Active
+
+- Shell surfaces (background, status bar) now write to `/data/lumo-cache/surfaces/` on every render.
+- App surfaces cached for instant restore.
+- Background: 4MB, Status bar: 153KB cached to NVMe with btrfs zstd compression.
+- Settings Memory panel shows per-directory cache stats.
+
+### Version
+
+- Bumped to 0.0.68.
+
 ## [0.0.67] - 2026-04-03
 
 ### LumoCache — NVMe-Backed Persistent Cache
