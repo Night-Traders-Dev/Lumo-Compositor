@@ -2163,6 +2163,12 @@ int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
 
     for (size_t i = 0; i < sizeof(modes) / sizeof(modes[0]); i++) {
         bool spawned = false;
+        /* flush Wayland events between spawns so the socket is ready
+         * for the next client's connection attempt */
+        if (i > 0) {
+            wl_display_flush_clients(compositor->display);
+            usleep(50000); /* 50ms settle time between clients */
+        }
         for (int attempt = 0; attempt < 3 && !spawned; attempt++) {
             if (attempt > 0) {
                 wlr_log(WLR_INFO, "shell: retry %d for %s",
@@ -2187,22 +2193,6 @@ int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
 
     /* play boot chime */
     lumo_shell_play_boot_sound();
-
-    /* pre-warm lumo-webview in the background so web pages load
-     * instantly when the user navigates.  The 15s WebKit cold start
-     * happens during boot instead of on first URL tap. */
-    {
-        pid_t wv_pid = fork();
-        if (wv_pid == 0) {
-            setsid();
-            execlp("lumo-webview", "lumo-webview", "--warm", (char *)NULL);
-            _exit(127);
-        }
-        if (wv_pid > 0) {
-            wlr_log(WLR_INFO, "shell: pre-warming lumo-webview (pid=%d)",
-                (int)wv_pid);
-        }
-    }
 
     /* start weather timer — first fetch after 2s, then every 5 min */
     if (compositor->event_loop != NULL) {

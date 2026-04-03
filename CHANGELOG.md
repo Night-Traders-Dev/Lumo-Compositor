@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.64] - 2026-04-02
+
+### Browser Keyboard Input
+
+- Fixed typing not working in the browser URL bar. The OSK sends key events via virtual keyboard (wl_keyboard), but the browser's keyboard handler only processed keys for the terminal app. Added keyboard event handling for the browser: letter/number/symbol keys append to URL bar, backspace deletes, Enter launches the URL, shift toggles uppercase.
+
+### Shell Startup Reliability
+
+- Added 50ms delay + `wl_display_flush_clients()` between each shell client spawn during autostart. This gives the Wayland socket time to process the previous client's connection before spawning the next one, preventing the intermittent startup race where some shell clients failed to register.
+- Removed webview pre-warm from compositor boot — it was spawning in the boot sound fork's child process, creating multiple instances and breaking shell initialization.
+
+### Performance Baseline
+
+- Measured on OrangePi RV2 (riscv64, 8GB RAM):
+  - Native app launch: ~1000ms to first paint
+  - Compositor idle: 26 MB RSS
+  - Shell clients (5): ~24 MB total
+  - Total Lumo idle: ~50 MB
+  - System: 893 MB used / 7836 MB total
+
+### Version
+
+- Bumped to 0.0.64.
+
 ## [0.0.63] - 2026-04-02
 
 ### OSK Trigger Fix (Definitive)
