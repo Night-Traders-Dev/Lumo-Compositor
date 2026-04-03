@@ -690,9 +690,16 @@ static void lumo_input_touch_down(
         if (o != NULL && o->wlr_output != NULL) {
             int ow = 0, oh = 0;
             wlr_output_effective_resolution(o->wlr_output, &ow, &oh);
-            uint32_t sw = (uint32_t)ow / 4;
-            if (sw < 200) sw = 200;
-            if (sw > 280) sw = 280;
+            bool portrait = oh > ow;
+            uint32_t sw = portrait
+                ? (uint32_t)ow / 4 : (uint32_t)ow / 10;
+            if (portrait) {
+                if (sw < 200) sw = 200;
+                if (sw > 320) sw = 320;
+            } else {
+                if (sw < 100) sw = 100;
+                if (sw > 160) sw = 160;
+            }
             if (point->lx >= 0.0 && point->lx < (double)sw)
                 in_sidebar = true;
         }

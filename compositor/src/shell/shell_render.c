@@ -1558,6 +1558,7 @@ static uint8_t *wave_loop_buf;   /* 600 × half_w × half_h bytes */
 static uint32_t wave_loop_half_w;
 static uint32_t wave_loop_half_h;
 static bool wave_loop_ready;
+static bool wave_loop_started;   /* prerender thread launched */
 
 struct lumo_bg_stripe {
     /* full-res output */
@@ -1850,26 +1851,48 @@ static void wave_loop_prerender(uint32_t half_w, uint32_t half_h) {
         WAVE_LOOP_BLEND);
 }
 
-/* Render a single background frame.  If the wave loop is pre-rendered,
- * playback is just memcpy + gradient composite — near-zero CPU.
- * Falls back to real-time computation during the first few seconds
- * while pre-rendering completes. */
+/* Background thread for wave loop prerendering so the shell can
+ * show a boot splash while it computes. */
+struct wave_prerender_args {
+    uint32_t half_w;
+    uint32_t half_h;
+};
+static struct wave_prerender_args prerender_args;
+
+static void *wave_prerender_thread(void *arg) {
+    struct wave_prerender_args *a = arg;
+    wave_loop_prerender(a->half_w, a->half_h);
+    return NULL;
+}
+
 static void bg_parallel_fill(uint32_t *pixels, uint32_t width,
     uint32_t height, uint32_t frame, const uint32_t *row_cache,
     uint32_t wave_tr, uint32_t wave_tg, uint32_t wave_tb, float wave_t)
 {
-    if (!bg_pool.initialized) bg_pool_init();
-    init_sine_lut();
-
     uint32_t half_w = width / 2;
     uint32_t half_h = height / 2;
     if (half_w > LUMO_WAVE_MAX_W) half_w = LUMO_WAVE_MAX_W;
     if (half_h > LUMO_WAVE_MAX_H) half_h = LUMO_WAVE_MAX_H;
 
-    /* one-time pre-render of wave loop */
-    if (!wave_loop_ready) {
-        wave_loop_prerender(half_w, half_h);
+    /* launch prerender on background thread (non-blocking).
+     * Pool init + sine LUT happen here in main thread to avoid races. */
+    if (!wave_loop_ready && !wave_loop_started) {
+        if (!bg_pool.initialized) bg_pool_init();
+        init_sine_lut();
+        prerender_args.half_w = half_w;
+        prerender_args.half_h = half_h;
+        wave_loop_started = true;
+        pthread_t prerender_tid;
+        pthread_create(&prerender_tid, NULL, wave_prerender_thread,
+            &prerender_args);
+        pthread_detach(prerender_tid);
     }
+
+    /* while prerendering, caller shows boot splash — just return */
+    if (!wave_loop_ready) return;
+
+    if (!bg_pool.initialized) bg_pool_init();
+    init_sine_lut();
 
     /* look up pre-rendered glow frame from the loop */
     if (wave_loop_ready &&
@@ -2065,6 +2088,63 @@ static void lumo_draw_animated_bg(
     uint32_t wave_tg = base_g + 0x30 > 0xFF ? 0xFF : base_g + 0x30;
     uint32_t wave_tb = base_b + 0x48 > 0xFF ? 0xFF : base_b + 0x48;
     float wave_t = (float)frame * 0.003f;
+
+    /* show boot splash while wave loop is pre-rendering */
+    if (!wave_loop_ready) {
+        /* fill gradient background */
+        for (uint32_t y = 0; y < height; y++) {
+            uint32_t rc = y < 2048 ? bg_row_cache[y] : bg_row_cache[2047];
+            lumo_fill_span(pixels + y * width, (int)width, rc);
+        }
+
+        /* center the Lumo icon */
+        int ix = ((int)width - LUMO_ICON_W) / 2;
+        int iy = ((int)height / 2) - LUMO_ICON_H - 10;
+        for (int sy = 0; sy < LUMO_ICON_H; sy++) {
+            int dy = iy + sy;
+            if (dy < 0 || dy >= (int)height) continue;
+            for (int sx = 0; sx < LUMO_ICON_W; sx++) {
+                int dx = ix + sx;
+                if (dx < 0 || dx >= (int)width) continue;
+                uint32_t src = lumo_icon_48x48[sy * LUMO_ICON_W + sx];
+                uint32_t sa = (src >> 24) & 0xFF;
+                if (sa == 0) continue;
+                pixels[dy * width + dx] = src;
+            }
+        }
+
+        /* "LUMO" text below icon */
+        {
+            const char *label = "LUMO";
+            int tw = lumo_text_width(label, 5);
+            lumo_draw_text(pixels, width, height,
+                ((int)width - tw) / 2, iy + LUMO_ICON_H + 16,
+                5, lumo_argb(0xFF, 0xE8, 0x76, 0x20), label);
+        }
+
+        /* loading indicator — animated dots based on frame counter */
+        {
+            const char *dots[] = {".", "..", "...", "....", "....."};
+            int dot_idx = (frame / 3) % 5;
+            char msg[32];
+            snprintf(msg, sizeof(msg), "LOADING%s", dots[dot_idx]);
+            int tw = lumo_text_width(msg, 2);
+            lumo_draw_text(pixels, width, height,
+                ((int)width - tw) / 2,
+                (int)height / 2 + LUMO_ICON_H + 10,
+                2, lumo_argb(0xA0, 0xC0, 0xC0, 0xC0), msg);
+        }
+
+        /* version */
+        {
+            const char *ver = "v" LUMO_VERSION_STRING;
+            int tw = lumo_text_width(ver, 2);
+            lumo_draw_text(pixels, width, height,
+                ((int)width - tw) / 2, (int)height - 40,
+                2, lumo_argb(0x60, 0xC0, 0xC0, 0xC0), ver);
+        }
+        return;
+    }
 
     /* multi-core parallel gradient fill + PS4 Flow waves — all 8 cores
      * render both the gradient AND waves for their row stripe. */
