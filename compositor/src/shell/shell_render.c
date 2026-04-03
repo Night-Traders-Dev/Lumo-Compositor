@@ -2099,9 +2099,9 @@ static void lumo_draw_sidebar(
     lumo_fill_vertical_gradient(pixels, width, height, &bg_rect,
         lumo_theme.bar_top, lumo_theme.bar_bottom);
 
-    /* right edge separator line */
+    /* right edge separator line — only below status bar */
     lumo_fill_rect(pixels, width, height,
-        (int)width - 1, 0, 1, (int)height, separator);
+        (int)width - 1, status_h, 1, (int)height - status_h, separator);
 
     /* draw running app icons */
     for (uint32_t i = 0; i < client->running_app_count && i < 16; i++) {

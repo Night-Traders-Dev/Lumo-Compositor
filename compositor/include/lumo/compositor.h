@@ -853,6 +853,7 @@ struct lumo_compositor {
     bool time_panel_visible;
     bool notification_panel_visible;
     bool sidebar_visible;
+    struct wl_event_source *sidebar_auto_hide_timer;
     /* notification store — ring buffer of recent notifications */
     char notifications[8][128];
     int notification_count;

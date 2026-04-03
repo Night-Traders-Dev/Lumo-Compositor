@@ -1435,10 +1435,36 @@ static void lumo_shell_bridge_handle_request_frame(
     }
 
     if (strcmp(frame->name, "close_app") == 0) {
-        bool closed = lumo_protocol_close_focused_app(client->compositor);
-        wlr_log(WLR_INFO, "shell: close_app requested, result=%d", closed);
-        (void)lumo_shell_bridge_send_result(client, frame, closed,
-            closed ? NULL : "no_app", closed ? NULL : "no_focused_toplevel");
+        uint32_t index = 0;
+        bool has_index = lumo_shell_protocol_frame_get_u32(frame, "index",
+            &index);
+        if (has_index) {
+            /* close by index (from sidebar context menu) */
+            struct lumo_toplevel *tl;
+            uint32_t n = 0;
+            bool found = false;
+            wl_list_for_each(tl, &client->compositor->toplevels, link) {
+                if (n == index) {
+                    wlr_xdg_toplevel_send_close(tl->xdg_toplevel);
+                    found = true;
+                    break;
+                }
+                n++;
+            }
+            wlr_log(WLR_INFO, "shell: close_app index=%u found=%d",
+                index, found);
+            (void)lumo_shell_bridge_send_result(client, frame, found,
+                NULL, NULL);
+        } else {
+            /* close focused app (legacy) */
+            bool closed = lumo_protocol_close_focused_app(
+                client->compositor);
+            wlr_log(WLR_INFO, "shell: close_app requested, result=%d",
+                closed);
+            (void)lumo_shell_bridge_send_result(client, frame, closed,
+                closed ? NULL : "no_app",
+                closed ? NULL : "no_focused_toplevel");
+        }
         return;
     }
 
@@ -1457,37 +1483,17 @@ static void lumo_shell_bridge_handle_request_frame(
                     tl->xdg_toplevel->base->surface;
                 struct wlr_seat *seat = client->compositor->seat;
                 wlr_seat_keyboard_notify_enter(seat, surface, NULL, 0, NULL);
-                /* hide launcher and sidebar */
+                /* hide launcher and sidebar, set scrim for focused app */
                 lumo_protocol_set_launcher_visible(client->compositor, false);
-                client->compositor->sidebar_visible = false;
-                lumo_shell_mark_state_dirty(client->compositor);
+                lumo_protocol_set_sidebar_visible(client->compositor, false);
+                lumo_protocol_set_scrim_state(client->compositor,
+                    LUMO_SCRIM_DIMMED);
                 found = true;
                 break;
             }
             n++;
         }
         wlr_log(WLR_INFO, "shell: focus_app index=%u found=%d", index, found);
-        (void)lumo_shell_bridge_send_result(client, frame, found, NULL, NULL);
-        return;
-    }
-
-    /* sidebar: close app by index */
-    if (strcmp(frame->name, "close_app_by_index") == 0) {
-        uint32_t index = 0;
-        lumo_shell_protocol_frame_get_u32(frame, "index", &index);
-        struct lumo_toplevel *tl;
-        uint32_t n = 0;
-        bool found = false;
-        wl_list_for_each(tl, &client->compositor->toplevels, link) {
-            if (n == index) {
-                wlr_xdg_toplevel_send_close(tl->xdg_toplevel);
-                found = true;
-                break;
-            }
-            n++;
-        }
-        wlr_log(WLR_INFO, "shell: close_app_by_index index=%u found=%d",
-            index, found);
         (void)lumo_shell_bridge_send_result(client, frame, found, NULL, NULL);
         return;
     }
@@ -1506,8 +1512,9 @@ static void lumo_shell_bridge_handle_request_frame(
             struct wlr_seat *seat = client->compositor->seat;
             wlr_seat_keyboard_clear_focus(seat);
             lumo_protocol_set_launcher_visible(client->compositor, false);
-            client->compositor->sidebar_visible = false;
-            lumo_shell_mark_state_dirty(client->compositor);
+            lumo_protocol_set_sidebar_visible(client->compositor, false);
+            lumo_protocol_set_scrim_state(client->compositor,
+                LUMO_SCRIM_HIDDEN);
         }
         wlr_log(WLR_INFO, "shell: minimize_focused result=%d", minimized);
         (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
@@ -1516,9 +1523,9 @@ static void lumo_shell_bridge_handle_request_frame(
 
     /* open app drawer (launcher) */
     if (strcmp(frame->name, "open_drawer") == 0) {
+        /* hide sidebar first, then show launcher */
+        lumo_protocol_set_sidebar_visible(client->compositor, false);
         lumo_protocol_set_launcher_visible(client->compositor, true);
-        client->compositor->sidebar_visible = false;
-        lumo_shell_mark_state_dirty(client->compositor);
         wlr_log(WLR_INFO, "shell: open_drawer requested");
         (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
         return;

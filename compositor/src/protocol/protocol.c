@@ -1392,6 +1392,19 @@ void lumo_protocol_push_notification(
     lumo_protocol_mark_layers_dirty(compositor);
 }
 
+static int lumo_sidebar_auto_hide_timeout(void *data) {
+    struct lumo_compositor *compositor = data;
+    if (compositor != NULL && compositor->sidebar_visible) {
+        compositor->sidebar_visible = false;
+        wlr_log(WLR_INFO, "protocol: sidebar auto-hidden after timeout");
+        lumo_shell_state_broadcast_launcher_visible(compositor,
+            compositor->launcher_visible);
+        lumo_protocol_mark_layers_dirty(compositor);
+    }
+    compositor->sidebar_auto_hide_timer = NULL;
+    return 0; /* don't repeat */
+}
+
 void lumo_protocol_set_sidebar_visible(
     struct lumo_compositor *compositor, bool visible
 ) {
@@ -1399,6 +1412,23 @@ void lumo_protocol_set_sidebar_visible(
         return;
     compositor->sidebar_visible = visible;
     wlr_log(WLR_INFO, "protocol: sidebar %s", visible ? "visible" : "hidden");
+
+    /* cancel any existing auto-hide timer */
+    if (compositor->sidebar_auto_hide_timer != NULL) {
+        wl_event_source_remove(compositor->sidebar_auto_hide_timer);
+        compositor->sidebar_auto_hide_timer = NULL;
+    }
+
+    /* start 10-second auto-hide timer when sidebar becomes visible */
+    if (visible && compositor->event_loop != NULL) {
+        compositor->sidebar_auto_hide_timer = wl_event_loop_add_timer(
+            compositor->event_loop, lumo_sidebar_auto_hide_timeout,
+            compositor);
+        if (compositor->sidebar_auto_hide_timer != NULL)
+            wl_event_source_timer_update(
+                compositor->sidebar_auto_hide_timer, 10000);
+    }
+
     /* broadcast state so shell shows/hides the sidebar surface */
     lumo_shell_state_broadcast_launcher_visible(compositor,
         compositor->launcher_visible);
