@@ -323,6 +323,14 @@ int lumo_compositor_run(struct lumo_compositor *compositor) {
     wl_display_flush_clients(compositor->display);
     wlr_log(WLR_INFO, "compositor: Wayland socket '%s' ready", socket);
 
+    /* Initialize LumoCache — NVMe-backed persistent cache */
+    {
+        extern bool lumo_cache_init(void);
+        if (lumo_cache_init()) {
+            wlr_log(WLR_INFO, "compositor: LumoCache initialized");
+        }
+    }
+
     if (lumo_shell_autostart_start(compositor) != 0) {
         wlr_log(WLR_ERROR, "shell: failed to autostart shell clients");
         return -1;

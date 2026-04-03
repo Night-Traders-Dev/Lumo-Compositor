@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.67] - 2026-04-03
+
+### LumoCache — NVMe-Backed Persistent Cache
+
+- Implemented two-tier cache system: hot (tmpfs RAM) + warm (NVMe btrfs with zstd:3 compression).
+- Cache directories at `/data/lumo-cache/`: warm, surfaces, webkit, fonts, state, hot (symlink to tmpfs).
+- WebKit disk cache now uses NVMe persistent storage — pages cached across reboots, btrfs compression gives ~3:1 ratio on web resources.
+- Cache stats visible in Settings Memory panel: per-directory file counts and sizes.
+- API: `lumo_cache_init()`, `lumo_cache_put/get()`, `lumo_cache_put/get_surface()`, `lumo_cache_stats()`.
+- NVMe benchmarks: 646 MB/s read, 210 MB/s write.
+
+### GPU Investigation Update
+
+- `DRIVER_PRIME` flag doesn't exist in kernel 6.6 — PRIME/dmabuf import is implicit for all DRM drivers.
+- GBM fails on the display controller (`card1/ky-drm`) due to Mesa's `dri_gbm.so` backend not supporting this DRM device — NOT a kernel issue.
+- GBM works on the PVR GPU (`card0`, `renderD128`) — confirmed via Python test.
+- wlroots GLES2 renderer activates on PVR but format negotiation fails between GPU-allocated buffers and display scanout. Investigating copy-back or format override approaches.
+
+### Version
+
+- Bumped to 0.0.67.
+
 ## [0.0.66] - 2026-04-03
 
 ### GPU Discovery: Imagination PowerVR BXE-2-32

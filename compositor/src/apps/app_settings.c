@@ -647,6 +647,61 @@ static void render_memory(
             lumo_total / 1024, (lumo_total % 1024) * 10 / 1024);
         draw_info(px, w, h, y, "LUMO TOTAL", buf);
     }
+    y += 28;
+
+    /* LumoCache stats */
+    lumo_app_fill_rect(px, w, h, 12, y, (int)w - 24, 1, theme.separator);
+    y += 8;
+    lumo_app_draw_text(px, w, h, 16, y, 2, theme.accent, "LUMO CACHE");
+    y += 22;
+    {
+        struct stat st;
+        if (stat("/data/lumo-cache", &st) == 0) {
+            /* count cache entries */
+            int entries = 0;
+            unsigned long total_kb = 0;
+            const char *dirs[] = {"warm", "surfaces", "webkit", "fonts", "state"};
+            for (int d = 0; d < 5 && y + 22 < (int)h; d++) {
+                char cpath[256];
+                snprintf(cpath, sizeof(cpath), "/data/lumo-cache/%s", dirs[d]);
+                DIR *cd = opendir(cpath);
+                int cnt = 0;
+                unsigned long dir_kb = 0;
+                if (cd) {
+                    struct dirent *ent;
+                    while ((ent = readdir(cd)) != NULL) {
+                        if (ent->d_name[0] == '.') continue;
+                        char fp[512];
+                        struct stat fs;
+                        snprintf(fp, sizeof(fp), "%s/%s", cpath, ent->d_name);
+                        if (stat(fp, &fs) == 0) {
+                            cnt++;
+                            dir_kb += (unsigned long)fs.st_size / 1024;
+                        }
+                    }
+                    closedir(cd);
+                }
+                entries += cnt;
+                total_kb += dir_kb;
+                if (cnt > 0) {
+                    snprintf(buf, sizeof(buf), "%d FILES (%lu KB)", cnt, dir_kb);
+                } else {
+                    snprintf(buf, sizeof(buf), "EMPTY");
+                }
+                char label[16];
+                for (int i = 0; dirs[d][i] && i < 15; i++)
+                    label[i] = (dirs[d][i] >= 'a' && dirs[d][i] <= 'z')
+                        ? dirs[d][i] - 32 : dirs[d][i];
+                label[strlen(dirs[d])] = '\0';
+                draw_info(px, w, h, y, label, buf);
+                y += 22;
+            }
+            snprintf(buf, sizeof(buf), "%d FILES / %lu KB", entries, total_kb);
+            draw_info(px, w, h, y, "CACHE TOTAL", buf);
+        } else {
+            draw_info(px, w, h, y, "STATUS", "NOT INITIALIZED");
+        }
+    }
 }
 
 static void render_general(
