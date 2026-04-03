@@ -2905,7 +2905,7 @@ static void lumo_app_bookmarks_save(const struct lumo_app_client *client) {
     fclose(fp);
 }
 
-/* Launch URL in system browser subprocess */
+/* Launch URL via pre-warmed webview (file-based IPC) or subprocess fallback */
 static void lumo_app_browser_launch_url(const char *url) {
     if (url == NULL || url[0] == '\0') return;
     char resolved[4096];
@@ -2922,14 +2922,24 @@ static void lumo_app_browser_launch_url(const char *url) {
             "https://duckduckgo.com/?q=%s", url);
     }
 
+    /* try pre-warmed webview first (instant load via file IPC) */
+    {
+        FILE *fp = fopen("/tmp/lumo-webview-url", "w");
+        if (fp != NULL) {
+            fprintf(fp, "%s\n", resolved);
+            fclose(fp);
+            fprintf(stderr, "lumo-app: sent URL to warm webview: %s\n",
+                resolved);
+            return;
+        }
+    }
+
+    /* fallback: spawn new webview process */
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
-        /* lumo-webview is our embedded fullscreen WebKit renderer */
         execlp("lumo-webview", "lumo-webview", resolved, (char *)NULL);
-        /* fallback to system browsers */
         execlp("epiphany", "epiphany", resolved, (char *)NULL);
-        execlp("xdg-open", "xdg-open", resolved, (char *)NULL);
         _exit(127);
     }
     if (pid > 0) {

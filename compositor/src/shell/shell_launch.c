@@ -2188,6 +2188,22 @@ int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
     /* play boot chime */
     lumo_shell_play_boot_sound();
 
+    /* pre-warm lumo-webview in the background so web pages load
+     * instantly when the user navigates.  The 15s WebKit cold start
+     * happens during boot instead of on first URL tap. */
+    {
+        pid_t wv_pid = fork();
+        if (wv_pid == 0) {
+            setsid();
+            execlp("lumo-webview", "lumo-webview", "--warm", (char *)NULL);
+            _exit(127);
+        }
+        if (wv_pid > 0) {
+            wlr_log(WLR_INFO, "shell: pre-warming lumo-webview (pid=%d)",
+                (int)wv_pid);
+        }
+    }
+
     /* start weather timer — first fetch after 2s, then every 5 min */
     if (compositor->event_loop != NULL) {
         compositor->weather_timer = wl_event_loop_add_timer(
