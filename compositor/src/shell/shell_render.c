@@ -5,6 +5,7 @@
 
 #include "shell_client_internal.h"
 #include "lumo/version.h"
+#include "lumo/lumo_icon.h"
 
 #include <math.h>
 #include <pthread.h>
@@ -2088,8 +2089,13 @@ static void lumo_draw_sidebar(
     uint32_t text_color = lumo_theme.text_primary;
     uint32_t drawer_bg = lumo_argb(0x50, 0xFF, 0xFF, 0xFF);
 
-    /* fill sidebar background with gradient matching top bar */
-    struct lumo_rect bg_rect = {0, 0, (int)width, (int)height};
+    /* leave top area transparent to avoid overlapping the status bar */
+    int status_h = (int)height / 18;
+    if (status_h < 32) status_h = 32;
+    if (status_h > 48) status_h = 48;
+
+    /* fill sidebar background below status bar with gradient */
+    struct lumo_rect bg_rect = {0, status_h, (int)width, (int)height - status_h};
     lumo_fill_vertical_gradient(pixels, width, height, &bg_rect,
         lumo_theme.bar_top, lumo_theme.bar_bottom);
 
@@ -2156,25 +2162,42 @@ static void lumo_draw_sidebar(
         }
     }
 
-    /* drawer button at bottom — grid icon */
+    /* drawer button at bottom — Lumo icon */
     {
         struct lumo_rect drawer_rect;
         if (lumo_shell_sidebar_drawer_button_rect(width, height, &drawer_rect)) {
             bool is_active = active_target != NULL &&
                 active_target->kind == LUMO_SHELL_TARGET_SIDEBAR_DRAWER_BTN;
-            lumo_fill_rounded_rect(pixels, width, height,
-                &drawer_rect, 10,
-                is_active ? icon_active : drawer_bg);
-            /* draw a simple 2×2 grid of dots as "app drawer" icon */
-            int cx = drawer_rect.x + drawer_rect.width / 2;
-            int cy = drawer_rect.y + drawer_rect.height / 2;
-            int dot_r = 3;
-            int gap = 8;
-            for (int dy = -1; dy <= 1; dy += 2) {
-                for (int dx = -1; dx <= 1; dx += 2) {
-                    lumo_fill_rect(pixels, width, height,
-                        cx + dx * gap - dot_r, cy + dy * gap - dot_r,
-                        dot_r * 2, dot_r * 2, text_color);
+            if (is_active)
+                lumo_fill_rounded_rect(pixels, width, height,
+                    &drawer_rect, 12, icon_active);
+            /* blit the Lumo icon scaled to fit the drawer rect */
+            int ix = drawer_rect.x + (drawer_rect.width - LUMO_ICON_W) / 2;
+            int iy = drawer_rect.y + (drawer_rect.height - LUMO_ICON_H) / 2;
+            for (int sy = 0; sy < LUMO_ICON_H; sy++) {
+                int dy = iy + sy;
+                if (dy < 0 || dy >= (int)height) continue;
+                for (int sx = 0; sx < LUMO_ICON_W; sx++) {
+                    int dx = ix + sx;
+                    if (dx < 0 || dx >= (int)width) continue;
+                    uint32_t src = lumo_icon_48x48[sy * LUMO_ICON_W + sx];
+                    uint32_t sa = (src >> 24) & 0xFF;
+                    if (sa == 0) continue;
+                    if (sa == 255) {
+                        pixels[dy * width + dx] = src;
+                    } else {
+                        /* alpha blend */
+                        uint32_t dst = pixels[dy * width + dx];
+                        uint32_t inv = 255 - sa;
+                        uint32_t r = (((src >> 16) & 0xFF) * sa +
+                            ((dst >> 16) & 0xFF) * inv) / 255;
+                        uint32_t g = (((src >> 8) & 0xFF) * sa +
+                            ((dst >> 8) & 0xFF) * inv) / 255;
+                        uint32_t b = ((src & 0xFF) * sa +
+                            (dst & 0xFF) * inv) / 255;
+                        pixels[dy * width + dx] =
+                            0xFF000000 | (r << 16) | (g << 8) | b;
+                    }
                 }
             }
         }

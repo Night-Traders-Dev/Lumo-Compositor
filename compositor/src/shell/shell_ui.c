@@ -1074,15 +1074,17 @@ bool lumo_shell_surface_config_for_mode(
         break;
     case LUMO_SHELL_MODE_SIDEBAR: {
         /* wide sidebar for large app icons — ~20% of screen width.
-         * Top margin avoids overlapping the status bar. */
+         * Height excludes the status bar area so they don't overlap.
+         * Anchored to bottom-left so it sits below the status bar. */
         uint32_t sidebar_w = lumo_shell_clamp_u32(output_width / 5, 160, 220);
         uint32_t status_h = lumo_shell_clamp_u32(output_height / 18, 32, 48);
+        uint32_t sidebar_h = output_height > status_h
+            ? output_height - status_h : output_height;
         config->name = "sidebar";
         config->width = sidebar_w;
-        config->height = output_height - status_h;
+        config->height = sidebar_h;
         config->anchor = LUMO_SHELL_ANCHOR_BOTTOM |
             LUMO_SHELL_ANCHOR_LEFT;
-        config->margin_top = (int32_t)status_h;
         config->exclusive_zone = 0;
         config->keyboard_interactive = false;
         config->background_rgba = 0x00000000;
@@ -1193,7 +1195,11 @@ bool lumo_shell_sidebar_app_rect(
 ) {
     int icon_size = 64;
     int spacing = 12;
-    int top_margin = 60;
+    /* start below status bar area */
+    int status_h = (int)surface_height / 18;
+    if (status_h < 32) status_h = 32;
+    if (status_h > 48) status_h = 48;
+    int top_margin = status_h + 12;
     int y;
 
     if (rect == NULL || surface_width == 0 || surface_height == 0)

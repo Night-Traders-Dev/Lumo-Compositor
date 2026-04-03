@@ -305,10 +305,14 @@ static void lumo_shell_client_update_input_region(
                 client->compositor_notification_panel_visible)
             wl_region_add(region, 0, 0, (int)width, (int)height);
         break;
-    case LUMO_SHELL_MODE_SIDEBAR:
-        /* entire sidebar surface is interactive */
-        wl_region_add(region, 0, 0, (int)width, (int)height);
+    case LUMO_SHELL_MODE_SIDEBAR: {
+        /* sidebar interactive below the status bar area */
+        int sh = (int)height / 18;
+        if (sh < 32) sh = 32;
+        if (sh > 48) sh = 48;
+        wl_region_add(region, 0, sh, (int)width, (int)height - sh);
         break;
+    }
     case LUMO_SHELL_MODE_BACKGROUND:
     default:
         break;
@@ -478,7 +482,8 @@ bool lumo_shell_client_redraw(struct lumo_shell_client *client) {
      * time, notifications) which render even when the launcher drawer
      * itself is closed. */
     if (!client->target_visible && !client->animation_active) {
-        if (client->mode == LUMO_SHELL_MODE_OSK)
+        if (client->mode == LUMO_SHELL_MODE_OSK ||
+                client->mode == LUMO_SHELL_MODE_SIDEBAR)
             return false;
         if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
                 !client->compositor_quick_settings_visible &&
@@ -976,7 +981,8 @@ static bool lumo_shell_create_unified_surface(
     slot->surface = wl_compositor_create_surface(client->compositor);
     if (slot->surface == NULL) return false;
 
-    if (mode == LUMO_SHELL_MODE_LAUNCHER || mode == LUMO_SHELL_MODE_OSK)
+    if (mode == LUMO_SHELL_MODE_LAUNCHER || mode == LUMO_SHELL_MODE_OSK ||
+            mode == LUMO_SHELL_MODE_SIDEBAR)
         layer = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
     else if (mode == LUMO_SHELL_MODE_BACKGROUND)
         layer = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
@@ -1046,7 +1052,8 @@ static bool lumo_shell_create_surface(struct lumo_shell_client *client) {
     {
         uint32_t layer;
         if (client->mode == LUMO_SHELL_MODE_LAUNCHER ||
-                client->mode == LUMO_SHELL_MODE_OSK)
+                client->mode == LUMO_SHELL_MODE_OSK ||
+                client->mode == LUMO_SHELL_MODE_SIDEBAR)
             layer = ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY;
         else if (client->mode == LUMO_SHELL_MODE_BACKGROUND)
             layer = ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;

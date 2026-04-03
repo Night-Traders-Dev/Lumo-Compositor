@@ -367,6 +367,10 @@ static void lumo_shell_touch_handle_down(
         return;
     }
 
+    fprintf(stderr, "lumo-shell: touch down mode=%s x=%.0f y=%.0f\n",
+        lumo_shell_mode_name(client->mode),
+        wl_fixed_to_double(x), wl_fixed_to_double(y));
+
     client->touch_pressed = true;
     client->active_touch_id = id;
     client->pointer_x = wl_fixed_to_double(x);
