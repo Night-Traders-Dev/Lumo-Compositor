@@ -933,6 +933,22 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
         memcpy(ctx.photo_thumbnail_heights, client->photo_thumbnail_heights,
             sizeof(ctx.photo_thumbnail_heights));
         lumo_app_render(&ctx, buffer->data, client->width, client->height);
+
+        /* cache rendered app surface to NVMe for instant restore */
+        {
+            char cache_path[256];
+            snprintf(cache_path, sizeof(cache_path),
+                "/data/lumo-cache/surfaces/%s.lumosurf",
+                lumo_app_id_name(client->app_id));
+            FILE *cfp = fopen(cache_path, "wb");
+            if (cfp != NULL) {
+                fwrite(&client->width, 4, 1, cfp);
+                fwrite(&client->height, 4, 1, cfp);
+                fwrite(buffer->data, 4,
+                    (size_t)client->width * client->height, cfp);
+                fclose(cfp);
+            }
+        }
     }
     wl_surface_attach(client->surface, buffer->buffer, 0, 0);
     wl_surface_damage_buffer(client->surface, 0, 0, (int)client->width,

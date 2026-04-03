@@ -448,6 +448,23 @@ static bool lumo_shell_draw_buffer(
 
     active_target = client->active_target_valid ? &client->active_target : NULL;
     lumo_render_surface(client, buffer->data, width, height, active_target);
+
+    /* cache the rendered surface to NVMe for instant restore on restart */
+    if (client->mode == LUMO_SHELL_MODE_STATUS ||
+            client->mode == LUMO_SHELL_MODE_BACKGROUND) {
+        char cache_path[256];
+        snprintf(cache_path, sizeof(cache_path),
+            "/data/lumo-cache/surfaces/%s.lumosurf",
+            lumo_shell_mode_name(client->mode));
+        FILE *cfp = fopen(cache_path, "wb");
+        if (cfp != NULL) {
+            fwrite(&width, 4, 1, cfp);
+            fwrite(&height, 4, 1, cfp);
+            fwrite(buffer->data, 4, (size_t)width * height, cfp);
+            fclose(cfp);
+        }
+    }
+
     lumo_shell_client_update_input_region(client, width, height);
     wl_surface_attach(client->surface, buffer->buffer, 0, 0);
     wl_surface_damage_buffer(client->surface, 0, 0, (int)width, (int)height);
