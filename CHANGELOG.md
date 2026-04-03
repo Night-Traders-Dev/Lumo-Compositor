@@ -49,6 +49,20 @@ All notable changes to this project will be documented in this file.
 - Panel visibility fix: launcher surface now redraws when panels are active.
 - Removed NVMe surface cache writes from render loop (was 120 MB/s I/O blocking).
 
+### Boot Splash
+
+- Lumo icon + "LUMO" text + Ubuntu-style three-dot loading indicator during wave prerender.
+- Dots cycle through dim aubergine to orange, one at a time.
+- Status bar hidden during boot splash via `/tmp/lumo-boot-active` flag.
+- All edge gestures blocked until splash completes.
+- Version string displayed at screen edge.
+
+### Sidebar Sizing
+
+- Portrait mode: 25% of screen width (200-320px).
+- Landscape mode: 10% of screen width (100-160px).
+- Context menu repositioned to avoid rendering off-screen.
+
 ### Version
 
 - Bumped to 0.0.69.

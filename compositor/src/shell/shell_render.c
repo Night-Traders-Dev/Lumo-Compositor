@@ -1879,23 +1879,7 @@ static void bg_parallel_fill(uint32_t *pixels, uint32_t width,
     if (half_w > LUMO_WAVE_MAX_W) half_w = LUMO_WAVE_MAX_W;
     if (half_h > LUMO_WAVE_MAX_H) half_h = LUMO_WAVE_MAX_H;
 
-    /* launch prerender on background thread (non-blocking).
-     * Pool init + sine LUT happen here in main thread to avoid races. */
-    if (!wave_loop_ready && !wave_loop_started) {
-        if (!bg_pool.initialized) bg_pool_init();
-        init_sine_lut();
-        prerender_args.half_w = half_w;
-        prerender_args.half_h = half_h;
-        wave_loop_started = true;
-        pthread_t prerender_tid;
-        pthread_create(&prerender_tid, NULL, wave_prerender_thread,
-            &prerender_args);
-        pthread_detach(prerender_tid);
-    }
-
-    /* while prerendering, caller shows boot splash — just return */
-    if (!wave_loop_ready) return;
-
+    /* while prerendering, caller shows boot splash — never reaches here */
     if (!bg_pool.initialized) bg_pool_init();
     init_sine_lut();
 
@@ -2093,6 +2077,22 @@ static void lumo_draw_animated_bg(
     uint32_t wave_tg = base_g + 0x30 > 0xFF ? 0xFF : base_g + 0x30;
     uint32_t wave_tb = base_b + 0x48 > 0xFF ? 0xFF : base_b + 0x48;
     float wave_t = (float)frame * 0.003f;
+
+    /* launch prerender thread on first call (non-blocking) */
+    if (!wave_loop_ready && !wave_loop_started) {
+        if (!bg_pool.initialized) bg_pool_init();
+        init_sine_lut();
+        uint32_t hw = width / 2, hh = height / 2;
+        if (hw > LUMO_WAVE_MAX_W) hw = LUMO_WAVE_MAX_W;
+        if (hh > LUMO_WAVE_MAX_H) hh = LUMO_WAVE_MAX_H;
+        prerender_args.half_w = hw;
+        prerender_args.half_h = hh;
+        wave_loop_started = true;
+        pthread_t prerender_tid;
+        pthread_create(&prerender_tid, NULL, wave_prerender_thread,
+            &prerender_args);
+        pthread_detach(prerender_tid);
+    }
 
     /* show boot splash while wave loop is pre-rendering */
     if (!wave_loop_ready) {
