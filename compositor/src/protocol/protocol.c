@@ -250,9 +250,17 @@ static void lumo_protocol_text_input_enable(
         wl_container_of(listener, binding, enable);
 
     (void)data;
-    if (binding != NULL) {
+    if (binding != NULL && binding->compositor != NULL) {
         wlr_log(WLR_INFO, "protocol: text_input_enable fired");
-        lumo_protocol_refresh_keyboard_visibility(binding->compositor);
+        /* show keyboard immediately on enable — don't wait for commit,
+         * because the commit event may not arrive if wlroots hasn't
+         * sent text_input_enter to the surface yet (race condition
+         * with touch-based keyboard focus) */
+        if (!binding->compositor->keyboard_visible) {
+            wlr_log(WLR_INFO,
+                "protocol: text_input_enable showing keyboard");
+            lumo_protocol_set_keyboard_visible(binding->compositor, true);
+        }
     }
 }
 

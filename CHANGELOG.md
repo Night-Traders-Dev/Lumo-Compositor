@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.63] - 2026-04-02
+
+### OSK Trigger Fix (Definitive)
+
+- Fixed OSK not appearing when tapping the browser URL bar. The root cause was a protocol-level race condition: the compositor's `text_input_commit` event never fired because `wlroots` hadn't sent `text_input_enter` to the surface before the client called `enable()+commit()`. The commit handler checked `current_enabled` which was still false.
+- **Fix**: The compositor now shows the keyboard directly on `text_input_enable` instead of waiting for `text_input_commit`. The enable event represents the client's intent to input text and should be sufficient to trigger the OSK.
+- This fix applies to ALL apps that use text-input-v3 (Notes, Maps, Browser, Terminal).
+
+### Theme Conformity Audit
+
+- Fixed 2 hardcoded colors that didn't respect the time-of-day theme:
+  - Browser URL bar background: hardcoded `#1D0014` → `theme.bg`
+  - Settings toggle off-state: hardcoded `(0x5E, 0x3A, 0x56)` → `theme.card_stroke`
+- All shell panels (notifications, time/weather, quick settings) already fully theme-compliant.
+- Semantic colors (green=call, red=delete, orange=accent) intentionally kept constant.
+
+### Version
+
+- Bumped to 0.0.63.
+
 ## [0.0.62] - 2026-04-02
 
 ### All-in-One Browser
