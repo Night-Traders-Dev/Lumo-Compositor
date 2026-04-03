@@ -681,17 +681,18 @@ static void lumo_input_touch_down(
         }
     }
 
-    /* tap outside the sidebar to dismiss it */
+    /* sidebar touch routing: if sidebar is visible and touch is inside
+     * the sidebar area, deliver directly to the sidebar surface and
+     * skip all edge-zone capture so the drawer button works */
     if (compositor->sidebar_visible) {
         struct lumo_output *o = lumo_input_first_output(compositor);
         bool in_sidebar = false;
         if (o != NULL && o->wlr_output != NULL) {
             int ow = 0, oh = 0;
             wlr_output_effective_resolution(o->wlr_output, &ow, &oh);
-            /* sidebar is on the left edge, same width as configured */
-            uint32_t sw = (uint32_t)ow / 5;
-            if (sw < 160) sw = 160;
-            if (sw > 220) sw = 220;
+            uint32_t sw = (uint32_t)ow / 4;
+            if (sw < 200) sw = 200;
+            if (sw > 280) sw = 280;
             if (point->lx >= 0.0 && point->lx < (double)sw)
                 in_sidebar = true;
         }
@@ -701,6 +702,22 @@ static void lumo_input_touch_down(
                 "input: touch %d dismissed sidebar (outside tap)",
                 point->touch_id);
             lumo_input_remove_touch_point(compositor, point);
+            return;
+        }
+        /* inside sidebar — deliver touch to the sidebar surface directly,
+         * bypassing edge-zone capture so the drawer button works */
+        if (target.surface != NULL) {
+            lumo_input_touch_sample_append(point, LUMO_TOUCH_SAMPLE_DOWN,
+                event->time_msec, point->lx, point->ly,
+                point->sx, point->sy);
+            lumo_input_touch_point_bind_surface(point, target.surface);
+            point->delivered = true;
+            wlr_seat_touch_notify_down(compositor->seat, target.surface,
+                event->time_msec, point->touch_id, target.sx, target.sy);
+            wlr_seat_touch_notify_frame(compositor->seat);
+            wlr_log(WLR_INFO,
+                "input: touch %d delivered to sidebar surface",
+                point->touch_id);
             return;
         }
     }
