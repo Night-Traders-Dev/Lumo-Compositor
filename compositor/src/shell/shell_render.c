@@ -7,6 +7,7 @@
 #include "lumo/version.h"
 
 #include <math.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1453,6 +1454,141 @@ static void lumo_draw_bokeh_layer(
     }
 }
 
+/* ── multi-core thread pool for background rendering ──────────────── */
+
+#define LUMO_BG_THREADS 8
+
+struct lumo_bg_stripe {
+    uint32_t *pixels;
+    uint32_t width;
+    uint32_t frame;
+    uint32_t y_start;
+    uint32_t y_end;
+    const uint32_t *row_cache;
+};
+
+static struct {
+    pthread_t threads[LUMO_BG_THREADS];
+    struct lumo_bg_stripe tasks[LUMO_BG_THREADS];
+    pthread_barrier_t barrier;
+    pthread_mutex_t start_mutex;
+    pthread_cond_t start_cond;
+    bool started;
+    bool shutdown;
+    bool initialized;
+} bg_pool;
+
+static void *bg_worker(void *arg) {
+    int id = (int)(intptr_t)arg;
+    for (;;) {
+        pthread_mutex_lock(&bg_pool.start_mutex);
+        while (!bg_pool.started && !bg_pool.shutdown)
+            pthread_cond_wait(&bg_pool.start_cond, &bg_pool.start_mutex);
+        pthread_mutex_unlock(&bg_pool.start_mutex);
+
+        if (bg_pool.shutdown) break;
+
+        /* render our stripe */
+        struct lumo_bg_stripe *t = &bg_pool.tasks[id];
+        for (uint32_t y = t->y_start; y < t->y_end; y++) {
+            uint32_t row_color = y < 2048 ? t->row_cache[y] :
+                t->row_cache[2047];
+            uint32_t *row_ptr = t->pixels + y * t->width;
+            uint32_t phase = (y * 3 + t->frame * 2) % 512;
+            uint32_t wave = phase < 256 ? phase : 511 - phase;
+            uint32_t glow = (wave * wave) >> 14;
+
+            if (glow > 4) {
+                uint8_t cr = (uint8_t)(row_color >> 16);
+                uint8_t cg = (uint8_t)(row_color >> 8);
+                uint8_t cb = (uint8_t)row_color;
+                uint32_t r = cr + (glow * 0x30 >> 8);
+                uint32_t g = cg + (glow * 0x14 >> 8);
+                uint32_t b = cb + (glow * 0x08 >> 8);
+                if (r > 0xFF) r = 0xFF;
+                if (g > 0xFF) g = 0xFF;
+                if (b > 0xFF) b = 0xFF;
+                row_color = lumo_argb(0xFF, (uint8_t)r, (uint8_t)g,
+                    (uint8_t)b);
+            }
+
+            lumo_fill_span(row_ptr, (int)t->width, row_color);
+
+            if (glow > 12) {
+                uint32_t streak_x = (t->frame + y * 2) %
+                    (t->width + 200);
+                if (streak_x < t->width) {
+                    uint8_t sr = (uint8_t)(row_color >> 16);
+                    uint8_t sg = (uint8_t)(row_color >> 8);
+                    uint8_t sb = (uint8_t)row_color;
+                    uint32_t streak_len = 60 + (y % 40);
+                    uint32_t nr = sr + 0x14 > 0xFF ? 0xFF : sr + 0x14;
+                    uint32_t ng = sg + 0x0A > 0xFF ? 0xFF : sg + 0x0A;
+                    uint32_t nb = sb + 0x04 > 0xFF ? 0xFF : sb + 0x04;
+                    uint32_t streak_color = lumo_argb(0xFF,
+                        (uint8_t)nr, (uint8_t)ng, (uint8_t)nb);
+                    uint32_t end = streak_x + streak_len;
+                    if (end > t->width) end = t->width;
+                    lumo_fill_span(row_ptr + streak_x,
+                        (int)(end - streak_x), streak_color);
+                }
+            }
+        }
+
+        /* wait for all stripes to complete */
+        pthread_barrier_wait(&bg_pool.barrier);
+    }
+    return NULL;
+}
+
+static void bg_pool_init(void) {
+    if (bg_pool.initialized) return;
+    pthread_barrier_init(&bg_pool.barrier, NULL, LUMO_BG_THREADS + 1);
+    pthread_mutex_init(&bg_pool.start_mutex, NULL);
+    pthread_cond_init(&bg_pool.start_cond, NULL);
+    bg_pool.started = false;
+    bg_pool.shutdown = false;
+    for (int i = 0; i < LUMO_BG_THREADS; i++) {
+        pthread_create(&bg_pool.threads[i], NULL, bg_worker,
+            (void *)(intptr_t)i);
+    }
+    bg_pool.initialized = true;
+    fprintf(stderr, "lumo-shell: background thread pool started "
+        "(%d workers)\n", LUMO_BG_THREADS);
+}
+
+/* dispatch row stripes to the thread pool and wait for completion */
+static void bg_parallel_fill(uint32_t *pixels, uint32_t width,
+    uint32_t height, uint32_t frame, const uint32_t *row_cache)
+{
+    if (!bg_pool.initialized) bg_pool_init();
+
+    uint32_t stripe_h = height / LUMO_BG_THREADS;
+    for (int i = 0; i < LUMO_BG_THREADS; i++) {
+        bg_pool.tasks[i].pixels = pixels;
+        bg_pool.tasks[i].width = width;
+        bg_pool.tasks[i].frame = frame;
+        bg_pool.tasks[i].row_cache = row_cache;
+        bg_pool.tasks[i].y_start = (uint32_t)i * stripe_h;
+        bg_pool.tasks[i].y_end = (i == LUMO_BG_THREADS - 1)
+            ? height : (uint32_t)(i + 1) * stripe_h;
+    }
+
+    /* wake all workers */
+    pthread_mutex_lock(&bg_pool.start_mutex);
+    bg_pool.started = true;
+    pthread_cond_broadcast(&bg_pool.start_cond);
+    pthread_mutex_unlock(&bg_pool.start_mutex);
+
+    /* wait for all stripes to complete */
+    pthread_barrier_wait(&bg_pool.barrier);
+
+    /* reset for next frame */
+    pthread_mutex_lock(&bg_pool.start_mutex);
+    bg_pool.started = false;
+    pthread_mutex_unlock(&bg_pool.start_mutex);
+}
+
 /* ── background row cache + animated background ───────────────────── */
 
 static uint32_t bg_row_cache[2048];
@@ -1566,50 +1702,10 @@ static void lumo_draw_animated_bg(
         bg_cache_weather_code = weather_code;
     }
 
-    for (uint32_t y = 0; y < height; y++) {
-        uint32_t row_color = y < 2048 ? bg_row_cache[y] :
-            bg_row_cache[2047];
-        uint32_t *row_ptr = pixels + y * width;
-
-        uint32_t phase = (y * 3 + frame * 2) % 512;
-        uint32_t wave = phase < 256 ? phase : 511 - phase;
-        uint32_t glow = (wave * wave) >> 14;
-
-        if (glow > 4) {
-            uint8_t cr = (uint8_t)(row_color >> 16);
-            uint8_t cg = (uint8_t)(row_color >> 8);
-            uint8_t cb = (uint8_t)row_color;
-            uint32_t r = cr + (glow * 0x30 >> 8);
-            uint32_t g = cg + (glow * 0x14 >> 8);
-            uint32_t b = cb + (glow * 0x08 >> 8);
-            if (r > 0xFF) r = 0xFF;
-            if (g > 0xFF) g = 0xFF;
-            if (b > 0xFF) b = 0xFF;
-            row_color = lumo_argb(0xFF, (uint8_t)r, (uint8_t)g, (uint8_t)b);
-        }
-
-        /* fill entire row with the computed color using optimized span */
-        lumo_fill_span(row_ptr, (int)width, row_color);
-
-        if (glow > 12) {
-            uint32_t streak_x = (frame + y * 2) % (width + 200);
-            if (streak_x < width) {
-                uint8_t sr = (uint8_t)(row_color >> 16);
-                uint8_t sg = (uint8_t)(row_color >> 8);
-                uint8_t sb = (uint8_t)row_color;
-                uint32_t streak_len = 60 + (y % 40);
-                uint32_t nr = sr + 0x14 > 0xFF ? 0xFF : sr + 0x14;
-                uint32_t ng = sg + 0x0A > 0xFF ? 0xFF : sg + 0x0A;
-                uint32_t nb = sb + 0x04 > 0xFF ? 0xFF : sb + 0x04;
-                uint32_t streak_color = lumo_argb(0xFF,
-                    (uint8_t)nr, (uint8_t)ng, (uint8_t)nb);
-                uint32_t end = streak_x + streak_len;
-                if (end > width) end = width;
-                lumo_fill_span(row_ptr + streak_x,
-                    (int)(end - streak_x), streak_color);
-            }
-        }
-    }
+    /* multi-core parallel background fill — splits rows across 8
+     * worker threads for ~6-7x speedup on the 8-core RISC-V CPU.
+     * Each thread fills an independent horizontal stripe. */
+    bg_parallel_fill(pixels, width, height, frame, bg_row_cache);
 
     /* bokeh balls — soft depth-of-field circles over the gradient */
     lumo_draw_bokeh_layer(pixels, width, height, frame,

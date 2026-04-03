@@ -32,9 +32,12 @@ if libsystemd.found()
   add_project_arguments('-DLUMO_HAS_SYSTEMD=1', language: 'c')
 endif
 
+threads_dep = dependency('threads', required: true)
+
 shell_deps = [
   dependency('wayland-client', required: true),
   dependency('wayland-protocols', required: true),
+  threads_dep,
 ]
 
 app_deps = [
