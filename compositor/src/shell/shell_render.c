@@ -2193,9 +2193,9 @@ static void lumo_draw_sidebar(
 ) {
     /* use theme colors matching the top bar — transitions with time/weather */
     uint32_t separator = lumo_argb(0x30, 0xFF, 0xFF, 0xFF);
-    uint32_t icon_bg = lumo_argb(0x38, 0xFF, 0xFF, 0xFF);
+    uint32_t icon_bg = lumo_argb(0x60, 0x40, 0x30, 0x50);
     uint32_t icon_active = lumo_theme.accent;
-    uint32_t text_color = lumo_theme.text_primary;
+    uint32_t text_color = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
 
     /* slide offset: 0 = fully visible, -width = fully off-screen left */
     int slide_x = (int)((1.0 - visibility) * -(double)width);
@@ -2261,24 +2261,36 @@ static void lumo_draw_sidebar(
             icon_rect.x += slide_x;
             uint32_t menu_bg = lumo_argb(0xF0, 0x2A, 0x2A, 0x3E);
             uint32_t menu_stroke = lumo_argb(0x60, 0xFF, 0xFF, 0xFF);
+
+            /* check if this app supports multiple windows */
+            const char *aid = client->running_app_ids[
+                client->sidebar_context_menu_index];
+            bool multi_window = (strstr(aid, "terminal") != NULL ||
+                strstr(aid, "browser") != NULL);
+            int menu_h = multi_window ? 92 : 64;
+
             struct lumo_rect menu = {
-                icon_rect.x,
-                icon_rect.y - 68,
-                (int)width - 8,
-                64
+                4, icon_rect.y - menu_h - 4,
+                (int)width - 8, menu_h
             };
-            /* clamp vertically */
             if (menu.y < status_h + 4) menu.y = status_h + 4;
             if (menu.y + menu.height > (int)height)
                 menu.y = (int)height - menu.height - 4;
-            /* center in sidebar width */
-            menu.x = 4;
+
             lumo_fill_rounded_rect(pixels, width, height, &menu, 8, menu_bg);
             lumo_draw_outline(pixels, width, height, &menu, 1, menu_stroke);
+            int row_y = menu.y + 8;
             lumo_draw_text(pixels, width, height,
-                menu.x + 10, menu.y + 8, 2, text_color, "OPEN");
+                menu.x + 10, row_y, 2, text_color, "OPEN");
+            row_y += 28;
+            if (multi_window) {
+                lumo_draw_text(pixels, width, height,
+                    menu.x + 10, row_y, 2,
+                    lumo_argb(0xFF, 0x80, 0xC0, 0xFF), "NEW WINDOW");
+                row_y += 28;
+            }
             lumo_draw_text(pixels, width, height,
-                menu.x + 10, menu.y + 36, 2,
+                menu.x + 10, row_y, 2,
                 lumo_argb(0xFF, 0xFF, 0x66, 0x66), "CLOSE");
         }
     }

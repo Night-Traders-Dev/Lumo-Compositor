@@ -507,29 +507,35 @@ static void lumo_shell_touch_handle_up(
             uint32_t idx = client->active_target.index;
 
             if (client->sidebar_context_menu_visible) {
-                /* context menu is open — check if tap is on "OPEN" or "CLOSE" */
+                /* context menu: check which row was tapped */
+                uint32_t cidx = client->sidebar_context_menu_index;
+                const char *aid = client->running_app_ids[cidx];
+                bool multi = (strstr(aid, "terminal") != NULL ||
+                    strstr(aid, "browser") != NULL);
+                double my = client->pointer_y;
+
+                /* compute menu rect matching render code */
                 struct lumo_rect icon_rect;
                 if (lumo_shell_sidebar_app_rect(client->configured_width,
-                        client->configured_height,
-                        client->sidebar_context_menu_index, &icon_rect)) {
-                    struct lumo_rect menu = {
-                        icon_rect.x + icon_rect.width + 4,
-                        icon_rect.y - 10, 120, 64
-                    };
-                    if (menu.x + menu.width > (int)client->configured_width)
-                        menu.x = (int)client->configured_width - menu.width - 2;
-                    double mx = client->pointer_x;
-                    double my = client->pointer_y;
-                    if (mx >= menu.x && mx < menu.x + menu.width) {
-                        if (my >= menu.y && my < menu.y + 32) {
-                            /* "OPEN" tapped */
-                            lumo_shell_client_send_focus_app(client,
-                                client->sidebar_context_menu_index);
-                        } else if (my >= menu.y + 32 && my < menu.y + 64) {
-                            /* "CLOSE" tapped */
-                            lumo_shell_client_send_close_app(client,
-                                client->sidebar_context_menu_index);
-                        }
+                        client->configured_height, cidx, &icon_rect)) {
+                    int status_h = (int)client->configured_height / 18;
+                    if (status_h < 32) status_h = 32;
+                    if (status_h > 48) status_h = 48;
+                    int menu_h = multi ? 92 : 64;
+                    int menu_y = icon_rect.y - menu_h - 4;
+                    if (menu_y < status_h + 4) menu_y = status_h + 4;
+
+                    int row = (int)(my - menu_y) / 28;
+                    if (row == 0) {
+                        /* OPEN */
+                        lumo_shell_client_send_focus_app(client, cidx);
+                    } else if (multi && row == 1) {
+                        /* NEW WINDOW — send new_window request */
+                        lumo_shell_send_set_u32(client,
+                            "new_window", "index", cidx);
+                    } else {
+                        /* CLOSE (row 1 if no multi, row 2 if multi) */
+                        lumo_shell_client_send_close_app(client, cidx);
                     }
                 }
                 client->sidebar_context_menu_visible = false;

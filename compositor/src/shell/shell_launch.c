@@ -1162,12 +1162,53 @@ static void lumo_shell_bridge_handle_request_frame(
         switch (target_kind) {
         case LUMO_SHELL_TARGET_LAUNCHER_TILE: {
             const char *app_command = lumo_shell_launcher_tile_command(index);
+            const char *tile_label = lumo_shell_launcher_tile_label(index);
             wlr_log(WLR_INFO,
                 "shell: activate_target launcher tile %u requested (cmd=%s)",
                 index,
                 app_command != NULL ? app_command : "none");
             if (app_command != NULL) {
-                lumo_shell_launch_app(client->compositor, app_command);
+                /* check if app is already running — if so, focus it
+                 * instead of launching a duplicate.  Exception:
+                 * terminal and browser allow multiple windows. */
+                bool already_running = false;
+                bool allow_multi = (tile_label != NULL &&
+                    (strcmp(tile_label, "Terminal") == 0 ||
+                     strcmp(tile_label, "Browser") == 0));
+                if (!allow_multi) {
+                    struct lumo_toplevel *tl;
+                    wl_list_for_each(tl, &client->compositor->toplevels,
+                            link) {
+                        const char *aid = tl->xdg_toplevel->app_id;
+                        /* match: "lumo-app:browser" → app_id "lumo-browser" */
+                        if (aid != NULL && app_command != NULL) {
+                            /* extract name from command "lumo-app:NAME" */
+                            const char *colon = strchr(app_command, ':');
+                            const char *cmd_name = colon ? colon + 1 : app_command;
+                            char expected_id[64];
+                            snprintf(expected_id, sizeof(expected_id),
+                                "lumo-%s", cmd_name);
+                            if (strcmp(aid, expected_id) == 0) {
+                                /* focus existing instance */
+                                tl->scene_tree->node.enabled = true;
+                                wlr_scene_node_raise_to_top(
+                                    &tl->scene_tree->node);
+                                wlr_seat_keyboard_notify_enter(
+                                    client->compositor->seat,
+                                    tl->xdg_toplevel->base->surface,
+                                    NULL, 0, NULL);
+                                lumo_protocol_set_scrim_state(
+                                    client->compositor, LUMO_SCRIM_DIMMED);
+                                already_running = true;
+                                wlr_log(WLR_INFO,
+                                    "shell: focused existing %s", aid);
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (!already_running)
+                    lumo_shell_launch_app(client->compositor, app_command);
             }
             lumo_protocol_set_launcher_visible(client->compositor, false);
             handled = true;
@@ -1517,6 +1558,38 @@ static void lumo_shell_bridge_handle_request_frame(
                 LUMO_SCRIM_HIDDEN);
         }
         wlr_log(WLR_INFO, "shell: minimize_focused result=%d", minimized);
+        (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
+        return;
+    }
+
+    /* new window for multi-window apps (terminal, browser) */
+    if (strcmp(frame->name, "new_window") == 0) {
+        uint32_t index = 0;
+        lumo_shell_protocol_frame_get_u32(frame, "index", &index);
+        struct lumo_toplevel *tl;
+        uint32_t n = 0;
+        wl_list_for_each(tl, &client->compositor->toplevels, link) {
+            if (n == index) {
+                const char *aid = tl->xdg_toplevel->app_id;
+                if (aid != NULL) {
+                    /* find the matching launcher command and re-launch */
+                    const char *cmd = NULL;
+                    if (strstr(aid, "terminal") != NULL)
+                        cmd = "lumo-app:terminal";
+                    else if (strstr(aid, "browser") != NULL)
+                        cmd = "lumo-app:browser";
+                    if (cmd != NULL) {
+                        lumo_shell_launch_app(client->compositor, cmd);
+                        lumo_protocol_set_sidebar_visible(
+                            client->compositor, false);
+                        wlr_log(WLR_INFO,
+                            "shell: new_window for %s", aid);
+                    }
+                }
+                break;
+            }
+            n++;
+        }
         (void)lumo_shell_bridge_send_result(client, frame, true, NULL, NULL);
         return;
     }
