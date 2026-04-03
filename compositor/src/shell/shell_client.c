@@ -402,7 +402,7 @@ int lumo_shell_client_animation_timeout(
     uint64_t now, end_time;
     if (client == NULL || !client->animation_active) {
         if (client != NULL && client->mode == LUMO_SHELL_MODE_BACKGROUND)
-            return 200;
+            return 33; /* 30 FPS for smooth wave animation */
         if (client != NULL && client->mode == LUMO_SHELL_MODE_STATUS) {
             if (client->compositor_time_panel_visible) return 1000;
             return 30000;
@@ -1090,7 +1090,7 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
 
         if (client->unified) {
             /* unified: use the shortest timeout across all slots */
-            timeout_ms = 200; /* background refresh */
+            timeout_ms = 33; /* 30 FPS background wave animation */
             for (int i = 0; i < client->surface_count; i++) {
                 struct lumo_shell_surface_slot *slot = &client->slots[i];
                 if (slot->animation_active) {

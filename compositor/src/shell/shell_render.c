@@ -1414,8 +1414,59 @@ static void lumo_draw_bokeh_ball(
     }
 }
 
-/* render all bokeh balls onto the background buffer */
-static void lumo_draw_bokeh_layer(
+/* PS4 "Flow" theme wave recreation — 7 sine wave ribbons with
+ * asymmetric glow falloff, per-column sine calc, additive blend.
+ * Based on the exact parameters from fchavonet's reverse engineering
+ * of the PS4 XMB wave background. */
+
+/* pre-computed sine LUT for fast per-column wave position */
+#define SINE_LUT_SIZE 4096
+static float sine_lut[SINE_LUT_SIZE];
+static bool sine_lut_ready = false;
+
+static void init_sine_lut(void) {
+    if (sine_lut_ready) return;
+    for (int i = 0; i < SINE_LUT_SIZE; i++) {
+        float a = (float)i / (float)SINE_LUT_SIZE * 6.2832f;
+        /* Bhaskara sine approximation — good enough, avoids libm */
+        float p = a;
+        if (p > 3.14159f) {
+            p -= 3.14159f;
+            sine_lut[i] = -(16.0f * p * (3.14159f - p)) /
+                (49.348f - 4.0f * p * (3.14159f - p));
+        } else {
+            sine_lut[i] = (16.0f * p * (3.14159f - p)) /
+                (49.348f - 4.0f * p * (3.14159f - p));
+        }
+    }
+    sine_lut_ready = true;
+}
+
+static inline float fast_sin(float angle) {
+    float norm = angle * (1.0f / 6.2832f);
+    norm = norm - (float)(int)norm;
+    if (norm < 0.0f) norm += 1.0f;
+    return sine_lut[(int)(norm * (float)SINE_LUT_SIZE) % SINE_LUT_SIZE];
+}
+
+/* smoothstep: 3t^2 - 2t^3, clamped to [0,1] */
+static inline float smoothstep(float edge0, float edge1, float x) {
+    float t = (x - edge0) / (edge1 - edge0);
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    return t * t * (3.0f - 2.0f * t);
+}
+
+/* fast pow approximation for integer-ish exponents */
+static inline float fast_pow(float base, float exp) {
+    if (base <= 0.0f) return 0.0f;
+    float r = base;
+    int e = (int)exp;
+    for (int i = 1; i < e; i++) r *= base;
+    return r;
+}
+
+static void lumo_draw_wave_layer(
     uint32_t *pixels,
     uint32_t width,
     uint32_t height,
@@ -1424,33 +1475,85 @@ static void lumo_draw_bokeh_layer(
     uint32_t base_g,
     uint32_t base_b
 ) {
-    /* bokeh tint: lighter version of the base palette */
-    uint32_t tr = base_r + 0x3A > 0xFF ? 0xFF : base_r + 0x3A;
-    uint32_t tg = base_g + 0x2A > 0xFF ? 0xFF : base_g + 0x2A;
-    uint32_t tb = base_b + 0x3E > 0xFF ? 0xFF : base_b + 0x3E;
-    uint32_t tint = (tr << 16) | (tg << 8) | tb;
+    init_sine_lut();
+    float t = (float)frame * 0.003f;
+    float h_inv = 1.0f / (float)height;
 
-    for (int i = 0; i < BOKEH_COUNT; i++) {
-        const struct bokeh_ball *b = &bokeh_particles[i];
+    /* wave tint: lighter version of base for the glow color */
+    uint32_t tr = base_r + 0x40 > 0xFF ? 0xFF : base_r + 0x40;
+    uint32_t tg = base_g + 0x30 > 0xFF ? 0xFF : base_g + 0x30;
+    uint32_t tb = base_b + 0x48 > 0xFF ? 0xFF : base_b + 0x48;
 
-        /* slow drift — wraps via fmod-style math */
-        float fx = b->base_x + b->drift_x * (float)frame;
-        float fy = b->base_y + b->drift_y * (float)frame;
+    /* PS4 exact wave parameters (from fchavonet recreation) */
+    static const struct {
+        float speed;
+        float freq;
+        float amp;
+        float vert_off;  /* 0-1, vertical center */
+        float line_w;    /* glow width */
+        float sharp;     /* pow exponent */
+        bool invert;     /* asymmetric falloff direction */
+    } waves[7] = {
+        /* upper group */
+        { 0.2f, 0.20f, 0.20f, 0.50f, 0.10f, 15.0f, false },
+        { 0.4f, 0.40f, 0.15f, 0.50f, 0.10f, 17.0f, false },
+        { 0.3f, 0.60f, 0.15f, 0.50f, 0.05f, 23.0f, false },
+        /* lower group */
+        { 0.1f, 0.26f, 0.07f, 0.30f, 0.10f, 17.0f, true },
+        { 0.3f, 0.36f, 0.07f, 0.30f, 0.10f, 17.0f, true },
+        { 0.5f, 0.46f, 0.07f, 0.30f, 0.05f, 23.0f, true },
+        { 0.2f, 0.58f, 0.05f, 0.30f, 0.20f, 15.0f, true },
+    };
 
-        /* wrap to [0, 1) */
-        fx = fx - (float)(int)fx;
-        fy = fy - (float)(int)fy;
-        if (fx < 0.0f) fx += 1.0f;
-        if (fy < 0.0f) fy += 1.0f;
+    /* row-major rendering: for each row, compute glow from all 7 waves.
+     * This is cache-friendly and avoids vertical tearing artifacts. */
+    for (uint32_t y = 0; y < height; y++) {
+        float uv_y = (float)y * h_inv;
+        uint32_t *row = pixels + y * width;
 
-        int cx = (int)(fx * (float)width);
-        int cy = (int)(fy * (float)height);
-        int radius = (int)(b->radius_frac * (float)height);
-        if (radius < 3) radius = 3;
-        if (radius > 50) radius = 50; /* cap for riscv64 perf */
+        for (uint32_t x = 0; x < width; x++) {
+            float uv_x = (float)x / (float)width;
+            float total_glow = 0.0f;
 
-        lumo_draw_bokeh_ball(pixels, width, height, cx, cy, radius,
-                             tint, b->alpha);
+            for (int w = 0; w < 7; w++) {
+                float angle = t * waves[w].speed * waves[w].freq * -1.0f
+                    + uv_x * 2.0f;
+                float wy = fast_sin(angle) * waves[w].amp
+                    + waves[w].vert_off;
+
+                float raw_dist = wy - uv_y;
+                float dist = raw_dist < 0.0f ? -raw_dist : raw_dist;
+
+                /* asymmetric falloff */
+                if (waves[w].invert) {
+                    if (raw_dist > 0.0f) dist *= 4.0f;
+                } else {
+                    if (raw_dist < 0.0f) dist *= 4.0f;
+                }
+
+                float max_d = waves[w].line_w * 1.5f;
+                if (dist >= max_d) continue;
+
+                float glow = smoothstep(max_d, 0.0f, dist);
+                glow = fast_pow(glow, (int)waves[w].sharp);
+                total_glow += glow * 0.35f;
+            }
+
+            if (total_glow < 0.004f) continue;
+            if (total_glow > 1.0f) total_glow = 1.0f;
+
+            uint32_t a = (uint32_t)(total_glow * 255.0f);
+            if (a > 255) a = 255;
+
+            uint32_t dst = row[x];
+            uint32_t or_ = ((dst >> 16) & 0xFF) + ((tr * a) >> 8);
+            uint32_t og = ((dst >> 8) & 0xFF) + ((tg * a) >> 8);
+            uint32_t ob = (dst & 0xFF) + ((tb * a) >> 8);
+            if (or_ > 255) or_ = 255;
+            if (og > 255) og = 255;
+            if (ob > 255) ob = 255;
+            row[x] = 0xFF000000 | (or_ << 16) | (og << 8) | ob;
+        }
     }
 }
 
@@ -1473,66 +1576,35 @@ static struct {
     pthread_barrier_t barrier;
     pthread_mutex_t start_mutex;
     pthread_cond_t start_cond;
-    bool started;
+    uint64_t generation;
     bool shutdown;
     bool initialized;
 } bg_pool;
 
 static void *bg_worker(void *arg) {
     int id = (int)(intptr_t)arg;
+    uint64_t generation = 0;
+
     for (;;) {
         pthread_mutex_lock(&bg_pool.start_mutex);
-        while (!bg_pool.started && !bg_pool.shutdown)
+        while (bg_pool.generation == generation && !bg_pool.shutdown)
             pthread_cond_wait(&bg_pool.start_cond, &bg_pool.start_mutex);
+        if (bg_pool.shutdown) {
+            pthread_mutex_unlock(&bg_pool.start_mutex);
+            break;
+        }
+        generation = bg_pool.generation;
         pthread_mutex_unlock(&bg_pool.start_mutex);
 
-        if (bg_pool.shutdown) break;
-
-        /* render our stripe */
+        /* render our stripe — clean gradient fill for PS4 Flow waves.
+         * No streaks or glow modulation — the wave layer provides
+         * all the visual interest on top of the smooth gradient. */
         struct lumo_bg_stripe *t = &bg_pool.tasks[id];
         for (uint32_t y = t->y_start; y < t->y_end; y++) {
             uint32_t row_color = y < 2048 ? t->row_cache[y] :
                 t->row_cache[2047];
-            uint32_t *row_ptr = t->pixels + y * t->width;
-            uint32_t phase = (y * 3 + t->frame * 2) % 512;
-            uint32_t wave = phase < 256 ? phase : 511 - phase;
-            uint32_t glow = (wave * wave) >> 14;
-
-            if (glow > 4) {
-                uint8_t cr = (uint8_t)(row_color >> 16);
-                uint8_t cg = (uint8_t)(row_color >> 8);
-                uint8_t cb = (uint8_t)row_color;
-                uint32_t r = cr + (glow * 0x30 >> 8);
-                uint32_t g = cg + (glow * 0x14 >> 8);
-                uint32_t b = cb + (glow * 0x08 >> 8);
-                if (r > 0xFF) r = 0xFF;
-                if (g > 0xFF) g = 0xFF;
-                if (b > 0xFF) b = 0xFF;
-                row_color = lumo_argb(0xFF, (uint8_t)r, (uint8_t)g,
-                    (uint8_t)b);
-            }
-
-            lumo_fill_span(row_ptr, (int)t->width, row_color);
-
-            if (glow > 12) {
-                uint32_t streak_x = (t->frame + y * 2) %
-                    (t->width + 200);
-                if (streak_x < t->width) {
-                    uint8_t sr = (uint8_t)(row_color >> 16);
-                    uint8_t sg = (uint8_t)(row_color >> 8);
-                    uint8_t sb = (uint8_t)row_color;
-                    uint32_t streak_len = 60 + (y % 40);
-                    uint32_t nr = sr + 0x14 > 0xFF ? 0xFF : sr + 0x14;
-                    uint32_t ng = sg + 0x0A > 0xFF ? 0xFF : sg + 0x0A;
-                    uint32_t nb = sb + 0x04 > 0xFF ? 0xFF : sb + 0x04;
-                    uint32_t streak_color = lumo_argb(0xFF,
-                        (uint8_t)nr, (uint8_t)ng, (uint8_t)nb);
-                    uint32_t end = streak_x + streak_len;
-                    if (end > t->width) end = t->width;
-                    lumo_fill_span(row_ptr + streak_x,
-                        (int)(end - streak_x), streak_color);
-                }
-            }
+            lumo_fill_span(t->pixels + y * t->width,
+                (int)t->width, row_color);
         }
 
         /* wait for all stripes to complete */
@@ -1546,7 +1618,7 @@ static void bg_pool_init(void) {
     pthread_barrier_init(&bg_pool.barrier, NULL, LUMO_BG_THREADS + 1);
     pthread_mutex_init(&bg_pool.start_mutex, NULL);
     pthread_cond_init(&bg_pool.start_cond, NULL);
-    bg_pool.started = false;
+    bg_pool.generation = 0;
     bg_pool.shutdown = false;
     for (int i = 0; i < LUMO_BG_THREADS; i++) {
         pthread_create(&bg_pool.threads[i], NULL, bg_worker,
@@ -1564,6 +1636,7 @@ static void bg_parallel_fill(uint32_t *pixels, uint32_t width,
     if (!bg_pool.initialized) bg_pool_init();
 
     uint32_t stripe_h = height / LUMO_BG_THREADS;
+    pthread_mutex_lock(&bg_pool.start_mutex);
     for (int i = 0; i < LUMO_BG_THREADS; i++) {
         bg_pool.tasks[i].pixels = pixels;
         bg_pool.tasks[i].width = width;
@@ -1574,19 +1647,13 @@ static void bg_parallel_fill(uint32_t *pixels, uint32_t width,
             ? height : (uint32_t)(i + 1) * stripe_h;
     }
 
-    /* wake all workers */
-    pthread_mutex_lock(&bg_pool.start_mutex);
-    bg_pool.started = true;
+    /* publish a new frame generation so each worker renders once. */
+    bg_pool.generation++;
     pthread_cond_broadcast(&bg_pool.start_cond);
     pthread_mutex_unlock(&bg_pool.start_mutex);
 
     /* wait for all stripes to complete */
     pthread_barrier_wait(&bg_pool.barrier);
-
-    /* reset for next frame */
-    pthread_mutex_lock(&bg_pool.start_mutex);
-    bg_pool.started = false;
-    pthread_mutex_unlock(&bg_pool.start_mutex);
 }
 
 /* ── background row cache + animated background ───────────────────── */
@@ -1609,7 +1676,8 @@ static void lumo_draw_animated_bg(
     uint32_t hour;
 
     clock_gettime(CLOCK_MONOTONIC, &mono_ts);
-    frame = (uint32_t)(mono_ts.tv_sec * 15 + mono_ts.tv_nsec / 66666666);
+    /* 60 FPS frame counter — each frame gets a unique tick */
+    frame = (uint32_t)(mono_ts.tv_sec * 60 + mono_ts.tv_nsec / 16666666);
 
     wall_now = time(NULL);
     localtime_r(&wall_now, &tm_now);
@@ -1707,9 +1775,9 @@ static void lumo_draw_animated_bg(
      * Each thread fills an independent horizontal stripe. */
     bg_parallel_fill(pixels, width, height, frame, bg_row_cache);
 
-    /* bokeh balls — soft depth-of-field circles over the gradient */
-    lumo_draw_bokeh_layer(pixels, width, height, frame,
-                          base_r, base_g, base_b);
+    /* PS4-style flowing light waves */
+    lumo_draw_wave_layer(pixels, width, height, frame,
+                         base_r, base_g, base_b);
 }
 
 /* ── main render entry point (extern) ─────────────────────────────── */
