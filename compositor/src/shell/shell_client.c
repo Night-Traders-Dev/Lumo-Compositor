@@ -402,7 +402,7 @@ int lumo_shell_client_animation_timeout(
     uint64_t now, end_time;
     if (client == NULL || !client->animation_active) {
         if (client != NULL && client->mode == LUMO_SHELL_MODE_BACKGROUND)
-            return 16; /* 60 FPS — waves rendered across 8 cores */
+            return 33; /* 30 FPS — balances smoothness with compositor headroom */
         if (client != NULL && client->mode == LUMO_SHELL_MODE_STATUS) {
             if (client->compositor_time_panel_visible) return 1000;
             return 30000;
@@ -449,19 +449,29 @@ static bool lumo_shell_draw_buffer(
     active_target = client->active_target_valid ? &client->active_target : NULL;
     lumo_render_surface(client, buffer->data, width, height, active_target);
 
-    /* cache the rendered surface to NVMe for instant restore on restart */
-    if (client->mode == LUMO_SHELL_MODE_STATUS ||
-            client->mode == LUMO_SHELL_MODE_BACKGROUND) {
-        char cache_path[256];
-        snprintf(cache_path, sizeof(cache_path),
-            "/data/lumo-cache/surfaces/%s.lumosurf",
-            lumo_shell_mode_name(client->mode));
-        FILE *cfp = fopen(cache_path, "wb");
-        if (cfp != NULL) {
-            fwrite(&width, 4, 1, cfp);
-            fwrite(&height, 4, 1, cfp);
-            fwrite(buffer->data, 4, (size_t)width * height, cfp);
-            fclose(cfp);
+    /* cache rendered surface to NVMe — only once every 30 seconds
+     * to avoid blocking the render loop with disk I/O */
+    {
+        static uint64_t last_cache_ms = 0;
+        struct timespec cache_ts;
+        clock_gettime(CLOCK_MONOTONIC, &cache_ts);
+        uint64_t now_ms = (uint64_t)cache_ts.tv_sec * 1000 +
+            (uint64_t)cache_ts.tv_nsec / 1000000;
+        if (now_ms - last_cache_ms > 30000 &&
+                (client->mode == LUMO_SHELL_MODE_STATUS ||
+                 client->mode == LUMO_SHELL_MODE_BACKGROUND)) {
+            char cache_path[256];
+            snprintf(cache_path, sizeof(cache_path),
+                "/data/lumo-cache/surfaces/%s.lumosurf",
+                lumo_shell_mode_name(client->mode));
+            FILE *cfp = fopen(cache_path, "wb");
+            if (cfp != NULL) {
+                fwrite(&width, 4, 1, cfp);
+                fwrite(&height, 4, 1, cfp);
+                fwrite(buffer->data, 4, (size_t)width * height, cfp);
+                fclose(cfp);
+            }
+            last_cache_ms = now_ms;
         }
     }
 
@@ -1090,7 +1100,7 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
 
         if (client->unified) {
             /* unified: use the shortest timeout across all slots */
-            timeout_ms = 16; /* 60 FPS — waves rendered across 8 cores */
+            timeout_ms = 33; /* 30 FPS — balances smoothness with compositor headroom */
             for (int i = 0; i < client->surface_count; i++) {
                 struct lumo_shell_surface_slot *slot = &client->slots[i];
                 if (slot->animation_active) {

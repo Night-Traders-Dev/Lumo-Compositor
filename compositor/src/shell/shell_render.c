@@ -1457,13 +1457,17 @@ static inline float smoothstep(float edge0, float edge1, float x) {
     return t * t * (3.0f - 2.0f * t);
 }
 
-/* fast pow approximation for integer-ish exponents */
-static inline float fast_pow(float base, float exp) {
-    if (base <= 0.0f) return 0.0f;
-    float r = base;
-    int e = (int)exp;
-    for (int i = 1; i < e; i++) r *= base;
-    return r;
+/* fast pow for wave sharpness — only needs 15, 17, or 23.
+ * Uses repeated squaring: pow15 = x^8 * x^4 * x^2 * x */
+static inline float fast_pow(float x, int e) {
+    if (x <= 0.0f) return 0.0f;
+    float x2 = x * x;
+    float x4 = x2 * x2;
+    float x8 = x4 * x4;
+    if (e <= 15) return x8 * x4 * x2 * x;      /* x^15 */
+    float x16 = x8 * x8;
+    if (e <= 17) return x16 * x;                 /* x^17 */
+    return x16 * x4 * x2 * x;                   /* x^23 */
 }
 
 static void lumo_draw_wave_layer(
@@ -1624,16 +1628,38 @@ static void *bg_worker(void *arg) {
                 t->row_cache[2047];
             uint32_t *row_ptr = t->pixels + y * t->width;
 
-            /* fill gradient first */
+            /* fill gradient */
             lumo_fill_span(row_ptr, (int)t->width, row_color);
 
-            /* then blend waves for this row */
+            /* pre-check: which waves could possibly affect this row?
+             * A wave's Y center ranges from (vert_off - amp) to
+             * (vert_off + amp). If this row is outside that range
+             * (plus line_w margin), skip the wave entirely. */
             float uv_y = (float)y * h_inv;
+            uint8_t active_waves = 0;
+            for (int w = 0; w < 7; w++) {
+                float margin = wv[w].line_w * 1.5f;
+                float y_min = wv[w].vert_off - wv[w].amp - margin;
+                float y_max = wv[w].vert_off + wv[w].amp + margin;
+                /* asymmetric: extend the soft side by 4x */
+                if (wv[w].invert) y_min -= margin * 3.0f;
+                else y_max += margin * 3.0f;
+                if (uv_y >= y_min && uv_y <= y_max)
+                    active_waves |= (1 << w);
+            }
+
+            /* skip row entirely if no waves affect it */
+            if (active_waves == 0) continue;
+
+            /* wave rendering for this row — only check active waves */
+            float w_inv = 1.0f / (float)t->width;
             for (uint32_t x = 0; x < t->width; x++) {
-                float uv_x = (float)x / (float)t->width;
+                float uv_x = (float)x * w_inv;
                 float total_glow = 0.0f;
 
                 for (int w = 0; w < 7; w++) {
+                    if (!(active_waves & (1 << w))) continue;
+
                     float angle = t->wave_t * wv[w].speed * wv[w].freq
                         * -1.0f + uv_x * 2.0f;
                     float wy = fast_sin(angle) * wv[w].amp + wv[w].vert_off;
