@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 /* ── global theme definition ──────────────────────────────────────── */
 
@@ -1035,6 +1036,10 @@ static void lumo_draw_status(
     uint32_t height,
     const struct lumo_shell_client *client
 ) {
+    /* hide status bar during boot splash (background prerendering) */
+    if (access("/tmp/lumo-boot-active", F_OK) == 0)
+        return;
+
     const uint32_t bar_top = lumo_theme.bar_top;
     const uint32_t bar_bottom = lumo_theme.bar_bottom;
     const uint32_t separator = lumo_theme.dim;
@@ -2091,6 +2096,13 @@ static void lumo_draw_animated_bg(
 
     /* show boot splash while wave loop is pre-rendering */
     if (!wave_loop_ready) {
+        /* signal other shell processes to hide during boot */
+        static bool boot_flag_set = false;
+        if (!boot_flag_set) {
+            FILE *bf = fopen("/tmp/lumo-boot-active", "w");
+            if (bf) { fputs("1", bf); fclose(bf); }
+            boot_flag_set = true;
+        }
         /* fill gradient background */
         for (uint32_t y = 0; y < height; y++) {
             uint32_t rc = y < 2048 ? bg_row_cache[y] : bg_row_cache[2047];
@@ -2122,17 +2134,26 @@ static void lumo_draw_animated_bg(
                 5, lumo_argb(0xFF, 0xE8, 0x76, 0x20), label);
         }
 
-        /* loading indicator — animated dots based on frame counter */
+        /* Ubuntu-style three-dot loading indicator:
+         * three circles that light up orange one at a time */
         {
-            const char *dots[] = {".", "..", "...", "....", "....."};
-            int dot_idx = (frame / 3) % 5;
-            char msg[32];
-            snprintf(msg, sizeof(msg), "LOADING%s", dots[dot_idx]);
-            int tw = lumo_text_width(msg, 2);
-            lumo_draw_text(pixels, width, height,
-                ((int)width - tw) / 2,
-                (int)height / 2 + LUMO_ICON_H + 10,
-                2, lumo_argb(0xA0, 0xC0, 0xC0, 0xC0), msg);
+            int dot_r = 8;
+            int dot_gap = 28;
+            int dot_cy = (int)height * 3 / 4;
+            int dot_cx = (int)width / 2;
+            int active = (frame / 3) % 3;
+            uint32_t dim = lumo_argb(0x60, 0x50, 0x20, 0x40);
+            uint32_t lit = lumo_argb(0xFF, 0xE8, 0x76, 0x20);
+
+            for (int d = 0; d < 3; d++) {
+                int cx = dot_cx + (d - 1) * dot_gap;
+                struct lumo_rect dot = {
+                    cx - dot_r, dot_cy - dot_r,
+                    dot_r * 2, dot_r * 2
+                };
+                lumo_fill_rounded_rect(pixels, width, height, &dot,
+                    dot_r, d == active ? lit : dim);
+            }
         }
 
         /* version */
@@ -2146,8 +2167,16 @@ static void lumo_draw_animated_bg(
         return;
     }
 
-    /* multi-core parallel gradient fill + PS4 Flow waves — all 8 cores
-     * render both the gradient AND waves for their row stripe. */
+    /* remove boot flag once waves are ready */
+    {
+        static bool boot_flag_cleared = false;
+        if (!boot_flag_cleared) {
+            unlink("/tmp/lumo-boot-active");
+            boot_flag_cleared = true;
+        }
+    }
+
+    /* multi-core parallel gradient fill + PS4 Flow waves */
     bg_parallel_fill(pixels, width, height, frame, bg_row_cache,
                      wave_tr, wave_tg, wave_tb, wave_t);
 }
@@ -2233,13 +2262,17 @@ static void lumo_draw_sidebar(
             uint32_t menu_bg = lumo_argb(0xF0, 0x2A, 0x2A, 0x3E);
             uint32_t menu_stroke = lumo_argb(0x60, 0xFF, 0xFF, 0xFF);
             struct lumo_rect menu = {
-                icon_rect.x + icon_rect.width + 4,
-                icon_rect.y - 10,
-                120, 64
+                icon_rect.x,
+                icon_rect.y - 68,
+                (int)width - 8,
+                64
             };
-            /* clamp to surface */
-            if (menu.x + menu.width > (int)width)
-                menu.x = (int)width - menu.width - 2;
+            /* clamp vertically */
+            if (menu.y < status_h + 4) menu.y = status_h + 4;
+            if (menu.y + menu.height > (int)height)
+                menu.y = (int)height - menu.height - 4;
+            /* center in sidebar width */
+            menu.x = 4;
             lumo_fill_rounded_rect(pixels, width, height, &menu, 8, menu_bg);
             lumo_draw_outline(pixels, width, height, &menu, 1, menu_stroke);
             lumo_draw_text(pixels, width, height,
