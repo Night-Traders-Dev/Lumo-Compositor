@@ -2922,19 +2922,7 @@ static void lumo_app_browser_launch_url(const char *url) {
             "https://duckduckgo.com/?q=%s", url);
     }
 
-    /* try pre-warmed webview first (instant load via file IPC) */
-    {
-        FILE *fp = fopen("/tmp/lumo-webview-url", "w");
-        if (fp != NULL) {
-            fprintf(fp, "%s\n", resolved);
-            fclose(fp);
-            fprintf(stderr, "lumo-app: sent URL to warm webview: %s\n",
-                resolved);
-            return;
-        }
-    }
-
-    /* fallback: spawn new webview or lightweight browser */
+    /* spawn webview or lightweight browser */
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
@@ -3045,22 +3033,6 @@ int main(int argc, char **argv) {
     }
     if (client.app_id == LUMO_APP_BROWSER) {
         lumo_app_bookmarks_load(&client);
-        /* pre-warm the webview subprocess so the first URL load is
-         * fast.  The 15s WebKit cold start happens in the background
-         * while the user browses bookmarks in the SHM UI. */
-        {
-            pid_t wv = fork();
-            if (wv == 0) {
-                setsid();
-                execlp("lumo-webview", "lumo-webview", "--warm",
-                    (char *)NULL);
-                _exit(127);
-            }
-            if (wv > 0) {
-                fprintf(stderr,
-                    "lumo-app: pre-warming webview (pid=%d)\n", (int)wv);
-            }
-        }
     }
     if (client.app_id == LUMO_APP_CAMERA) {
         static const char *img_exts[] = {".jpg", ".jpeg", ".png", ".bmp"};
