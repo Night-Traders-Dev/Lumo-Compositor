@@ -1074,19 +1074,16 @@ bool lumo_shell_surface_config_for_mode(
         break;
     case LUMO_SHELL_MODE_SIDEBAR: {
         /* wide sidebar for large app icons — ~20% of screen width.
-         * Height excludes the status bar area so they don't overlap.
-         * Anchored to bottom-left so it sits below the status bar. */
+         * keyboard_interactive = true so wlroots gives it touch focus. */
         uint32_t sidebar_w = lumo_shell_clamp_u32(output_width / 5, 160, 220);
-        uint32_t status_h = lumo_shell_clamp_u32(output_height / 18, 32, 48);
-        uint32_t sidebar_h = output_height > status_h
-            ? output_height - status_h : output_height;
         config->name = "sidebar";
         config->width = sidebar_w;
-        config->height = sidebar_h;
-        config->anchor = LUMO_SHELL_ANCHOR_BOTTOM |
+        config->height = output_height;
+        config->anchor = LUMO_SHELL_ANCHOR_TOP |
+            LUMO_SHELL_ANCHOR_BOTTOM |
             LUMO_SHELL_ANCHOR_LEFT;
         config->exclusive_zone = 0;
-        config->keyboard_interactive = false;
+        config->keyboard_interactive = true;
         config->background_rgba = 0x00000000;
         break;
     }
