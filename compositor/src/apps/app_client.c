@@ -2080,11 +2080,7 @@ static void lumo_app_sync_text_input_state(
 
     if (wants_osk) {
         if (flush_pending && client->display != NULL) {
-            /* roundtrip ensures the compositor's text_input_enter
-             * event arrives before we enable — without this, the
-             * compositor ignores the enable because no surface has
-             * entered text-input yet */
-            wl_display_roundtrip(client->display);
+            wl_display_dispatch_pending(client->display);
         }
         zwp_text_input_v3_enable(client->text_input);
         zwp_text_input_v3_set_content_type(client->text_input,
@@ -2284,6 +2280,52 @@ static void lumo_app_keyboard_key(
             if (client->zoom_scale < 0.5) client->zoom_scale = 0.5;
         }
         (void)lumo_app_client_redraw(client);
+        return;
+    }
+
+    /* browser: forward keys to URL bar when editing */
+    if (client->app_id == LUMO_APP_BROWSER && client->note_editing >= 0) {
+        if (key == 42 || key == 54) {
+            client->shift_held = (state == WL_KEYBOARD_KEY_STATE_PRESSED);
+            return;
+        }
+        if (state != WL_KEYBOARD_KEY_STATE_PRESSED) return;
+        if (key == 14) { /* backspace */
+            if (client->term_input_len > 0) {
+                client->term_input[--client->term_input_len] = '\0';
+                (void)lumo_app_client_redraw(client);
+            }
+        } else if (key == 28) { /* enter → launch URL */
+            if (client->term_input_len > 0) {
+                lumo_app_browser_launch_url(client->term_input);
+                client->note_editing = -1;
+                lumo_app_sync_text_input_state(client, false);
+                (void)lumo_app_client_redraw(client);
+            }
+        } else if (key >= 2 && key <= 53) {
+            static const char keymap[] =
+                "1234567890-="
+                "\0\0qwertyuiop[]\0"
+                "\0asdfghjkl;'\0\0"
+                "\0zxcvbnm,./";
+            int ki = (int)key - 2;
+            char ch = (ki >= 0 && ki < (int)sizeof(keymap) - 1)
+                ? keymap[ki] : '\0';
+            if (ch != '\0' && client->shift_held && ch >= 'a' && ch <= 'z')
+                ch -= 32;
+            if (ch != '\0' &&
+                    client->term_input_len < (int)sizeof(client->term_input) - 1) {
+                client->term_input[client->term_input_len++] = ch;
+                client->term_input[client->term_input_len] = '\0';
+                (void)lumo_app_client_redraw(client);
+            }
+        } else if (key == 57) { /* space */
+            if (client->term_input_len < (int)sizeof(client->term_input) - 1) {
+                client->term_input[client->term_input_len++] = ' ';
+                client->term_input[client->term_input_len] = '\0';
+                (void)lumo_app_client_redraw(client);
+            }
+        }
         return;
     }
 
