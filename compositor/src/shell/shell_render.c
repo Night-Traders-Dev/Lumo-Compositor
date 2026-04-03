@@ -2079,15 +2079,17 @@ static void lumo_draw_sidebar(
     uint32_t width,
     uint32_t height,
     const struct lumo_shell_client *client,
-    const struct lumo_shell_target *active_target
+    const struct lumo_shell_target *active_target,
+    double visibility
 ) {
     /* use theme colors matching the top bar — transitions with time/weather */
-    uint32_t bg_color = lumo_theme.bar_top;
     uint32_t separator = lumo_argb(0x30, 0xFF, 0xFF, 0xFF);
     uint32_t icon_bg = lumo_argb(0x38, 0xFF, 0xFF, 0xFF);
     uint32_t icon_active = lumo_theme.accent;
     uint32_t text_color = lumo_theme.text_primary;
-    uint32_t drawer_bg = lumo_argb(0x50, 0xFF, 0xFF, 0xFF);
+
+    /* slide offset: 0 = fully visible, -width = fully off-screen left */
+    int slide_x = (int)((1.0 - visibility) * -(double)width);
 
     /* leave top area transparent to avoid overlapping the status bar */
     int status_h = (int)height / 18;
@@ -2095,19 +2097,22 @@ static void lumo_draw_sidebar(
     if (status_h > 48) status_h = 48;
 
     /* fill sidebar background below status bar with gradient */
-    struct lumo_rect bg_rect = {0, status_h, (int)width, (int)height - status_h};
+    struct lumo_rect bg_rect = {slide_x, status_h,
+        (int)width, (int)height - status_h};
     lumo_fill_vertical_gradient(pixels, width, height, &bg_rect,
         lumo_theme.bar_top, lumo_theme.bar_bottom);
 
     /* right edge separator line — only below status bar */
     lumo_fill_rect(pixels, width, height,
-        (int)width - 1, status_h, 1, (int)height - status_h, separator);
+        (int)width - 1 + slide_x, status_h, 1,
+        (int)height - status_h, separator);
 
     /* draw running app icons */
     for (uint32_t i = 0; i < client->running_app_count && i < 16; i++) {
         struct lumo_rect icon_rect;
         if (!lumo_shell_sidebar_app_rect(width, height, i, &icon_rect))
             break;
+        icon_rect.x += slide_x;
 
         /* highlight if this is the active target */
         bool is_active = active_target != NULL &&
@@ -2144,6 +2149,7 @@ static void lumo_draw_sidebar(
         struct lumo_rect icon_rect;
         if (lumo_shell_sidebar_app_rect(width, height,
                 client->sidebar_context_menu_index, &icon_rect)) {
+            icon_rect.x += slide_x;
             uint32_t menu_bg = lumo_argb(0xF0, 0x2A, 0x2A, 0x3E);
             uint32_t menu_stroke = lumo_argb(0x60, 0xFF, 0xFF, 0xFF);
             struct lumo_rect menu = {
@@ -2168,6 +2174,7 @@ static void lumo_draw_sidebar(
     {
         struct lumo_rect drawer_rect;
         if (lumo_shell_sidebar_drawer_button_rect(width, height, &drawer_rect)) {
+            drawer_rect.x += slide_x;
             bool is_active = active_target != NULL &&
                 active_target->kind == LUMO_SHELL_TARGET_SIDEBAR_DRAWER_BTN;
             if (is_active)
@@ -2297,7 +2304,7 @@ void lumo_render_surface(
         lumo_draw_animated_bg(pixels, width, height, client->weather_code);
         return;
     case LUMO_SHELL_MODE_SIDEBAR:
-        lumo_draw_sidebar(pixels, width, height, client, active_target);
+        lumo_draw_sidebar(pixels, width, height, client, active_target, visibility);
         return;
     default:
         break;

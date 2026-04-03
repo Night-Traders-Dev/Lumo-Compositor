@@ -1395,14 +1395,16 @@ void lumo_protocol_push_notification(
 static int lumo_sidebar_auto_hide_timeout(void *data) {
     struct lumo_compositor *compositor = data;
     if (compositor != NULL && compositor->sidebar_visible) {
-        compositor->sidebar_visible = false;
-        wlr_log(WLR_INFO, "protocol: sidebar auto-hidden after timeout");
-        lumo_shell_state_broadcast_launcher_visible(compositor,
-            compositor->launcher_visible);
-        lumo_protocol_mark_layers_dirty(compositor);
+        wlr_log(WLR_INFO, "protocol: sidebar auto-hide timer fired");
+        /* clear the timer pointer BEFORE calling the setter, because
+         * the setter tries to remove the timer */
+        compositor->sidebar_auto_hide_timer = NULL;
+        lumo_protocol_set_sidebar_visible(compositor, false);
+        return 0;
     }
-    compositor->sidebar_auto_hide_timer = NULL;
-    return 0; /* don't repeat */
+    if (compositor != NULL)
+        compositor->sidebar_auto_hide_timer = NULL;
+    return 0;
 }
 
 void lumo_protocol_set_sidebar_visible(

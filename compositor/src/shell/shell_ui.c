@@ -1075,7 +1075,7 @@ bool lumo_shell_surface_config_for_mode(
     case LUMO_SHELL_MODE_SIDEBAR: {
         /* wide sidebar for large app icons — ~20% of screen width.
          * keyboard_interactive = true so wlroots gives it touch focus. */
-        uint32_t sidebar_w = lumo_shell_clamp_u32(output_width / 5, 160, 220);
+        uint32_t sidebar_w = lumo_shell_clamp_u32(output_width / 4, 200, 280);
         config->name = "sidebar";
         config->width = sidebar_w;
         config->height = output_height;
