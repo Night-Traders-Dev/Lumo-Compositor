@@ -395,6 +395,10 @@ static void lumo_shell_touch_handle_down(
         lumo_shell_client_note_target(client, client->pointer_x,
             client->pointer_y);
     }
+
+    /* record press start time for sidebar long-press detection */
+    if (client->mode == LUMO_SHELL_MODE_SIDEBAR)
+        client->sidebar_press_start_msec = lumo_now_msec();
 }
 
 static void lumo_shell_touch_handle_up(
@@ -481,6 +485,73 @@ static void lumo_shell_touch_handle_up(
             }
             return;
         }
+    }
+
+    /* sidebar interactions — handle locally instead of generic activate */
+    if (client->mode == LUMO_SHELL_MODE_SIDEBAR &&
+            client->active_target_valid) {
+        uint64_t now = lumo_now_msec();
+        uint64_t held = now - client->sidebar_press_start_msec;
+
+        if (client->active_target.kind == LUMO_SHELL_TARGET_SIDEBAR_DRAWER_BTN) {
+            lumo_shell_client_send_open_drawer(client);
+            lumo_shell_client_clear_active_target(client);
+            return;
+        }
+
+        if (client->active_target.kind == LUMO_SHELL_TARGET_SIDEBAR_APP) {
+            uint32_t idx = client->active_target.index;
+
+            if (client->sidebar_context_menu_visible) {
+                /* context menu is open — check if tap is on "OPEN" or "CLOSE" */
+                struct lumo_rect icon_rect;
+                if (lumo_shell_sidebar_app_rect(client->configured_width,
+                        client->configured_height,
+                        client->sidebar_context_menu_index, &icon_rect)) {
+                    struct lumo_rect menu = {
+                        icon_rect.x + icon_rect.width + 4,
+                        icon_rect.y - 10, 120, 64
+                    };
+                    if (menu.x + menu.width > (int)client->configured_width)
+                        menu.x = (int)client->configured_width - menu.width - 2;
+                    double mx = client->pointer_x;
+                    double my = client->pointer_y;
+                    if (mx >= menu.x && mx < menu.x + menu.width) {
+                        if (my >= menu.y && my < menu.y + 32) {
+                            /* "OPEN" tapped */
+                            lumo_shell_client_send_focus_app(client,
+                                client->sidebar_context_menu_index);
+                        } else if (my >= menu.y + 32 && my < menu.y + 64) {
+                            /* "CLOSE" tapped */
+                            lumo_shell_client_send_close_app(client,
+                                client->sidebar_context_menu_index);
+                        }
+                    }
+                }
+                client->sidebar_context_menu_visible = false;
+                lumo_shell_client_clear_active_target(client);
+                return;
+            }
+
+            if (held > 500) {
+                /* long press — show context menu */
+                client->sidebar_context_menu_visible = true;
+                client->sidebar_context_menu_index = idx;
+                lumo_shell_client_clear_active_target(client);
+                return;
+            }
+
+            /* short tap — focus the app */
+            if (idx < client->running_app_count) {
+                lumo_shell_client_send_focus_app(client, idx);
+            }
+            client->sidebar_context_menu_visible = false;
+            lumo_shell_client_clear_active_target(client);
+            return;
+        }
+
+        lumo_shell_client_clear_active_target(client);
+        return;
     }
 
     if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&

@@ -163,6 +163,8 @@ static bool lumo_shell_client_should_be_visible(
     case LUMO_SHELL_MODE_STATUS:
     case LUMO_SHELL_MODE_BACKGROUND:
         return true;
+    case LUMO_SHELL_MODE_SIDEBAR:
+        return client->compositor_sidebar_visible;
     default:
         return false;
     }
@@ -693,9 +695,14 @@ void lumo_shell_client_redraw_unified(struct lumo_shell_client *client) {
                 needs_render = true;
             }
 
-            /* periodic surfaces: background animates, status updates clock */
-            if (client->mode == LUMO_SHELL_MODE_BACKGROUND ||
-                    client->mode == LUMO_SHELL_MODE_STATUS) {
+            /* periodic surfaces: background animates, status updates clock.
+             * Skip background rendering when an app covers it — saves
+             * the entire 8-thread wave computation per frame. */
+            if (client->mode == LUMO_SHELL_MODE_BACKGROUND &&
+                    client->compositor_scrim_state ==
+                        LUMO_SHELL_REMOTE_SCRIM_HIDDEN) {
+                needs_render = true;
+            } else if (client->mode == LUMO_SHELL_MODE_STATUS) {
                 needs_render = true;
             }
 
@@ -1080,12 +1087,20 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
         }
 
         if (client->unified) {
-            /* unified: use the shortest timeout across all slots */
-            timeout_ms = 33; /* 30 FPS — balances smoothness with compositor headroom */
+            /* unified: choose timeout based on what's visible.
+             * Background animation only needs 30 FPS when no app is
+             * covering it.  When an app is focused (scrim active), the
+             * background is hidden so we can sleep much longer and
+             * save ~30% CPU. */
+            bool bg_visible =
+                client->compositor_scrim_state == LUMO_SHELL_REMOTE_SCRIM_HIDDEN;
+            bool any_anim = false;
+            timeout_ms = bg_visible ? 33 : 5000;
             for (int i = 0; i < client->surface_count; i++) {
                 struct lumo_shell_surface_slot *slot = &client->slots[i];
                 if (slot->animation_active) {
                     timeout_ms = 33;
+                    any_anim = true;
                     break;
                 }
                 if (slot->mode == LUMO_SHELL_MODE_STATUS) {
@@ -1164,6 +1179,8 @@ static bool lumo_shell_parse_mode(
         *mode = LUMO_SHELL_MODE_STATUS; return true; }
     if (strcmp(value, "background") == 0) {
         *mode = LUMO_SHELL_MODE_BACKGROUND; return true; }
+    if (strcmp(value, "sidebar") == 0) {
+        *mode = LUMO_SHELL_MODE_SIDEBAR; return true; }
     return false;
 }
 
@@ -1237,17 +1254,18 @@ int main(int argc, char **argv) {
     }
 
     if (client.unified) {
-        /* unified mode: create all 5 surfaces in one process */
+        /* unified mode: create all 6 surfaces in one process */
         static const enum lumo_shell_mode all_modes[] = {
             LUMO_SHELL_MODE_BACKGROUND,
             LUMO_SHELL_MODE_LAUNCHER,
             LUMO_SHELL_MODE_OSK,
             LUMO_SHELL_MODE_GESTURE,
             LUMO_SHELL_MODE_STATUS,
+            LUMO_SHELL_MODE_SIDEBAR,
         };
-        client.surface_count = 5;
+        client.surface_count = 6;
         client.mode = LUMO_SHELL_MODE_LAUNCHER; /* primary for input */
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 6; i++) {
             if (!lumo_shell_create_unified_surface(&client, i,
                     all_modes[i])) {
                 fprintf(stderr, "lumo-shell: failed to create %s surface\n",

@@ -852,6 +852,7 @@ struct lumo_compositor {
     bool quick_settings_visible;
     bool time_panel_visible;
     bool notification_panel_visible;
+    bool sidebar_visible;
     /* notification store — ring buffer of recent notifications */
     char notifications[8][128];
     int notification_count;
@@ -1135,6 +1136,9 @@ void lumo_shell_state_broadcast_rotation(
 );
 void lumo_shell_state_broadcast_touch_debug(struct lumo_compositor *compositor);
 void lumo_shell_state_broadcast_touch_audit(struct lumo_compositor *compositor);
+
+void lumo_protocol_set_sidebar_visible(
+    struct lumo_compositor *compositor, bool visible);
 
 int lumo_xwayland_start(struct lumo_compositor *compositor);
 void lumo_xwayland_stop(struct lumo_compositor *compositor);

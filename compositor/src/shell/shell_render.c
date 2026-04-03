@@ -826,40 +826,22 @@ static void lumo_draw_gesture(
     const struct lumo_shell_client *client,
     const struct lumo_shell_target *active_target
 ) {
-    struct lumo_rect handle_rect = {0};
-    uint32_t pill_w;
-    uint32_t pill_h;
-
     (void)client;
     (void)active_target;
 
-    if (!lumo_shell_gesture_handle_rect(width, height, &handle_rect)) {
-        return;
-    }
+    /* minimal iOS-style home indicator — thin rounded pill at bottom */
+    uint32_t bar_w = width / 3;
+    if (bar_w < 80) bar_w = 80;
+    if (bar_w > 160) bar_w = 160;
+    uint32_t bar_h = 4;
+    uint32_t bar_x = (width - bar_w) / 2;
+    uint32_t bar_y = height - bar_h - 6;
 
-    pill_w = (uint32_t)(handle_rect.width - 20);
-    pill_h = (uint32_t)handle_rect.height;
-
-    for (uint32_t y = 0; y < pill_h; y++) {
-        uint32_t alpha;
-        uint32_t row_y_abs = (uint32_t)handle_rect.y + y;
-        if (y < pill_h / 3) {
-            alpha = 0x10 + (y * 0x60) / (pill_h / 3);
-        } else if (y < pill_h * 2 / 3) {
-            alpha = 0x70;
-        } else {
-            alpha = 0x70 - ((y - pill_h * 2 / 3) * 0x60) / (pill_h / 3);
-        }
-
-        uint32_t color = lumo_argb((uint8_t)alpha, 0xAE, 0xA7, 0x9F);
-        uint32_t *row = pixels + row_y_abs * width;
-        uint32_t start = (uint32_t)handle_rect.x + 10;
-        uint32_t end = start + pill_w;
-        if (end > width) end = width;
-        for (uint32_t x = start; x < end; x++) {
-            row[x] = color;
-        }
-    }
+    struct lumo_rect pill = {
+        (int)bar_x, (int)bar_y, (int)bar_w, (int)bar_h
+    };
+    lumo_fill_rounded_rect(pixels, width, height, &pill, 2,
+        lumo_argb(0x80, 0xC0, 0xC0, 0xC0));
 }
 
 /* ── wifi signal bars ─────────────────────────────────────────────── */
@@ -1957,6 +1939,114 @@ static void lumo_draw_animated_bg(
                      wave_tr, wave_tg, wave_tb, wave_t);
 }
 
+/* ── sidebar (running apps multitasking bar) ─────────────────────── */
+
+static void lumo_draw_sidebar(
+    uint32_t *pixels,
+    uint32_t width,
+    uint32_t height,
+    const struct lumo_shell_client *client,
+    const struct lumo_shell_target *active_target
+) {
+    uint32_t bg_color = lumo_argb(0xE8, 0x1A, 0x1A, 0x2E);
+    uint32_t separator = lumo_argb(0x40, 0xFF, 0xFF, 0xFF);
+    uint32_t icon_bg = lumo_argb(0x30, 0xFF, 0xFF, 0xFF);
+    uint32_t icon_active = lumo_theme.accent;
+    uint32_t text_color = lumo_argb(0xFF, 0xF0, 0xF0, 0xF0);
+    uint32_t drawer_bg = lumo_argb(0x50, 0xFF, 0xFF, 0xFF);
+
+    /* fill sidebar background */
+    struct lumo_rect bg_rect = {0, 0, (int)width, (int)height};
+    lumo_fill_rounded_rect(pixels, width, height, &bg_rect, 0, bg_color);
+
+    /* right edge separator line */
+    lumo_fill_rect(pixels, width, height,
+        (int)width - 1, 0, 1, (int)height, separator);
+
+    /* draw running app icons */
+    for (uint32_t i = 0; i < client->running_app_count && i < 16; i++) {
+        struct lumo_rect icon_rect;
+        if (!lumo_shell_sidebar_app_rect(width, height, i, &icon_rect))
+            break;
+
+        /* highlight if this is the active target */
+        bool is_active = active_target != NULL &&
+            active_target->kind == LUMO_SHELL_TARGET_SIDEBAR_APP &&
+            active_target->index == i;
+
+        uint32_t fill = is_active ? icon_active : icon_bg;
+        lumo_fill_rounded_rect(pixels, width, height,
+            &icon_rect, 10, fill);
+
+        /* draw first letter of app_id as icon placeholder */
+        char initial[2] = {0, 0};
+        const char *app_id = client->running_app_ids[i];
+        if (app_id[0] != '\0') {
+            initial[0] = app_id[0];
+            /* uppercase */
+            if (initial[0] >= 'a' && initial[0] <= 'z')
+                initial[0] -= 32;
+        } else {
+            initial[0] = '?';
+        }
+        int tw = lumo_text_width(initial, 3);
+        lumo_draw_text(pixels, width, height,
+            icon_rect.x + (icon_rect.width - tw) / 2,
+            icon_rect.y + (icon_rect.height - 14) / 2,
+            3, text_color, initial);
+    }
+
+    /* context menu overlay */
+    if (client->sidebar_context_menu_visible &&
+            client->sidebar_context_menu_index < client->running_app_count) {
+        struct lumo_rect icon_rect;
+        if (lumo_shell_sidebar_app_rect(width, height,
+                client->sidebar_context_menu_index, &icon_rect)) {
+            uint32_t menu_bg = lumo_argb(0xF0, 0x2A, 0x2A, 0x3E);
+            uint32_t menu_stroke = lumo_argb(0x60, 0xFF, 0xFF, 0xFF);
+            struct lumo_rect menu = {
+                icon_rect.x + icon_rect.width + 4,
+                icon_rect.y - 10,
+                120, 64
+            };
+            /* clamp to surface */
+            if (menu.x + menu.width > (int)width)
+                menu.x = (int)width - menu.width - 2;
+            lumo_fill_rounded_rect(pixels, width, height, &menu, 8, menu_bg);
+            lumo_draw_outline(pixels, width, height, &menu, 1, menu_stroke);
+            lumo_draw_text(pixels, width, height,
+                menu.x + 10, menu.y + 8, 2, text_color, "OPEN");
+            lumo_draw_text(pixels, width, height,
+                menu.x + 10, menu.y + 36, 2,
+                lumo_argb(0xFF, 0xFF, 0x66, 0x66), "CLOSE");
+        }
+    }
+
+    /* drawer button at bottom — grid icon */
+    {
+        struct lumo_rect drawer_rect;
+        if (lumo_shell_sidebar_drawer_button_rect(width, height, &drawer_rect)) {
+            bool is_active = active_target != NULL &&
+                active_target->kind == LUMO_SHELL_TARGET_SIDEBAR_DRAWER_BTN;
+            lumo_fill_rounded_rect(pixels, width, height,
+                &drawer_rect, 10,
+                is_active ? icon_active : drawer_bg);
+            /* draw a simple 2×2 grid of dots as "app drawer" icon */
+            int cx = drawer_rect.x + drawer_rect.width / 2;
+            int cy = drawer_rect.y + drawer_rect.height / 2;
+            int dot_r = 3;
+            int gap = 8;
+            for (int dy = -1; dy <= 1; dy += 2) {
+                for (int dx = -1; dx <= 1; dx += 2) {
+                    lumo_fill_rect(pixels, width, height,
+                        cx + dx * gap - dot_r, cy + dy * gap - dot_r,
+                        dot_r * 2, dot_r * 2, text_color);
+                }
+            }
+        }
+    }
+}
+
 /* ── main render entry point (extern) ─────────────────────────────── */
 
 void lumo_render_surface(
@@ -1989,6 +2079,7 @@ void lumo_render_surface(
         || client->mode == LUMO_SHELL_MODE_BACKGROUND
         ? 1.0
         : lumo_shell_client_animation_value(client);
+    (void)visibility; /* some modes don't use it */
 
     switch (client->mode) {
     case LUMO_SHELL_MODE_LAUNCHER:
@@ -2045,6 +2136,9 @@ void lumo_render_surface(
         return;
     case LUMO_SHELL_MODE_BACKGROUND:
         lumo_draw_animated_bg(pixels, width, height, client->weather_code);
+        return;
+    case LUMO_SHELL_MODE_SIDEBAR:
+        lumo_draw_sidebar(pixels, width, height, client, active_target);
         return;
     default:
         break;

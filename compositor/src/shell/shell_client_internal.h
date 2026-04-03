@@ -47,7 +47,7 @@ enum lumo_shell_remote_scrim_state {
 
 /* ── per-surface state (one per shell mode in unified process) ────── */
 
-#define LUMO_SHELL_MAX_SURFACES 5
+#define LUMO_SHELL_MAX_SURFACES 6
 
 struct lumo_shell_surface_slot {
     enum lumo_shell_mode mode;
@@ -156,6 +156,17 @@ struct lumo_shell_client {
     char toast_message[128];
     uint32_t toast_time_low;
     uint32_t toast_duration_ms;
+
+    /* sidebar (running apps multitasking bar) */
+    bool compositor_sidebar_visible;
+    uint32_t running_app_count;
+    char running_app_ids[16][64];
+    char running_app_titles[16][64];
+    bool sidebar_long_press_active;
+    uint32_t sidebar_long_press_index;
+    uint64_t sidebar_press_start_msec;
+    bool sidebar_context_menu_visible;
+    uint32_t sidebar_context_menu_index;
 };
 
 /* ── theme (global, shared by all drawing functions) ──────────────── */
@@ -246,6 +257,14 @@ bool lumo_shell_client_send_frame(
 void lumo_shell_send_set_u32(
     struct lumo_shell_client *client,
     const char *name, const char *field, uint32_t value);
+void lumo_shell_client_send_focus_app(
+    struct lumo_shell_client *client, uint32_t index);
+void lumo_shell_client_send_close_app(
+    struct lumo_shell_client *client, uint32_t index);
+void lumo_shell_client_send_minimize_focused(
+    struct lumo_shell_client *client);
+void lumo_shell_client_send_open_drawer(
+    struct lumo_shell_client *client);
 
 /* ── shell_client.c — surface config, buffer mgmt, main ───────────── */
 

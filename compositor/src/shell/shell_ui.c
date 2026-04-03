@@ -395,13 +395,15 @@ const char *lumo_shell_mode_name(enum lumo_shell_mode mode) {
         return "status";
     case LUMO_SHELL_MODE_BACKGROUND:
         return "background";
+    case LUMO_SHELL_MODE_SIDEBAR:
+        return "sidebar";
     default:
         return "unknown";
     }
 }
 
 size_t lumo_shell_mode_count(void) {
-    return 5;
+    return 6;
 }
 
 bool lumo_shell_mode_index(
@@ -426,6 +428,9 @@ bool lumo_shell_mode_index(
     case LUMO_SHELL_MODE_BACKGROUND:
         resolved_index = 4;
         break;
+    case LUMO_SHELL_MODE_SIDEBAR:
+        resolved_index = 5;
+        break;
     default:
         return false;
     }
@@ -446,6 +451,10 @@ const char *lumo_shell_target_kind_name(enum lumo_shell_target_kind kind) {
         return "osk-key";
     case LUMO_SHELL_TARGET_GESTURE_HANDLE:
         return "gesture-handle";
+    case LUMO_SHELL_TARGET_SIDEBAR_APP:
+        return "sidebar-app";
+    case LUMO_SHELL_TARGET_SIDEBAR_DRAWER_BTN:
+        return "sidebar-drawer-btn";
     case LUMO_SHELL_TARGET_NONE:
     default:
         return "none";
@@ -737,6 +746,8 @@ uint32_t lumo_shell_transition_duration_ms(
         return visible ? 200u : 150u;
     case LUMO_SHELL_MODE_OSK:
         return visible ? 300u : 200u;
+    case LUMO_SHELL_MODE_SIDEBAR:
+        return visible ? 200u : 150u;
     case LUMO_SHELL_MODE_GESTURE:
     case LUMO_SHELL_MODE_STATUS:
     case LUMO_SHELL_MODE_BACKGROUND:
@@ -885,6 +896,29 @@ bool lumo_shell_target_for_mode_with_query(
         target->index = 0;
         target->rect = rect;
         return true;
+    case LUMO_SHELL_MODE_SIDEBAR:
+        /* check drawer button first (at bottom) */
+        if (lumo_shell_sidebar_drawer_button_rect(output_width,
+                output_height, &rect) &&
+                lumo_rect_contains(&rect, x, y)) {
+            target->kind = LUMO_SHELL_TARGET_SIDEBAR_DRAWER_BTN;
+            target->index = 0;
+            target->rect = rect;
+            return true;
+        }
+        /* check app icons */
+        for (uint32_t i = 0; i < 16; i++) {
+            if (!lumo_shell_sidebar_app_rect(output_width, output_height,
+                    i, &rect))
+                break;
+            if (lumo_rect_contains(&rect, x, y)) {
+                target->kind = LUMO_SHELL_TARGET_SIDEBAR_APP;
+                target->index = i;
+                target->rect = rect;
+                return true;
+            }
+        }
+        return false;
     case LUMO_SHELL_MODE_STATUS:
     case LUMO_SHELL_MODE_BACKGROUND:
         return false;
@@ -938,6 +972,7 @@ bool lumo_shell_surface_local_coords(
         break;
     case LUMO_SHELL_MODE_STATUS:
     case LUMO_SHELL_MODE_BACKGROUND:
+    case LUMO_SHELL_MODE_SIDEBAR:
         origin_x = 0.0;
         origin_y = 0.0;
         break;
@@ -1037,6 +1072,19 @@ bool lumo_shell_surface_config_for_mode(
         config->keyboard_interactive = false;
         config->background_rgba = 0xFF2C001E;
         break;
+    case LUMO_SHELL_MODE_SIDEBAR: {
+        uint32_t sidebar_w = lumo_shell_clamp_u32(output_width / 8, 64, 80);
+        config->name = "sidebar";
+        config->width = sidebar_w;
+        config->height = output_height;
+        config->anchor = LUMO_SHELL_ANCHOR_TOP |
+            LUMO_SHELL_ANCHOR_BOTTOM |
+            LUMO_SHELL_ANCHOR_LEFT;
+        config->exclusive_zone = 0;
+        config->keyboard_interactive = false;
+        config->background_rgba = 0xE01A1A2E;
+        break;
+    }
     default:
         return false;
     }
@@ -1113,7 +1161,66 @@ bool lumo_shell_surface_bootstrap_config(
         config->keyboard_interactive = false;
         config->background_rgba = 0xFF2C001E;
         return true;
+    case LUMO_SHELL_MODE_SIDEBAR:
+        config->name = "sidebar";
+        config->width = 64;
+        config->height = 0;
+        config->anchor = LUMO_SHELL_ANCHOR_TOP |
+            LUMO_SHELL_ANCHOR_BOTTOM |
+            LUMO_SHELL_ANCHOR_LEFT;
+        config->exclusive_zone = 0;
+        config->keyboard_interactive = false;
+        config->background_rgba = 0x00000000;
+        return true;
     default:
         return false;
     }
+}
+
+/* ── sidebar layout ──────────────────────────────────────────────── */
+
+/* App icon rect within the sidebar surface (64×h or 80×h).
+ * Icons are 48×48 squares centered horizontally, stacked vertically
+ * starting below the status bar area (56px from top). */
+bool lumo_shell_sidebar_app_rect(
+    uint32_t surface_width,
+    uint32_t surface_height,
+    uint32_t app_index,
+    struct lumo_rect *rect
+) {
+    int icon_size = 44;
+    int spacing = 8;
+    int top_margin = 56;
+    int y;
+
+    if (rect == NULL || surface_width == 0 || surface_height == 0)
+        return false;
+
+    y = top_margin + (int)app_index * (icon_size + spacing);
+    if (y + icon_size > (int)surface_height - 60) /* leave room for drawer btn */
+        return false;
+
+    rect->x = ((int)surface_width - icon_size) / 2;
+    rect->y = y;
+    rect->width = icon_size;
+    rect->height = icon_size;
+    return true;
+}
+
+/* Drawer button rect — at the bottom of the sidebar */
+bool lumo_shell_sidebar_drawer_button_rect(
+    uint32_t surface_width,
+    uint32_t surface_height,
+    struct lumo_rect *rect
+) {
+    int btn_size = 44;
+
+    if (rect == NULL || surface_width == 0 || surface_height < 80)
+        return false;
+
+    rect->x = ((int)surface_width - btn_size) / 2;
+    rect->y = (int)surface_height - btn_size - 12;
+    rect->width = btn_size;
+    rect->height = btn_size;
+    return true;
 }

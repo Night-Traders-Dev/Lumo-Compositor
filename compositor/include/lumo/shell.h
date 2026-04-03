@@ -12,6 +12,7 @@ enum lumo_shell_mode {
     LUMO_SHELL_MODE_GESTURE,
     LUMO_SHELL_MODE_STATUS,
     LUMO_SHELL_MODE_BACKGROUND,
+    LUMO_SHELL_MODE_SIDEBAR,
 };
 
 enum lumo_shell_anchor {
@@ -62,6 +63,8 @@ enum lumo_shell_target_kind {
     LUMO_SHELL_TARGET_LAUNCHER_CLOSE,
     LUMO_SHELL_TARGET_OSK_KEY,
     LUMO_SHELL_TARGET_GESTURE_HANDLE,
+    LUMO_SHELL_TARGET_SIDEBAR_APP,
+    LUMO_SHELL_TARGET_SIDEBAR_DRAWER_BTN,
 };
 
 enum lumo_shell_touch_debug_phase {
@@ -151,6 +154,14 @@ static inline bool lumo_shell_target_kind_parse(
     }
     if (strcmp(value, "gesture-handle") == 0 || strcmp(value, "gesture_handle") == 0) {
         *kind = LUMO_SHELL_TARGET_GESTURE_HANDLE;
+        return true;
+    }
+    if (strcmp(value, "sidebar-app") == 0 || strcmp(value, "sidebar_app") == 0) {
+        *kind = LUMO_SHELL_TARGET_SIDEBAR_APP;
+        return true;
+    }
+    if (strcmp(value, "sidebar-drawer-btn") == 0 || strcmp(value, "sidebar_drawer_btn") == 0) {
+        *kind = LUMO_SHELL_TARGET_SIDEBAR_DRAWER_BTN;
         return true;
     }
     if (strcmp(value, "none") == 0) {
@@ -274,6 +285,17 @@ bool lumo_shell_surface_local_coords(
     double global_y,
     double *local_x,
     double *local_y
+);
+bool lumo_shell_sidebar_app_rect(
+    uint32_t surface_width,
+    uint32_t surface_height,
+    uint32_t app_index,
+    struct lumo_rect *rect
+);
+bool lumo_shell_sidebar_drawer_button_rect(
+    uint32_t surface_width,
+    uint32_t surface_height,
+    struct lumo_rect *rect
 );
 
 #endif

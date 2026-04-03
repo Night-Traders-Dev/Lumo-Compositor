@@ -1392,6 +1392,18 @@ void lumo_protocol_push_notification(
     lumo_protocol_mark_layers_dirty(compositor);
 }
 
+void lumo_protocol_set_sidebar_visible(
+    struct lumo_compositor *compositor, bool visible
+) {
+    if (compositor == NULL || compositor->sidebar_visible == visible)
+        return;
+    compositor->sidebar_visible = visible;
+    wlr_log(WLR_INFO, "protocol: sidebar %s", visible ? "visible" : "hidden");
+    /* use the generic full-state broadcast (sidebar_visible is included) */
+    lumo_shell_state_broadcast_launcher_visible(compositor,
+        compositor->launcher_visible);
+}
+
 void lumo_protocol_set_scrim_state(
     struct lumo_compositor *compositor,
     enum lumo_scrim_state state

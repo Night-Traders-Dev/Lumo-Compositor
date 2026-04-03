@@ -128,6 +128,56 @@ void lumo_shell_send_set_u32(
     (void)lumo_shell_client_send_frame(client, &frame);
 }
 
+void lumo_shell_client_send_focus_app(
+    struct lumo_shell_client *client, uint32_t index
+) {
+    struct lumo_shell_protocol_frame frame;
+    if (client == NULL) return;
+    if (!lumo_shell_protocol_frame_init(&frame,
+            LUMO_SHELL_PROTOCOL_FRAME_REQUEST, "focus_app",
+            client->next_request_id++))
+        return;
+    lumo_shell_protocol_frame_add_u32(&frame, "index", index);
+    (void)lumo_shell_client_send_frame(client, &frame);
+}
+
+void lumo_shell_client_send_close_app(
+    struct lumo_shell_client *client, uint32_t index
+) {
+    struct lumo_shell_protocol_frame frame;
+    if (client == NULL) return;
+    if (!lumo_shell_protocol_frame_init(&frame,
+            LUMO_SHELL_PROTOCOL_FRAME_REQUEST, "close_app",
+            client->next_request_id++))
+        return;
+    lumo_shell_protocol_frame_add_u32(&frame, "index", index);
+    (void)lumo_shell_client_send_frame(client, &frame);
+}
+
+void lumo_shell_client_send_minimize_focused(
+    struct lumo_shell_client *client
+) {
+    struct lumo_shell_protocol_frame frame;
+    if (client == NULL) return;
+    if (!lumo_shell_protocol_frame_init(&frame,
+            LUMO_SHELL_PROTOCOL_FRAME_REQUEST, "minimize_focused",
+            client->next_request_id++))
+        return;
+    (void)lumo_shell_client_send_frame(client, &frame);
+}
+
+void lumo_shell_client_send_open_drawer(
+    struct lumo_shell_client *client
+) {
+    struct lumo_shell_protocol_frame frame;
+    if (client == NULL) return;
+    if (!lumo_shell_protocol_frame_init(&frame,
+            LUMO_SHELL_PROTOCOL_FRAME_REQUEST, "open_drawer",
+            client->next_request_id++))
+        return;
+    (void)lumo_shell_client_send_frame(client, &frame);
+}
+
 /* ── state parsing helpers (static) ───────────────────────────────── */
 
 static bool lumo_shell_remote_scrim_parse(
@@ -293,6 +343,40 @@ static void lumo_shell_client_apply_state_frame(
                 if (lumo_shell_protocol_frame_get(frame, key, &nval) &&
                         nval != NULL) {
                     snprintf(client->notifications[i], 128, "%s", nval);
+                }
+            }
+            changed = true;
+        }
+    }
+
+    if (lumo_shell_protocol_frame_get_bool(frame, "sidebar_visible",
+            &bool_value)) {
+        if (client->compositor_sidebar_visible != bool_value) {
+            client->compositor_sidebar_visible = bool_value;
+            fprintf(stderr, "lumo-shell: sidebar visible=%s\n",
+                bool_value ? "true" : "false");
+            changed = true;
+        }
+    }
+
+    /* running apps list for sidebar */
+    {
+        uint32_t rc = 0;
+        if (lumo_shell_protocol_frame_get_u32(frame, "running_app_count",
+                &rc) && rc <= 16) {
+            client->running_app_count = rc;
+            for (uint32_t i = 0; i < rc; i++) {
+                char key[32];
+                const char *aval = NULL;
+                snprintf(key, sizeof(key), "running_app_%u", i);
+                if (lumo_shell_protocol_frame_get(frame, key, &aval) &&
+                        aval != NULL) {
+                    snprintf(client->running_app_ids[i], 64, "%s", aval);
+                }
+                snprintf(key, sizeof(key), "running_title_%u", i);
+                if (lumo_shell_protocol_frame_get(frame, key, &aval) &&
+                        aval != NULL) {
+                    snprintf(client->running_app_titles[i], 64, "%s", aval);
                 }
             }
             changed = true;
