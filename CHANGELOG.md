@@ -57,11 +57,36 @@ All notable changes to this project will be documented in this file.
 - All edge gestures blocked until splash completes.
 - Version string displayed at screen edge.
 
-### Sidebar Sizing
+### WiFi Signal Bars
+
+- Dynamic wifi signal strength using `iw dev wlan0 link` (fallback for riscv64 kernels without `/proc/net/wireless`).
+- Signal refreshed every 10 seconds: >-50dBm=4 bars, >-60=3, >-70=2, >-90=1.
+- Falls back to checking interface operstate if iw unavailable.
+
+### Time Panel Sync
+
+- Time panel on launcher surface now redraws periodically when visible, keeping the clock in sync with the status bar.
+
+### 5-Minute Wave Loop
+
+- Extended pre-rendered wave loop from 60 seconds to 5 minutes (1500 frames at 5fps).
+- 3-second crossfade at boundary for seamless infinite looping.
+- ~366 MB RAM usage (safe for 8GB devices).
+- 5fps wave playback — sufficient for slow-moving glow effects.
+
+### Duplicate App Prevention
+
+- Tapping a launcher tile for an already-running app focuses the existing instance.
+- Terminal and Browser exempt — allow multiple windows.
+- "NEW WINDOW" option in sidebar context menu for terminal/browser (long-press).
+
+### Sidebar Improvements
 
 - Portrait mode: 25% of screen width (200-320px).
 - Landscape mode: 10% of screen width (100-160px).
-- Context menu repositioned to avoid rendering off-screen.
+- Context menu repositioned above icon to avoid off-screen rendering.
+- App icons show dark purple background with white letter for visibility.
+- Running app list uses 80-field protocol (bumped from 48).
 
 ### Version
 

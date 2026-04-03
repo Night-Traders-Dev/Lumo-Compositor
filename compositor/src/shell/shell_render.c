@@ -1587,13 +1587,14 @@ static void lumo_draw_wave_layer(
 #define LUMO_WAVE_MAX_H 1024
 static uint8_t wave_glow_buf[LUMO_WAVE_MAX_W * LUMO_WAVE_MAX_H];
 
-/* Pre-rendered wave loop: 5 minutes at 10fps = 3000 frames of half-res
- * glow stored in RAM (~732 MB).  A 3-second crossfade at the boundary
+/* Pre-rendered wave loop: 5 minutes at 5fps = 1500 frames of half-res
+ * glow stored in RAM (~366 MB).  A 3-second crossfade at the boundary
  * makes the loop seamless regardless of wave frequencies.
+ * 5fps is sufficient — waves move slowly and the glow is soft.
  * Pre-computed once at startup, then playback is just memcpy. */
-#define WAVE_LOOP_FRAMES 3000
-#define WAVE_LOOP_FPS    10
-#define WAVE_LOOP_BLEND  30   /* frames to crossfade (3s at 10fps) */
+#define WAVE_LOOP_FRAMES 1500
+#define WAVE_LOOP_FPS    5
+#define WAVE_LOOP_BLEND  15   /* frames to crossfade (3s at 5fps) */
 static uint8_t *wave_loop_buf;   /* 600 × half_w × half_h bytes */
 static uint32_t wave_loop_half_w;
 static uint32_t wave_loop_half_h;

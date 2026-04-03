@@ -66,6 +66,34 @@ From the base RGB, the engine derives:
 - `text_secondary`: always warm grey `#AEA79F`
 - `dim/separator`: translucent version of stroke color
 
+## Animated Background (PS4 Flow Waves)
+
+The background renders 7 sine-based wave curves with asymmetric glow falloff,
+composited onto the time/weather gradient. The animation is pre-rendered at
+startup into a seamless loop stored in RAM:
+
+- **Loop duration**: 5 minutes (1500 frames at 5fps)
+- **Resolution**: Half-res glow buffer (400×640 uint8), upscaled 2× for composite
+- **RAM usage**: ~366 MB
+- **Crossfade**: 3-second blend at loop boundary for seamless infinite playback
+- **CPU at runtime**: 0% — playback is just `memcpy` from pre-rendered buffer
+- **Boot splash**: Lumo icon + Ubuntu-style three-dot indicator shown during prerender (~80s)
+
+The gradient background smoothly interpolates between hour palettes based on
+the current minute, so there are no hard color jumps at hour boundaries.
+
+## WiFi Signal
+
+Status bar wifi bars update every 10 seconds using `iw dev wlan0 link` to read
+signal strength in dBm. Fallback to `/proc/net/wireless` if available.
+
+| Signal     | Bars           |
+| ---------- | -------------- |
+| > -50 dBm  | 4 (excellent)  |
+| > -60 dBm  | 3 (good)       |
+| > -70 dBm  | 2 (fair)       |
+| > -90 dBm  | 1 (weak)       |
+
 ## Weather Data Source
 
 Weather is fetched every 5 minutes from `wttr.in/41101` using:
