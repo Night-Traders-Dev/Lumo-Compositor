@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.66] - 2026-04-03
+
+### GPU Discovery: Imagination PowerVR BXE-2-32
+
+- **Discovered working GPU** on OrangePi RV2: Imagination PowerVR BXE-2-32 with OpenGL ES 3.2, Vulkan 1.3.277, and OpenCL support. The GPU was present with driver loaded (`pvr` kernel module, BVNC 36.29.52.182) but never used because GBM device creation failed on the display DRM node.
+- **Root cause identified**: The display controller (`ky-drm-drv`) doesn't support GBM buffer allocation. wlroots creates a GBM device on the display node for scanout buffers, which fails. Setting `WLR_RENDER_DRM_DEVICE=/dev/dri/renderD128` successfully enables the GLES2 renderer but the allocator still fails on the display node.
+- **GPU confirmed working**: GBM device creation succeeds on the render node (`/dev/dri/renderD128`). EGL 1.5, GLES 3.2 via Imagination Technologies, Vulkan 1.3 via `libVK_IMG.so`. WebKitGTK can use the GPU independently for page compositing.
+- **WebKit GPU acceleration enabled**: Removed `WEBKIT_HARDWARE_ACCELERATION_POLICY_NEVER` and `GSK_RENDERER=cairo` from lumo-webview. WebKit now uses hardware acceleration when available.
+
+### RISC-V Vector 1.0 SIMD
+
+- Added RVV 1.0 vectorized pixel fill to both shell (`lumo_fill_span`) and app (`lumo_app_fill_span`) SHM renderers. Uses `vsetvl_e32m2` + `vmv_v_x_u32m2` + `vse32_v_u32m2` for LMUL=2 wide vector stores.
+- ISA: `rv64imafdcv` with `zve32x`, `zve64d`, `zvfh`, `zba`, `zbb`, `zbs` — full vector and bit-manipulation extensions.
+- Scalar unrolled fallback preserved for non-RVV builds.
+
+### Settings App: Display Info
+
+- Display sub-page now shows dynamic renderer detection (reads compositor journal for renderer type).
+- Added GPU info line showing "IMG BXE-2-32 (VULKAN 1.3)" when PowerVR render node is present.
+- Renderer field updates automatically: shows "PIXMAN" for software, "GLES2" for GPU when enabled.
+
+### Version
+
+- Bumped to 0.0.66.
+
 ## [0.0.65] - 2026-04-03
 
 ### Browser Performance Optimization

@@ -63,8 +63,31 @@ uint32_t lumo_app_argb(uint8_t a, uint8_t r, uint8_t g, uint8_t b) {
         ((uint32_t)g << 8) | (uint32_t)b;
 }
 
+/* RISC-V Vector 1.0 accelerated fill when available */
+#if defined(__riscv) && defined(__riscv_v) && __riscv_v_intrinsic >= 1000000
+#include <riscv_vector.h>
+#define LUMO_HAS_RVV 1
+#endif
+
 static void lumo_app_fill_span(uint32_t *row_ptr, int count, uint32_t color) {
     if (count <= 0) return;
+#ifdef LUMO_HAS_RVV
+    /* RVV 1.0: vectorized 32-bit fill — processes VLEN/32 pixels per
+     * iteration.  On the Ky X60 with typical VLEN=128, that's 4 pixels
+     * per vector op (8x with LMUL=2).  For large fills this is
+     * significantly faster than scalar unrolling. */
+    {
+        size_t n = (size_t)count;
+        size_t i = 0;
+        while (i < n) {
+            size_t vl = __riscv_vsetvl_e32m2(n - i);
+            vuint32m2_t vc = __riscv_vmv_v_x_u32m2(color, vl);
+            __riscv_vse32_v_u32m2(row_ptr + i, vc, vl);
+            i += vl;
+        }
+        return;
+    }
+#endif
     if (count <= 8) {
         for (int i = 0; i < count; i++) row_ptr[i] = color;
         return;

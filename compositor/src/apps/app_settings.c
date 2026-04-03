@@ -413,6 +413,58 @@ static void draw_button(
         lumo_app_argb(0xFF, 0xFF, 0xFF, 0xFF), label);
 }
 
+/* detect compositor renderer + GPU info */
+static const char *get_renderer_info(void) {
+    static char info[128];
+    FILE *fp;
+    /* check if WLR_RENDER_DRM_DEVICE is set (GPU mode) */
+    const char *rdev = getenv("WLR_RENDER_DRM_DEVICE");
+    if (rdev != NULL && rdev[0] != '\0') {
+        /* GPU rendering — read GPU name from DRM */
+        fp = fopen("/sys/class/drm/card0/device/driver/module/drivers/"
+            "platform:pvrsrvkm/cac00000.imggpu/uevent", "r");
+        if (fp) { fclose(fp); return "GLES 3.2 PVR BXE-2-32"; }
+        return "GLES GPU";
+    }
+    /* check dmesg for renderer type */
+    fp = popen("journalctl -b 2>/dev/null | grep 'Creating.*renderer' | "
+        "tail -1 | sed 's/.*Creating //' | sed 's/ renderer//' 2>/dev/null",
+        "r");
+    if (fp) {
+        info[0] = '\0';
+        if (fgets(info, sizeof(info), fp)) {
+            char *nl = strchr(info, '\n');
+            if (nl) *nl = '\0';
+        }
+        pclose(fp);
+        if (info[0] != '\0') {
+            /* capitalize */
+            for (int i = 0; info[i]; i++)
+                if (info[i] >= 'a' && info[i] <= 'z')
+                    info[i] -= 32;
+            return info;
+        }
+    }
+    return "PIXMAN SOFTWARE";
+}
+
+static const char *get_gpu_info(void) {
+    /* check if PVR GPU is present */
+    FILE *fp = fopen("/sys/class/drm/renderD128/device/uevent", "r");
+    if (fp) {
+        char line[128];
+        while (fgets(line, sizeof(line), fp)) {
+            if (strncmp(line, "OF_NAME=", 8) == 0) {
+                fclose(fp);
+                return "IMG BXE-2-32 (VULKAN 1.3)";
+            }
+        }
+        fclose(fp);
+        return "GPU DETECTED";
+    }
+    return "NONE";
+}
+
 static void render_display(
     const struct lumo_app_render_context *ctx,
     uint32_t *px, uint32_t w, uint32_t h
@@ -423,7 +475,8 @@ static void render_display(
     snprintf(buf, sizeof(buf), "%ux%u", w, h);
     draw_info(px, w, h, y, "RESOLUTION", buf); y += 28;
     draw_info(px, w, h, y, "REFRESH", "60 HZ"); y += 28;
-    draw_info(px, w, h, y, "RENDERER", "PIXMAN SOFTWARE"); y += 28;
+    draw_info(px, w, h, y, "RENDERER", get_renderer_info()); y += 28;
+    draw_info(px, w, h, y, "GPU", get_gpu_info()); y += 28;
     draw_toggle(px, w, h, y, "AUTO ROTATE",
         ctx->settings.auto_rotate); y += 34;
     {

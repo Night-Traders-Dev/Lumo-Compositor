@@ -77,10 +77,31 @@ void lumo_clear_pixels(
 
 /* Fill a horizontal span of pixels with a single color.
  * This is the innermost hot loop for all rect/rounded/gradient fills. */
+/* RISC-V Vector 1.0 accelerated fill */
+#if defined(__riscv) && defined(__riscv_v) && __riscv_v_intrinsic >= 1000000
+#include <riscv_vector.h>
+#define LUMO_SHELL_HAS_RVV 1
+#endif
+
 void lumo_fill_span(uint32_t *row_ptr, int count, uint32_t color) {
     if (count <= 0) {
         return;
     }
+
+#ifdef LUMO_SHELL_HAS_RVV
+    /* RVV 1.0: vectorized 32-bit fill using LMUL=2 for wider vectors */
+    {
+        size_t n = (size_t)count;
+        size_t i = 0;
+        while (i < n) {
+            size_t vl = __riscv_vsetvl_e32m2(n - i);
+            vuint32m2_t vc = __riscv_vmv_v_x_u32m2(color, vl);
+            __riscv_vse32_v_u32m2(row_ptr + i, vc, vl);
+            i += vl;
+        }
+        return;
+    }
+#endif
 
     /* For short spans, scalar fill is fastest (avoids setup overhead). */
     if (count <= 8) {
