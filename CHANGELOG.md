@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.65] - 2026-04-03
+
+### Browser Performance Optimization
+
+- **System tuning**: Set CPU governor to `performance`, VM swappiness to 10, VFS cache pressure to 50. Persistent via `/etc/rc.local`. WebKit shared libraries preloaded into page cache at boot.
+- **tmpfs disk cache**: WebKit disk cache directed to `/tmp/lumo-webkit-cache` (RAM-speed I/O instead of NVMe). Set via `XDG_CACHE_HOME` environment variable.
+- **WebKit settings**: Disabled favicons, media, WebAudio, MediaStream, WebGL. Limited web process count to 1.
+- **Fallback chain**: Browser URL launches try lumo-webview → netsurf-gtk → epiphany in order, giving users a fast fallback when WebKit is slow.
+- **Warm webview**: Watches `/tmp/lumo-webview-url` for URLs, presents fullscreen when URL received, hides on close instead of terminating (stays warm for next load).
+
+### riscv64 Web Rendering Research
+
+- Benchmarked 4 browser engines on OrangePi RV2:
+  - lumo-webview (WebKitGTK): 15s cold start, 37MB RSS, full modern web
+  - NetSurf: 8s cold start, 61MB RSS, limited CSS3/JS
+  - Dillo: ~2s cold start, ~10MB RSS, basic HTML only
+  - Native SHM browser: 1s, 7.5MB RSS, home/bookmarks UI only
+- Found WebKit riscv64 LLVM code generation bug (WebKit bug 224134) affecting JavaScript compilation — explains slow JS execution on this platform.
+- WPE WebKit (embedded-optimized WebKit) not packaged for riscv64 Ubuntu.
+- Servo browser engine has experimental riscv64 support but no stable builds.
+
+### Version
+
+- Bumped to 0.0.65.
+
 ## [0.0.64] - 2026-04-02
 
 ### Browser Keyboard Input
