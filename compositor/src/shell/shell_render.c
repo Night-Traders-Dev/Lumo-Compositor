@@ -1564,10 +1564,13 @@ static void lumo_draw_wave_layer(
 struct lumo_bg_stripe {
     uint32_t *pixels;
     uint32_t width;
+    uint32_t height;
     uint32_t frame;
     uint32_t y_start;
     uint32_t y_end;
     const uint32_t *row_cache;
+    uint32_t wave_tr, wave_tg, wave_tb;
+    float wave_t;
 };
 
 static struct {
@@ -1596,15 +1599,76 @@ static void *bg_worker(void *arg) {
         generation = bg_pool.generation;
         pthread_mutex_unlock(&bg_pool.start_mutex);
 
-        /* render our stripe — clean gradient fill for PS4 Flow waves.
-         * No streaks or glow modulation — the wave layer provides
-         * all the visual interest on top of the smooth gradient. */
+        /* render our stripe: gradient fill + PS4 Flow waves in one pass.
+         * Each worker handles both the gradient and waves for its rows,
+         * eliminating the separate single-threaded wave pass. */
         struct lumo_bg_stripe *t = &bg_pool.tasks[id];
+        float h_inv = 1.0f / (float)t->height;
+
+        /* PS4 wave parameters (same as lumo_draw_wave_layer) */
+        static const struct {
+            float speed, freq, amp, vert_off, line_w, sharp;
+            bool invert;
+        } wv[7] = {
+            { 0.2f, 0.20f, 0.20f, 0.50f, 0.10f, 15.0f, false },
+            { 0.4f, 0.40f, 0.15f, 0.50f, 0.10f, 17.0f, false },
+            { 0.3f, 0.60f, 0.15f, 0.50f, 0.05f, 23.0f, false },
+            { 0.1f, 0.26f, 0.07f, 0.30f, 0.10f, 17.0f, true },
+            { 0.3f, 0.36f, 0.07f, 0.30f, 0.10f, 17.0f, true },
+            { 0.5f, 0.46f, 0.07f, 0.30f, 0.05f, 23.0f, true },
+            { 0.2f, 0.58f, 0.05f, 0.30f, 0.20f, 15.0f, true },
+        };
+
         for (uint32_t y = t->y_start; y < t->y_end; y++) {
             uint32_t row_color = y < 2048 ? t->row_cache[y] :
                 t->row_cache[2047];
-            lumo_fill_span(t->pixels + y * t->width,
-                (int)t->width, row_color);
+            uint32_t *row_ptr = t->pixels + y * t->width;
+
+            /* fill gradient first */
+            lumo_fill_span(row_ptr, (int)t->width, row_color);
+
+            /* then blend waves for this row */
+            float uv_y = (float)y * h_inv;
+            for (uint32_t x = 0; x < t->width; x++) {
+                float uv_x = (float)x / (float)t->width;
+                float total_glow = 0.0f;
+
+                for (int w = 0; w < 7; w++) {
+                    float angle = t->wave_t * wv[w].speed * wv[w].freq
+                        * -1.0f + uv_x * 2.0f;
+                    float wy = fast_sin(angle) * wv[w].amp + wv[w].vert_off;
+                    float raw_dist = wy - uv_y;
+                    float dist = raw_dist < 0.0f ? -raw_dist : raw_dist;
+
+                    if (wv[w].invert) {
+                        if (raw_dist > 0.0f) dist *= 4.0f;
+                    } else {
+                        if (raw_dist < 0.0f) dist *= 4.0f;
+                    }
+
+                    float max_d = wv[w].line_w * 1.5f;
+                    if (dist >= max_d) continue;
+
+                    float gl = smoothstep(max_d, 0.0f, dist);
+                    gl = fast_pow(gl, (int)wv[w].sharp);
+                    total_glow += gl * 0.35f;
+                }
+
+                if (total_glow < 0.004f) continue;
+                if (total_glow > 1.0f) total_glow = 1.0f;
+
+                uint32_t a = (uint32_t)(total_glow * 255.0f);
+                if (a > 255) a = 255;
+
+                uint32_t dst = row_ptr[x];
+                uint32_t or_ = ((dst >> 16) & 0xFF) + ((t->wave_tr * a) >> 8);
+                uint32_t og = ((dst >> 8) & 0xFF) + ((t->wave_tg * a) >> 8);
+                uint32_t ob = (dst & 0xFF) + ((t->wave_tb * a) >> 8);
+                if (or_ > 255) or_ = 255;
+                if (og > 255) og = 255;
+                if (ob > 255) ob = 255;
+                row_ptr[x] = 0xFF000000 | (or_ << 16) | (og << 8) | ob;
+            }
         }
 
         /* wait for all stripes to complete */
@@ -1631,20 +1695,27 @@ static void bg_pool_init(void) {
 
 /* dispatch row stripes to the thread pool and wait for completion */
 static void bg_parallel_fill(uint32_t *pixels, uint32_t width,
-    uint32_t height, uint32_t frame, const uint32_t *row_cache)
+    uint32_t height, uint32_t frame, const uint32_t *row_cache,
+    uint32_t wave_tr, uint32_t wave_tg, uint32_t wave_tb, float wave_t)
 {
     if (!bg_pool.initialized) bg_pool_init();
+    init_sine_lut();
 
     uint32_t stripe_h = height / LUMO_BG_THREADS;
     pthread_mutex_lock(&bg_pool.start_mutex);
     for (int i = 0; i < LUMO_BG_THREADS; i++) {
         bg_pool.tasks[i].pixels = pixels;
         bg_pool.tasks[i].width = width;
+        bg_pool.tasks[i].height = height;
         bg_pool.tasks[i].frame = frame;
         bg_pool.tasks[i].row_cache = row_cache;
         bg_pool.tasks[i].y_start = (uint32_t)i * stripe_h;
         bg_pool.tasks[i].y_end = (i == LUMO_BG_THREADS - 1)
             ? height : (uint32_t)(i + 1) * stripe_h;
+        bg_pool.tasks[i].wave_tr = wave_tr;
+        bg_pool.tasks[i].wave_tg = wave_tg;
+        bg_pool.tasks[i].wave_tb = wave_tb;
+        bg_pool.tasks[i].wave_t = wave_t;
     }
 
     /* publish a new frame generation so each worker renders once. */
@@ -1770,14 +1841,17 @@ static void lumo_draw_animated_bg(
         bg_cache_weather_code = weather_code;
     }
 
-    /* multi-core parallel background fill — splits rows across 8
-     * worker threads for ~6-7x speedup on the 8-core RISC-V CPU.
-     * Each thread fills an independent horizontal stripe. */
-    bg_parallel_fill(pixels, width, height, frame, bg_row_cache);
+    /* wave tint color */
+    uint32_t wave_tr = base_r + 0x40 > 0xFF ? 0xFF : base_r + 0x40;
+    uint32_t wave_tg = base_g + 0x30 > 0xFF ? 0xFF : base_g + 0x30;
+    uint32_t wave_tb = base_b + 0x48 > 0xFF ? 0xFF : base_b + 0x48;
+    float wave_t = (float)frame * 0.003f;
 
-    /* PS4-style flowing light waves */
-    lumo_draw_wave_layer(pixels, width, height, frame,
-                         base_r, base_g, base_b);
+    /* multi-core parallel gradient fill + PS4 Flow waves — all 8 cores
+     * render both the gradient AND waves for their row stripe. This
+     * eliminates the single-threaded wave pass bottleneck. */
+    bg_parallel_fill(pixels, width, height, frame, bg_row_cache,
+                     wave_tr, wave_tg, wave_tb, wave_t);
 }
 
 /* ── main render entry point (extern) ─────────────────────────────── */
