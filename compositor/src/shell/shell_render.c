@@ -1565,16 +1565,33 @@ static void lumo_draw_wave_layer(
 
 #define LUMO_BG_THREADS 8
 
+/* Half-resolution wave glow buffer.  Waves are computed at half the
+ * output resolution (half_w × half_h) as uint8 intensity values, then
+ * upscaled 2× and composited onto the full-res gradient.  This cuts
+ * wave math by 75% while the soft glow look stays virtually identical. */
+#define LUMO_WAVE_MAX_W 640
+#define LUMO_WAVE_MAX_H 1024
+static uint8_t wave_glow_buf[LUMO_WAVE_MAX_W * LUMO_WAVE_MAX_H];
+
 struct lumo_bg_stripe {
+    /* full-res output */
     uint32_t *pixels;
     uint32_t width;
     uint32_t height;
-    uint32_t frame;
+    const uint32_t *row_cache;
+    /* half-res wave overlay */
+    uint8_t *glow;
+    uint32_t half_w;
+    uint32_t half_h;
+    /* stripe bounds (in half-res coords for wave pass,
+     * full-res coords for gradient+composite pass) */
     uint32_t y_start;
     uint32_t y_end;
-    const uint32_t *row_cache;
+    /* wave parameters */
     uint32_t wave_tr, wave_tg, wave_tb;
     float wave_t;
+    /* which pass: 0 = wave glow (half-res), 1 = gradient + composite */
+    int pass;
 };
 
 static struct {
@@ -1587,6 +1604,111 @@ static struct {
     bool shutdown;
     bool initialized;
 } bg_pool;
+
+/* PS4 wave parameters — shared across all workers */
+static const struct {
+    float speed, freq, amp, vert_off, line_w, sharp;
+    bool invert;
+} wv[7] = {
+    { 0.2f, 0.20f, 0.20f, 0.50f, 0.10f, 15.0f, false },
+    { 0.4f, 0.40f, 0.15f, 0.50f, 0.10f, 17.0f, false },
+    { 0.3f, 0.60f, 0.15f, 0.50f, 0.05f, 23.0f, false },
+    { 0.1f, 0.26f, 0.07f, 0.30f, 0.10f, 17.0f, true },
+    { 0.3f, 0.36f, 0.07f, 0.30f, 0.10f, 17.0f, true },
+    { 0.5f, 0.46f, 0.07f, 0.30f, 0.05f, 23.0f, true },
+    { 0.2f, 0.58f, 0.05f, 0.30f, 0.20f, 15.0f, true },
+};
+
+/* Pass 0: compute wave glow at half resolution into uint8 buffer */
+static void bg_worker_wave_pass(struct lumo_bg_stripe *t) {
+    float h_inv = 1.0f / (float)t->half_h;
+    float w_inv = 1.0f / (float)t->half_w;
+
+    for (uint32_t hy = t->y_start; hy < t->y_end; hy++) {
+        float uv_y = (float)hy * h_inv;
+        uint8_t *glow_row = t->glow + hy * t->half_w;
+
+        /* pre-check which waves affect this row */
+        uint8_t active_waves = 0;
+        for (int w = 0; w < 7; w++) {
+            float margin = wv[w].line_w * 1.5f;
+            float y_min = wv[w].vert_off - wv[w].amp - margin;
+            float y_max = wv[w].vert_off + wv[w].amp + margin;
+            if (wv[w].invert) y_min -= margin * 3.0f;
+            else y_max += margin * 3.0f;
+            if (uv_y >= y_min && uv_y <= y_max)
+                active_waves |= (1 << w);
+        }
+
+        if (active_waves == 0) {
+            memset(glow_row, 0, t->half_w);
+            continue;
+        }
+
+        for (uint32_t hx = 0; hx < t->half_w; hx++) {
+            float uv_x = (float)hx * w_inv;
+            float total_glow = 0.0f;
+
+            for (int w = 0; w < 7; w++) {
+                if (!(active_waves & (1 << w))) continue;
+
+                float angle = t->wave_t * wv[w].speed * wv[w].freq
+                    * -1.0f + uv_x * 2.0f;
+                float wy = fast_sin(angle) * wv[w].amp + wv[w].vert_off;
+                float raw_dist = wy - uv_y;
+                float dist = raw_dist < 0.0f ? -raw_dist : raw_dist;
+
+                if (wv[w].invert) {
+                    if (raw_dist > 0.0f) dist *= 4.0f;
+                } else {
+                    if (raw_dist < 0.0f) dist *= 4.0f;
+                }
+
+                float max_d = wv[w].line_w * 1.5f;
+                if (dist >= max_d) continue;
+
+                float gl = smoothstep(max_d, 0.0f, dist);
+                gl = fast_pow(gl, (int)wv[w].sharp);
+                total_glow += gl * 0.35f;
+            }
+
+            if (total_glow > 1.0f) total_glow = 1.0f;
+            glow_row[hx] = (uint8_t)(total_glow * 255.0f);
+        }
+    }
+}
+
+/* Pass 1: fill gradient + upscale-composite wave glow onto full-res output */
+static void bg_worker_composite_pass(struct lumo_bg_stripe *t) {
+    for (uint32_t y = t->y_start; y < t->y_end; y++) {
+        uint32_t row_color = y < 2048 ? t->row_cache[y] : t->row_cache[2047];
+        uint32_t *row_ptr = t->pixels + y * t->width;
+
+        /* fill gradient */
+        lumo_fill_span(row_ptr, (int)t->width, row_color);
+
+        /* upscale wave glow: each half-res pixel maps to a 2×2 block */
+        uint32_t hy = y / 2;
+        if (hy >= t->half_h) hy = t->half_h - 1;
+        const uint8_t *glow_row = t->glow + hy * t->half_w;
+
+        for (uint32_t x = 0; x < t->width; x++) {
+            uint32_t hx = x / 2;
+            if (hx >= t->half_w) hx = t->half_w - 1;
+            uint32_t a = glow_row[hx];
+            if (a == 0) continue;
+
+            uint32_t dst = row_ptr[x];
+            uint32_t or_ = ((dst >> 16) & 0xFF) + ((t->wave_tr * a) >> 8);
+            uint32_t og = ((dst >> 8) & 0xFF) + ((t->wave_tg * a) >> 8);
+            uint32_t ob = (dst & 0xFF) + ((t->wave_tb * a) >> 8);
+            if (or_ > 255) or_ = 255;
+            if (og > 255) og = 255;
+            if (ob > 255) ob = 255;
+            row_ptr[x] = 0xFF000000 | (or_ << 16) | (og << 8) | ob;
+        }
+    }
+}
 
 static void *bg_worker(void *arg) {
     int id = (int)(intptr_t)arg;
@@ -1603,101 +1725,12 @@ static void *bg_worker(void *arg) {
         generation = bg_pool.generation;
         pthread_mutex_unlock(&bg_pool.start_mutex);
 
-        /* render our stripe: gradient fill + PS4 Flow waves in one pass.
-         * Each worker handles both the gradient and waves for its rows,
-         * eliminating the separate single-threaded wave pass. */
         struct lumo_bg_stripe *t = &bg_pool.tasks[id];
-        float h_inv = 1.0f / (float)t->height;
+        if (t->pass == 0)
+            bg_worker_wave_pass(t);
+        else
+            bg_worker_composite_pass(t);
 
-        /* PS4 wave parameters (same as lumo_draw_wave_layer) */
-        static const struct {
-            float speed, freq, amp, vert_off, line_w, sharp;
-            bool invert;
-        } wv[7] = {
-            { 0.2f, 0.20f, 0.20f, 0.50f, 0.10f, 15.0f, false },
-            { 0.4f, 0.40f, 0.15f, 0.50f, 0.10f, 17.0f, false },
-            { 0.3f, 0.60f, 0.15f, 0.50f, 0.05f, 23.0f, false },
-            { 0.1f, 0.26f, 0.07f, 0.30f, 0.10f, 17.0f, true },
-            { 0.3f, 0.36f, 0.07f, 0.30f, 0.10f, 17.0f, true },
-            { 0.5f, 0.46f, 0.07f, 0.30f, 0.05f, 23.0f, true },
-            { 0.2f, 0.58f, 0.05f, 0.30f, 0.20f, 15.0f, true },
-        };
-
-        for (uint32_t y = t->y_start; y < t->y_end; y++) {
-            uint32_t row_color = y < 2048 ? t->row_cache[y] :
-                t->row_cache[2047];
-            uint32_t *row_ptr = t->pixels + y * t->width;
-
-            /* fill gradient */
-            lumo_fill_span(row_ptr, (int)t->width, row_color);
-
-            /* pre-check: which waves could possibly affect this row?
-             * A wave's Y center ranges from (vert_off - amp) to
-             * (vert_off + amp). If this row is outside that range
-             * (plus line_w margin), skip the wave entirely. */
-            float uv_y = (float)y * h_inv;
-            uint8_t active_waves = 0;
-            for (int w = 0; w < 7; w++) {
-                float margin = wv[w].line_w * 1.5f;
-                float y_min = wv[w].vert_off - wv[w].amp - margin;
-                float y_max = wv[w].vert_off + wv[w].amp + margin;
-                /* asymmetric: extend the soft side by 4x */
-                if (wv[w].invert) y_min -= margin * 3.0f;
-                else y_max += margin * 3.0f;
-                if (uv_y >= y_min && uv_y <= y_max)
-                    active_waves |= (1 << w);
-            }
-
-            /* skip row entirely if no waves affect it */
-            if (active_waves == 0) continue;
-
-            /* wave rendering for this row — only check active waves */
-            float w_inv = 1.0f / (float)t->width;
-            for (uint32_t x = 0; x < t->width; x++) {
-                float uv_x = (float)x * w_inv;
-                float total_glow = 0.0f;
-
-                for (int w = 0; w < 7; w++) {
-                    if (!(active_waves & (1 << w))) continue;
-
-                    float angle = t->wave_t * wv[w].speed * wv[w].freq
-                        * -1.0f + uv_x * 2.0f;
-                    float wy = fast_sin(angle) * wv[w].amp + wv[w].vert_off;
-                    float raw_dist = wy - uv_y;
-                    float dist = raw_dist < 0.0f ? -raw_dist : raw_dist;
-
-                    if (wv[w].invert) {
-                        if (raw_dist > 0.0f) dist *= 4.0f;
-                    } else {
-                        if (raw_dist < 0.0f) dist *= 4.0f;
-                    }
-
-                    float max_d = wv[w].line_w * 1.5f;
-                    if (dist >= max_d) continue;
-
-                    float gl = smoothstep(max_d, 0.0f, dist);
-                    gl = fast_pow(gl, (int)wv[w].sharp);
-                    total_glow += gl * 0.35f;
-                }
-
-                if (total_glow < 0.004f) continue;
-                if (total_glow > 1.0f) total_glow = 1.0f;
-
-                uint32_t a = (uint32_t)(total_glow * 255.0f);
-                if (a > 255) a = 255;
-
-                uint32_t dst = row_ptr[x];
-                uint32_t or_ = ((dst >> 16) & 0xFF) + ((t->wave_tr * a) >> 8);
-                uint32_t og = ((dst >> 8) & 0xFF) + ((t->wave_tg * a) >> 8);
-                uint32_t ob = (dst & 0xFF) + ((t->wave_tb * a) >> 8);
-                if (or_ > 255) or_ = 255;
-                if (og > 255) og = 255;
-                if (ob > 255) ob = 255;
-                row_ptr[x] = 0xFF000000 | (or_ << 16) | (og << 8) | ob;
-            }
-        }
-
-        /* wait for all stripes to complete */
         pthread_barrier_wait(&bg_pool.barrier);
     }
     return NULL;
@@ -1716,40 +1749,63 @@ static void bg_pool_init(void) {
     }
     bg_pool.initialized = true;
     fprintf(stderr, "lumo-shell: background thread pool started "
-        "(%d workers)\n", LUMO_BG_THREADS);
+        "(%d workers, half-res waves)\n", LUMO_BG_THREADS);
 }
 
-/* dispatch row stripes to the thread pool and wait for completion */
+/* Two-pass parallel rendering:
+ *   Pass 0 — compute wave glow at half resolution (8 workers)
+ *   Pass 1 — fill full-res gradient + upscale-composite glow (8 workers)
+ */
 static void bg_parallel_fill(uint32_t *pixels, uint32_t width,
     uint32_t height, uint32_t frame, const uint32_t *row_cache,
     uint32_t wave_tr, uint32_t wave_tg, uint32_t wave_tb, float wave_t)
 {
     if (!bg_pool.initialized) bg_pool_init();
     init_sine_lut();
+    (void)frame;
 
-    uint32_t stripe_h = height / LUMO_BG_THREADS;
+    uint32_t half_w = width / 2;
+    uint32_t half_h = height / 2;
+    if (half_w > LUMO_WAVE_MAX_W) half_w = LUMO_WAVE_MAX_W;
+    if (half_h > LUMO_WAVE_MAX_H) half_h = LUMO_WAVE_MAX_H;
+
+    /* ── Pass 0: wave glow at half-res ─────────────────────────────── */
+    uint32_t stripe_h = half_h / LUMO_BG_THREADS;
     pthread_mutex_lock(&bg_pool.start_mutex);
     for (int i = 0; i < LUMO_BG_THREADS; i++) {
         bg_pool.tasks[i].pixels = pixels;
         bg_pool.tasks[i].width = width;
         bg_pool.tasks[i].height = height;
-        bg_pool.tasks[i].frame = frame;
         bg_pool.tasks[i].row_cache = row_cache;
+        bg_pool.tasks[i].glow = wave_glow_buf;
+        bg_pool.tasks[i].half_w = half_w;
+        bg_pool.tasks[i].half_h = half_h;
         bg_pool.tasks[i].y_start = (uint32_t)i * stripe_h;
         bg_pool.tasks[i].y_end = (i == LUMO_BG_THREADS - 1)
-            ? height : (uint32_t)(i + 1) * stripe_h;
+            ? half_h : (uint32_t)(i + 1) * stripe_h;
         bg_pool.tasks[i].wave_tr = wave_tr;
         bg_pool.tasks[i].wave_tg = wave_tg;
         bg_pool.tasks[i].wave_tb = wave_tb;
         bg_pool.tasks[i].wave_t = wave_t;
+        bg_pool.tasks[i].pass = 0;
     }
-
-    /* publish a new frame generation so each worker renders once. */
     bg_pool.generation++;
     pthread_cond_broadcast(&bg_pool.start_cond);
     pthread_mutex_unlock(&bg_pool.start_mutex);
+    pthread_barrier_wait(&bg_pool.barrier);
 
-    /* wait for all stripes to complete */
+    /* ── Pass 1: full-res gradient + composite ─────────────────────── */
+    stripe_h = height / LUMO_BG_THREADS;
+    pthread_mutex_lock(&bg_pool.start_mutex);
+    for (int i = 0; i < LUMO_BG_THREADS; i++) {
+        bg_pool.tasks[i].y_start = (uint32_t)i * stripe_h;
+        bg_pool.tasks[i].y_end = (i == LUMO_BG_THREADS - 1)
+            ? height : (uint32_t)(i + 1) * stripe_h;
+        bg_pool.tasks[i].pass = 1;
+    }
+    bg_pool.generation++;
+    pthread_cond_broadcast(&bg_pool.start_cond);
+    pthread_mutex_unlock(&bg_pool.start_mutex);
     pthread_barrier_wait(&bg_pool.barrier);
 }
 
@@ -1757,8 +1813,79 @@ static void bg_parallel_fill(uint32_t *pixels, uint32_t width,
 
 static uint32_t bg_row_cache[2048];
 static uint32_t bg_cache_height;
-static uint32_t bg_cache_hour = 0xFF;
+static uint32_t bg_cache_minute = 0xFFFF;
 static int bg_cache_weather_code = -1;
+
+/* ── hour palette lookup ─────────────────────────────────────────── */
+
+/* Time-of-day palettes.  Each entry covers a range of hours;
+ * get_hour_palette() returns the base RGB for a given hour.
+ *
+ * Ubuntu (aubergine/orange), Sailfish (teal/petrol blue),
+ * webOS (warm charcoal/slate) blended by time period. */
+static void get_hour_palette(uint32_t hour,
+    uint32_t *r, uint32_t *g, uint32_t *b)
+{
+    if (hour >= 5 && hour < 7) {
+        /* dawn — Sailfish teal with warm hint */
+        *r = 0x14; *g = 0x28; *b = 0x38;
+    } else if (hour >= 7 && hour < 10) {
+        /* morning — Ubuntu warm purple + Sailfish blue */
+        *r = 0x30; *g = 0x10; *b = 0x28;
+    } else if (hour >= 10 && hour < 14) {
+        /* midday — Ubuntu aubergine core */
+        *r = 0x2C; *g = 0x00; *b = 0x1E;
+    } else if (hour >= 14 && hour < 17) {
+        /* afternoon — webOS warm charcoal */
+        *r = 0x28; *g = 0x14; *b = 0x18;
+    } else if (hour >= 17 && hour < 19) {
+        /* sunset — Ubuntu orange-red warmth */
+        *r = 0x42; *g = 0x0C; *b = 0x16;
+    } else if (hour >= 19 && hour < 21) {
+        /* evening — Sailfish deep petrol */
+        *r = 0x10; *g = 0x18; *b = 0x30;
+    } else {
+        /* night — deep blend of all three */
+        *r = 0x12; *g = 0x08; *b = 0x1A;
+    }
+}
+
+/* Apply weather hue shift to a base palette */
+static void apply_weather_shift(int weather_code,
+    uint32_t *r, uint32_t *g, uint32_t *b)
+{
+    switch (weather_code) {
+    case 1: /* partly cloudy — Sailfish cool blue push */
+        *g += 0x06; *b += 0x0A;
+        break;
+    case 2: /* cloudy — webOS grey-slate overlay */
+        *r = (*r * 3 + 0x30) / 4;
+        *g = (*g * 3 + 0x28) / 4;
+        *b = (*b * 3 + 0x28) / 4;
+        break;
+    case 3: /* rain — Sailfish deep teal-blue */
+        *r = *r * 2 / 3;
+        *g += 0x08; *b += 0x1A;
+        break;
+    case 4: /* storm — deep purple-indigo */
+        *r = *r / 2 + 0x08;
+        *g = *g / 2;
+        *b += 0x24;
+        break;
+    case 5: /* snow — Sailfish ice blue-white */
+        *r += 0x14; *g += 0x1A; *b += 0x24;
+        break;
+    case 6: /* fog — webOS warm grey wash */
+        *r = (*r + 0x28) / 2;
+        *g = (*g + 0x24) / 2;
+        *b = (*b + 0x22) / 2;
+        break;
+    default: break;
+    }
+    if (*r > 0xFF) *r = 0xFF;
+    if (*g > 0xFF) *g = 0xFF;
+    if (*b > 0xFF) *b = 0xFF;
+}
 
 static void lumo_draw_animated_bg(
     uint32_t *pixels,
@@ -1770,7 +1897,6 @@ static void lumo_draw_animated_bg(
     time_t wall_now;
     struct tm tm_now;
     uint32_t frame;
-    uint32_t hour;
 
     clock_gettime(CLOCK_MONOTONIC, &mono_ts);
     /* 60 FPS frame counter — each frame gets a unique tick */
@@ -1778,81 +1904,33 @@ static void lumo_draw_animated_bg(
 
     wall_now = time(NULL);
     localtime_r(&wall_now, &tm_now);
-    hour = (uint32_t)tm_now.tm_hour;
+    uint32_t hour = (uint32_t)tm_now.tm_hour;
+    uint32_t minute = (uint32_t)tm_now.tm_min;
+    /* unique key: changes every minute so gradient transitions smoothly */
+    uint32_t time_key = hour * 60 + minute;
 
-    /* palette — always computed (needed for bokeh tint even on cache hit) */
-    uint32_t base_r, base_g, base_b;
+    /* ── smooth gradient interpolation ───────────────────────────────
+     * Lerp between current hour's palette and next hour's palette
+     * based on how far into the current period we are.  The transition
+     * happens gradually over each time-of-day period so there is never
+     * a hard color jump. */
+    uint32_t cur_r, cur_g, cur_b;
+    uint32_t nxt_r, nxt_g, nxt_b;
+    get_hour_palette(hour, &cur_r, &cur_g, &cur_b);
+    get_hour_palette((hour + 1) % 24, &nxt_r, &nxt_g, &nxt_b);
 
-    /* Multi-palette time-of-day colors:
-     * Ubuntu (aubergine/orange), Sailfish (teal/petrol blue),
-     * webOS (warm charcoal/slate) blended by time period.
-     *
-     * Dawn/morning  : Sailfish teal-blue -> Ubuntu warm purple
-     * Midday        : Ubuntu aubergine core
-     * Afternoon     : webOS warm slate-grey
-     * Sunset        : Ubuntu orange-red warmth
-     * Evening       : Sailfish deep petrol blue
-     * Night         : blend of all three — deep dark */
-    if (hour >= 5 && hour < 7) {
-        /* dawn — Sailfish teal with warm hint */
-        base_r = 0x14; base_g = 0x28; base_b = 0x38;
-    } else if (hour >= 7 && hour < 10) {
-        /* morning — Ubuntu warm purple + Sailfish blue */
-        base_r = 0x30; base_g = 0x10; base_b = 0x28;
-    } else if (hour >= 10 && hour < 14) {
-        /* midday — Ubuntu aubergine core */
-        base_r = 0x2C; base_g = 0x00; base_b = 0x1E;
-    } else if (hour >= 14 && hour < 17) {
-        /* afternoon — webOS warm charcoal */
-        base_r = 0x28; base_g = 0x14; base_b = 0x18;
-    } else if (hour >= 17 && hour < 19) {
-        /* sunset — Ubuntu orange-red warmth */
-        base_r = 0x42; base_g = 0x0C; base_b = 0x16;
-    } else if (hour >= 19 && hour < 21) {
-        /* evening — Sailfish deep petrol */
-        base_r = 0x10; base_g = 0x18; base_b = 0x30;
-    } else {
-        /* night — deep blend of all three */
-        base_r = 0x12; base_g = 0x08; base_b = 0x1A;
-    }
+    apply_weather_shift(weather_code, &cur_r, &cur_g, &cur_b);
+    apply_weather_shift(weather_code, &nxt_r, &nxt_g, &nxt_b);
 
-    /* weather hue shift:
-     * 0=clear 1=partly_cloudy 2=cloudy 3=rain 4=storm 5=snow 6=fog */
-    switch (weather_code) {
-    case 1: /* partly cloudy — Sailfish cool blue push */
-        base_g += 0x06; base_b += 0x0A;
-        break;
-    case 2: /* cloudy — webOS grey-slate overlay */
-        base_r = (base_r * 3 + 0x30) / 4;
-        base_g = (base_g * 3 + 0x28) / 4;
-        base_b = (base_b * 3 + 0x28) / 4;
-        break;
-    case 3: /* rain — Sailfish deep teal-blue */
-        base_r = base_r * 2 / 3;
-        base_g += 0x08; base_b += 0x1A;
-        break;
-    case 4: /* storm — deep purple-indigo */
-        base_r = base_r / 2 + 0x08;
-        base_g = base_g / 2;
-        base_b += 0x24;
-        break;
-    case 5: /* snow — Sailfish ice blue-white */
-        base_r += 0x14; base_g += 0x1A; base_b += 0x24;
-        break;
-    case 6: /* fog — webOS warm grey wash */
-        base_r = (base_r + 0x28) / 2;
-        base_g = (base_g + 0x24) / 2;
-        base_b = (base_b + 0x22) / 2;
-        break;
-    default: /* clear — keep time-of-day palette */
-        break;
-    }
-    if (base_r > 0xFF) base_r = 0xFF;
-    if (base_g > 0xFF) base_g = 0xFF;
-    if (base_b > 0xFF) base_b = 0xFF;
+    /* t = 0.0 at minute 0, 1.0 at minute 59 */
+    float t = (float)minute / 60.0f;
 
-    /* rebuild row gradient cache when palette or size changes */
-    if (hour != bg_cache_hour || height != bg_cache_height ||
+    uint32_t base_r = (uint32_t)((float)cur_r * (1.0f - t) + (float)nxt_r * t);
+    uint32_t base_g = (uint32_t)((float)cur_g * (1.0f - t) + (float)nxt_g * t);
+    uint32_t base_b = (uint32_t)((float)cur_b * (1.0f - t) + (float)nxt_b * t);
+
+    /* rebuild row gradient cache when palette or size changes (once/minute) */
+    if (time_key != bg_cache_minute || height != bg_cache_height ||
             weather_code != bg_cache_weather_code) {
         uint32_t max_h = height < 2048 ? height : 2048;
         for (uint32_t y = 0; y < max_h; y++) {
@@ -1863,19 +1941,18 @@ static void lumo_draw_animated_bg(
             bg_row_cache[y] = lumo_argb(0xFF, (uint8_t)r, (uint8_t)g, (uint8_t)b);
         }
         bg_cache_height = height;
-        bg_cache_hour = hour;
+        bg_cache_minute = time_key;
         bg_cache_weather_code = weather_code;
     }
 
-    /* wave tint color */
+    /* wave tint color — also smoothly interpolated */
     uint32_t wave_tr = base_r + 0x40 > 0xFF ? 0xFF : base_r + 0x40;
     uint32_t wave_tg = base_g + 0x30 > 0xFF ? 0xFF : base_g + 0x30;
     uint32_t wave_tb = base_b + 0x48 > 0xFF ? 0xFF : base_b + 0x48;
     float wave_t = (float)frame * 0.003f;
 
     /* multi-core parallel gradient fill + PS4 Flow waves — all 8 cores
-     * render both the gradient AND waves for their row stripe. This
-     * eliminates the single-threaded wave pass bottleneck. */
+     * render both the gradient AND waves for their row stripe. */
     bg_parallel_fill(pixels, width, height, frame, bg_row_cache,
                      wave_tr, wave_tg, wave_tb, wave_t);
 }

@@ -336,7 +336,8 @@ static bool lumo_shell_time_panel_geometry(
         return false;
     }
 
-    rect->x = 8;
+    /* center the panel horizontally under the center-third trigger zone */
+    rect->x = ((int)output_width - panel_w) / 2;
     rect->y = 52;
     rect->width = panel_w;
     rect->height = 220;

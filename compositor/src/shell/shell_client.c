@@ -449,32 +449,6 @@ static bool lumo_shell_draw_buffer(
     active_target = client->active_target_valid ? &client->active_target : NULL;
     lumo_render_surface(client, buffer->data, width, height, active_target);
 
-    /* cache rendered surface to NVMe — only once every 30 seconds
-     * to avoid blocking the render loop with disk I/O */
-    {
-        static uint64_t last_cache_ms = 0;
-        struct timespec cache_ts;
-        clock_gettime(CLOCK_MONOTONIC, &cache_ts);
-        uint64_t now_ms = (uint64_t)cache_ts.tv_sec * 1000 +
-            (uint64_t)cache_ts.tv_nsec / 1000000;
-        if (now_ms - last_cache_ms > 30000 &&
-                (client->mode == LUMO_SHELL_MODE_STATUS ||
-                 client->mode == LUMO_SHELL_MODE_BACKGROUND)) {
-            char cache_path[256];
-            snprintf(cache_path, sizeof(cache_path),
-                "/data/lumo-cache/surfaces/%s.lumosurf",
-                lumo_shell_mode_name(client->mode));
-            FILE *cfp = fopen(cache_path, "wb");
-            if (cfp != NULL) {
-                fwrite(&width, 4, 1, cfp);
-                fwrite(&height, 4, 1, cfp);
-                fwrite(buffer->data, 4, (size_t)width * height, cfp);
-                fclose(cfp);
-            }
-            last_cache_ms = now_ms;
-        }
-    }
-
     lumo_shell_client_update_input_region(client, width, height);
     wl_surface_attach(client->surface, buffer->buffer, 0, 0);
     wl_surface_damage_buffer(client->surface, 0, 0, (int)width, (int)height);
@@ -493,11 +467,18 @@ bool lumo_shell_client_redraw(struct lumo_shell_client *client) {
 
     /* don't redraw hidden surfaces that aren't animating — avoids
      * committing stale transparent buffers that keep the layer
-     * surface visible in the compositor scene graph */
-    if (!client->target_visible && !client->animation_active &&
-            (client->mode == LUMO_SHELL_MODE_LAUNCHER ||
-             client->mode == LUMO_SHELL_MODE_OSK)) {
-        return false;
+     * surface visible in the compositor scene graph.
+     * Exception: the launcher surface also hosts panels (quick settings,
+     * time, notifications) which render even when the launcher drawer
+     * itself is closed. */
+    if (!client->target_visible && !client->animation_active) {
+        if (client->mode == LUMO_SHELL_MODE_OSK)
+            return false;
+        if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
+                !client->compositor_quick_settings_visible &&
+                !client->compositor_time_panel_visible &&
+                !client->compositor_notification_panel_visible)
+            return false;
     }
 
     return lumo_shell_draw_buffer(client, client->configured_width,
