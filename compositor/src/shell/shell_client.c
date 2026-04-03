@@ -713,6 +713,11 @@ void lumo_shell_client_redraw_unified(struct lumo_shell_client *client) {
                 needs_render = true;
             } else if (client->mode == LUMO_SHELL_MODE_STATUS) {
                 needs_render = true;
+            } else if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
+                    client->compositor_time_panel_visible) {
+                /* redraw launcher when time panel is open so
+                 * the clock updates in real time */
+                needs_render = true;
             }
 
             /* render only if something changed */

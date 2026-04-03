@@ -1085,21 +1085,23 @@ static void lumo_draw_status(
         2, accent_color, "LUMO");
 
     {
-        /* cache wifi bars — re-read /proc at most once per 5 seconds */
+        /* cache wifi bars — re-read signal at most once per 10 seconds.
+         * Uses `iw dev wlan0 link` since /proc/net/wireless doesn't
+         * exist on some riscv64 kernels. */
         static int cached_wifi_bars = 0;
         static uint64_t wifi_last_read = 0;
         uint64_t now_ms = (uint64_t)now;
-        if (now_ms != wifi_last_read &&
-                (wifi_last_read == 0 || now_ms >= wifi_last_read + 5)) {
+        if (wifi_last_read == 0 || now_ms >= wifi_last_read + 10) {
             wifi_last_read = now_ms;
             cached_wifi_bars = 0;
+
+            /* try /proc/net/wireless first (fast, no fork) */
             FILE *wfp = fopen("/proc/net/wireless", "r");
             if (wfp != NULL) {
                 char wline[256];
                 while (fgets(wline, sizeof(wline), wfp) != NULL) {
                     char ifn[32] = {0};
-                    float quality = 0;
-                    float signal = 0;
+                    float quality = 0, signal = 0;
                     if (sscanf(wline, " %31[^:]: %*d %f %f",
                             ifn, &quality, &signal) >= 2 &&
                             ifn[0] != '\0' && ifn[0] != '|') {
@@ -1118,6 +1120,39 @@ static void lumo_draw_status(
                     }
                 }
                 fclose(wfp);
+            }
+
+            /* fallback: iw dev wlan0 link (works on riscv64 OrangePi) */
+            if (cached_wifi_bars == 0) {
+                FILE *iwfp = popen("iw dev wlan0 link 2>/dev/null", "r");
+                if (iwfp != NULL) {
+                    char iline[128];
+                    while (fgets(iline, sizeof(iline), iwfp) != NULL) {
+                        int dbm = 0;
+                        if (sscanf(iline, " signal: %d dBm", &dbm) == 1) {
+                            if (dbm > -50) cached_wifi_bars = 4;
+                            else if (dbm > -60) cached_wifi_bars = 3;
+                            else if (dbm > -70) cached_wifi_bars = 2;
+                            else if (dbm > -90) cached_wifi_bars = 1;
+                            break;
+                        }
+                    }
+                    pclose(iwfp);
+                }
+            }
+
+            /* check interface is up at all */
+            if (cached_wifi_bars == 0) {
+                if (access("/sys/class/net/wlan0/operstate", F_OK) == 0) {
+                    FILE *fp = fopen("/sys/class/net/wlan0/operstate", "r");
+                    if (fp) {
+                        char state[16] = {0};
+                        if (fgets(state, sizeof(state), fp) &&
+                                strncmp(state, "up", 2) == 0)
+                            cached_wifi_bars = 1; /* up but unknown signal */
+                        fclose(fp);
+                    }
+                }
             }
         }
         lumo_draw_wifi_bars(pixels, width, height,
@@ -1552,13 +1587,13 @@ static void lumo_draw_wave_layer(
 #define LUMO_WAVE_MAX_H 1024
 static uint8_t wave_glow_buf[LUMO_WAVE_MAX_W * LUMO_WAVE_MAX_H];
 
-/* Pre-rendered wave loop: 60 seconds at 10fps = 600 frames of half-res
- * glow stored in RAM (~150 MB).  A 2-second crossfade at the boundary
+/* Pre-rendered wave loop: 5 minutes at 10fps = 3000 frames of half-res
+ * glow stored in RAM (~732 MB).  A 3-second crossfade at the boundary
  * makes the loop seamless regardless of wave frequencies.
  * Pre-computed once at startup, then playback is just memcpy. */
-#define WAVE_LOOP_FRAMES 600
+#define WAVE_LOOP_FRAMES 3000
 #define WAVE_LOOP_FPS    10
-#define WAVE_LOOP_BLEND  20   /* frames to crossfade (2s at 10fps) */
+#define WAVE_LOOP_BLEND  30   /* frames to crossfade (3s at 10fps) */
 static uint8_t *wave_loop_buf;   /* 600 × half_w × half_h bytes */
 static uint32_t wave_loop_half_w;
 static uint32_t wave_loop_half_h;
