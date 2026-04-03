@@ -305,6 +305,10 @@ static void lumo_shell_client_update_input_region(
                 client->compositor_notification_panel_visible)
             wl_region_add(region, 0, 0, (int)width, (int)height);
         break;
+    case LUMO_SHELL_MODE_SIDEBAR:
+        /* entire sidebar surface is interactive */
+        wl_region_add(region, 0, 0, (int)width, (int)height);
+        break;
     case LUMO_SHELL_MODE_BACKGROUND:
     default:
         break;
@@ -404,7 +408,7 @@ int lumo_shell_client_animation_timeout(
     uint64_t now, end_time;
     if (client == NULL || !client->animation_active) {
         if (client != NULL && client->mode == LUMO_SHELL_MODE_BACKGROUND)
-            return 33; /* 30 FPS — balances smoothness with compositor headroom */
+            return 100; /* 10 FPS — pre-rendered wave loop, slow waves look fine */
         if (client != NULL && client->mode == LUMO_SHELL_MODE_STATUS) {
             if (client->compositor_time_panel_visible) return 1000;
             return 30000;

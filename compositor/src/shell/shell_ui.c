@@ -1073,16 +1073,19 @@ bool lumo_shell_surface_config_for_mode(
         config->background_rgba = 0xFF2C001E;
         break;
     case LUMO_SHELL_MODE_SIDEBAR: {
-        uint32_t sidebar_w = lumo_shell_clamp_u32(output_width / 8, 64, 80);
+        /* wide sidebar for large app icons — ~20% of screen width.
+         * Top margin avoids overlapping the status bar. */
+        uint32_t sidebar_w = lumo_shell_clamp_u32(output_width / 5, 160, 220);
+        uint32_t status_h = lumo_shell_clamp_u32(output_height / 18, 32, 48);
         config->name = "sidebar";
         config->width = sidebar_w;
-        config->height = output_height;
-        config->anchor = LUMO_SHELL_ANCHOR_TOP |
-            LUMO_SHELL_ANCHOR_BOTTOM |
+        config->height = output_height - status_h;
+        config->anchor = LUMO_SHELL_ANCHOR_BOTTOM |
             LUMO_SHELL_ANCHOR_LEFT;
+        config->margin_top = (int32_t)status_h;
         config->exclusive_zone = 0;
         config->keyboard_interactive = false;
-        config->background_rgba = 0xE01A1A2E;
+        config->background_rgba = 0x00000000;
         break;
     }
     default:
@@ -1188,9 +1191,9 @@ bool lumo_shell_sidebar_app_rect(
     uint32_t app_index,
     struct lumo_rect *rect
 ) {
-    int icon_size = 44;
-    int spacing = 8;
-    int top_margin = 56;
+    int icon_size = 64;
+    int spacing = 12;
+    int top_margin = 60;
     int y;
 
     if (rect == NULL || surface_width == 0 || surface_height == 0)
@@ -1213,7 +1216,7 @@ bool lumo_shell_sidebar_drawer_button_rect(
     uint32_t surface_height,
     struct lumo_rect *rect
 ) {
-    int btn_size = 44;
+    int btn_size = 64;
 
     if (rect == NULL || surface_width == 0 || surface_height < 80)
         return false;
