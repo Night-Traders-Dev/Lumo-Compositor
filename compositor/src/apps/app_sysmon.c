@@ -169,7 +169,6 @@ void lumo_app_render_sysmon(
     y += 24;
 
     {
-        /* read GPU info from DRM */
         const char *gpu_name = "PowerVR BXE-2-32";
         const char *gpu_api = "GLES 3.2 / Vulkan 1.3";
         lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
@@ -179,7 +178,7 @@ void lumo_app_render_sysmon(
             theme.text_dim, gpu_api);
         y += 14;
 
-        /* check renderer */
+        /* renderer + GPU status */
         const char *renderer = getenv("WLR_RENDERER");
         snprintf(buf, sizeof(buf), "RENDERER: %s",
             renderer ? renderer : "pixman");
@@ -187,7 +186,44 @@ void lumo_app_render_sysmon(
             renderer && strcmp(renderer, "gles2") == 0
                 ? theme.accent : theme.text_dim,
             buf);
-        y += 16;
+        y += 14;
+
+        /* GPU memory from PVR driver stats */
+        FILE *fp = fopen("/sys/kernel/debug/pvr/driver_stats", "r");
+        if (fp) {
+            char line[128];
+            unsigned long gpu_mem = 0;
+            while (fgets(line, sizeof(line), fp)) {
+                unsigned long val = 0;
+                if (sscanf(line, "MemoryUsageAllocGPUMemUMA %lu", &val) == 1)
+                    gpu_mem = val;
+            }
+            fclose(fp);
+            snprintf(buf, sizeof(buf), "GPU MEM: %.1f MB",
+                (double)gpu_mem / (1024.0 * 1024.0));
+            lumo_app_draw_text(pixels, width, height, pad + 8, y, 1,
+                theme.text_dim, buf);
+            y += 14;
+        }
+
+        /* GPU firmware status */
+        fp = fopen("/sys/kernel/debug/pvr/status", "r");
+        if (fp) {
+            char line[128];
+            while (fgets(line, sizeof(line), fp)) {
+                if (strncmp(line, "Firmware Status:", 16) == 0) {
+                    char *nl = strchr(line, '\n');
+                    if (nl) *nl = '\0';
+                    lumo_app_draw_text(pixels, width, height, pad + 8, y, 1,
+                        strstr(line, "OK") ? theme.text_dim
+                            : lumo_app_argb(0xFF, 0xFF, 0x44, 0x44),
+                        line);
+                    y += 14;
+                    break;
+                }
+            }
+            fclose(fp);
+        }
     }
 
     y += 4;
