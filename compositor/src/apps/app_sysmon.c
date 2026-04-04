@@ -141,41 +141,22 @@ void lumo_app_render_sysmon(
         theme.card_bg, theme.card_stroke);
     y += 22;
 
-    /* per-core bars */
-    int bar_w = (col_w - 8 * 4) / 8;
-    if (bar_w < 20) bar_w = 20;
+    /* per-core mini bars (two rows of 4) */
+    int bar_w = (col_w - 3 * 6) / 4;
+    if (bar_w < 30) bar_w = 30;
     for (int i = 0; i < 8; i++) {
-        int bx = pad + i * (bar_w + 4);
-        draw_bar(pixels, width, height, bx, y, bar_w, 28,
+        int row = i / 4;
+        int col = i % 4;
+        int bx = pad + col * (bar_w + 6);
+        int by = y + row * 18;
+        draw_bar(pixels, width, height, bx, by, bar_w, 14,
             cpu_pcts[i], pct_color(cpu_pcts[i]),
             theme.card_bg, theme.card_stroke);
-        snprintf(buf, sizeof(buf), "%d", i);
+        snprintf(buf, sizeof(buf), "%d:%d%%", i, cpu_pcts[i]);
         lumo_app_draw_text(pixels, width, height,
-            bx + bar_w / 2 - 3, y + 8, 1, theme.text_dim, buf);
+            bx + 4, by + 2, 1, theme.text_dim, buf);
     }
-    y += 36;
-
-    /* CPU info */
-    {
-        FILE *fp = fopen("/proc/cpuinfo", "r");
-        if (fp) {
-            char line[256];
-            while (fgets(line, sizeof(line), fp)) {
-                if (strncmp(line, "isa", 3) == 0) {
-                    char *colon = strchr(line, ':');
-                    if (colon) {
-                        char *nl = strchr(colon, '\n');
-                        if (nl) *nl = '\0';
-                        lumo_app_draw_text(pixels, width, height, pad, y, 1,
-                            theme.text_dim, colon + 2);
-                        y += 14;
-                    }
-                    break;
-                }
-            }
-            fclose(fp);
-        }
-    }
+    y += 42;
 
     y += 8;
     lumo_app_fill_rect(pixels, width, height, pad, y, col_w, 1,
