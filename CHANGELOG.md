@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.71] - 2026-04-03
+
+### File Manager Improvements
+
+- Fixed scroll-vs-tap detection: swiping to scroll no longer accidentally opens files/directories.
+- Added inline text file viewer for `.txt`, `.md`, `.sh`, `.c`, `.h`, `.py`, `.conf`, `.json`, `.xml`, `.log`, `.csv`, `.ini`, `.yaml`, `.yml`, `.toml` files.
+- Audio files (`.mp3`, `.wav`, `.ogg`, `.flac`, `.m4a`, `.aac`) play via mpv.
+- Video files (`.mp4`, `.mkv`, `.avi`, `.mov`, `.webm`) play via mpv.
+- Unknown file types show the file info overlay (size, permissions, owner, modified date).
+
+### Edge Gesture Fix
+
+- Top bar panels now always accessible when app is focused (removed edge suppression).
+- All edge gestures (top panels, bottom home, left sidebar, right back) work regardless of app focus.
+
+### Neofetch Branding
+
+- Custom Lumo ASCII art for neofetch (replaces default Tux penguin).
+
+### Version
+
+- Bumped to 0.0.71.
+
 ## [0.0.70] - 2026-04-03
 
 ### Architecture Refactoring

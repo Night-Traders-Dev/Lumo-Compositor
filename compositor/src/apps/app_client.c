@@ -97,8 +97,12 @@ struct lumo_app_client {
     bool alarm_sound_played; /* prevents repeating sound within same minute */
     int selected_row;
     bool file_info_visible;
+    bool scroll_active;       /* set when swipe-scroll detected this touch */
+    bool text_view_active;    /* text file viewer mode */
     char file_info_name[256];
     char file_info_path[1100];
+    char text_view_content[4096];
+    int text_view_scroll;
     struct lumo_settings settings;
     char notes[8][128];
     int note_count;
@@ -902,6 +906,7 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             .alarm_firing = alarm_firing,
             .selected_row = client->selected_row,
             .file_info_visible = client->file_info_visible,
+            .text_view_active = client->text_view_active,
             .settings = client->settings,
             .note_count = client->note_count,
             .note_editing = client->note_editing,
@@ -921,6 +926,9 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             sizeof(ctx.file_info_name));
         memcpy(ctx.file_info_path, client->file_info_path,
             sizeof(ctx.file_info_path));
+        if (client->text_view_active)
+            memcpy(ctx.text_view_content, client->text_view_content,
+                sizeof(ctx.text_view_content));
         memcpy(ctx.notes, client->notes, sizeof(ctx.notes));
         memcpy(ctx.term_lines, client->term_lines, sizeof(ctx.term_lines));
         memcpy(ctx.term_input, client->term_input, sizeof(ctx.term_input));
@@ -1209,6 +1217,7 @@ static void lumo_app_touch_handle_down(
 
     client->touch_pressed = true;
     client->active_touch_id = id;
+    client->scroll_active = false;
     client->touch_down_x = wl_fixed_to_double(x);
     client->touch_down_y = wl_fixed_to_double(y);
     lumo_app_client_set_close_active(client,
@@ -1495,11 +1504,30 @@ static void lumo_app_touch_handle_up(
 
     if (client->app_id == LUMO_APP_FILES && client->width > 0 &&
             client->height > 0) {
+        /* dismiss text viewer on any tap */
+        if (client->text_view_active) {
+            /* scroll text viewer on swipe, dismiss on tap */
+            if (client->scroll_active) {
+                /* scroll was handled in motion */
+            } else {
+                client->text_view_active = false;
+                client->text_view_scroll = 0;
+            }
+            (void)lumo_app_client_redraw(client);
+            return;
+        }
+
         /* dismiss file info overlay on any tap */
         if (client->file_info_visible) {
             client->file_info_visible = false;
             client->selected_row = -1;
             (void)lumo_app_client_redraw(client);
+            return;
+        }
+
+        /* ignore taps that were actually scrolls */
+        if (client->scroll_active) {
+            client->scroll_active = false;
             return;
         }
 
@@ -1559,16 +1587,98 @@ static void lumo_app_touch_handle_up(
                                 (void)lumo_app_client_redraw(client);
                             }
                         } else {
-                            /* show file info overlay */
-                            client->selected_row = adjusted;
-                            client->file_info_visible = true;
-                            snprintf(client->file_info_name,
-                                sizeof(client->file_info_name),
-                                "%s", entry->d_name);
-                            snprintf(client->file_info_path,
-                                sizeof(client->file_info_path),
+                            /* determine file type from extension */
+                            char full_path[1100];
+                            snprintf(full_path, sizeof(full_path),
                                 "%s/%s", client->browse_path,
                                 entry->d_name);
+                            const char *ext = strrchr(entry->d_name, '.');
+                            bool opened = false;
+
+                            if (ext != NULL) {
+                                /* text files → inline viewer */
+                                if (strcasecmp(ext, ".txt") == 0 ||
+                                        strcasecmp(ext, ".md") == 0 ||
+                                        strcasecmp(ext, ".sh") == 0 ||
+                                        strcasecmp(ext, ".c") == 0 ||
+                                        strcasecmp(ext, ".h") == 0 ||
+                                        strcasecmp(ext, ".py") == 0 ||
+                                        strcasecmp(ext, ".conf") == 0 ||
+                                        strcasecmp(ext, ".json") == 0 ||
+                                        strcasecmp(ext, ".xml") == 0 ||
+                                        strcasecmp(ext, ".log") == 0 ||
+                                        strcasecmp(ext, ".csv") == 0 ||
+                                        strcasecmp(ext, ".ini") == 0 ||
+                                        strcasecmp(ext, ".yaml") == 0 ||
+                                        strcasecmp(ext, ".yml") == 0 ||
+                                        strcasecmp(ext, ".toml") == 0) {
+                                    FILE *fp = fopen(full_path, "r");
+                                    if (fp != NULL) {
+                                        size_t n = fread(
+                                            client->text_view_content,
+                                            1, sizeof(client->text_view_content) - 1,
+                                            fp);
+                                        client->text_view_content[n] = '\0';
+                                        fclose(fp);
+                                        client->text_view_active = true;
+                                        client->text_view_scroll = 0;
+                                        snprintf(client->file_info_name,
+                                            sizeof(client->file_info_name),
+                                            "%s", entry->d_name);
+                                        opened = true;
+                                    }
+                                }
+                                /* image files → photos app */
+                                else if (strcasecmp(ext, ".jpg") == 0 ||
+                                        strcasecmp(ext, ".jpeg") == 0 ||
+                                        strcasecmp(ext, ".png") == 0 ||
+                                        strcasecmp(ext, ".bmp") == 0 ||
+                                        strcasecmp(ext, ".gif") == 0) {
+                                    char cmd[1200];
+                                    snprintf(cmd, sizeof(cmd),
+                                        "lumo-app:photos:%s", full_path);
+                                    /* TODO: launch photos with path */
+                                    opened = false; /* fall through to info */
+                                }
+                                /* audio files → music app */
+                                else if (strcasecmp(ext, ".mp3") == 0 ||
+                                        strcasecmp(ext, ".wav") == 0 ||
+                                        strcasecmp(ext, ".ogg") == 0 ||
+                                        strcasecmp(ext, ".flac") == 0 ||
+                                        strcasecmp(ext, ".m4a") == 0 ||
+                                        strcasecmp(ext, ".aac") == 0) {
+                                    char cmd[1200];
+                                    snprintf(cmd, sizeof(cmd),
+                                        "mpv --no-video '%s' &", full_path);
+                                    (void)system(cmd);
+                                    opened = true;
+                                }
+                                /* video files → video player */
+                                else if (strcasecmp(ext, ".mp4") == 0 ||
+                                        strcasecmp(ext, ".mkv") == 0 ||
+                                        strcasecmp(ext, ".avi") == 0 ||
+                                        strcasecmp(ext, ".mov") == 0 ||
+                                        strcasecmp(ext, ".webm") == 0) {
+                                    char cmd[1200];
+                                    snprintf(cmd, sizeof(cmd),
+                                        "mpv '%s' &", full_path);
+                                    (void)system(cmd);
+                                    opened = true;
+                                }
+                            }
+
+                            if (!opened) {
+                                /* show file info overlay for unknown types */
+                                client->selected_row = adjusted;
+                                client->file_info_visible = true;
+                                snprintf(client->file_info_name,
+                                    sizeof(client->file_info_name),
+                                    "%s", entry->d_name);
+                                snprintf(client->file_info_path,
+                                    sizeof(client->file_info_path),
+                                    "%s/%s", client->browse_path,
+                                    entry->d_name);
+                            }
                             (void)lumo_app_client_redraw(client);
                         }
                         break;
@@ -2000,10 +2110,12 @@ static void lumo_app_touch_handle_motion(
             double dy = client->touch_down_y - cur_y;
             if (dy > 30.0) {
                 client->scroll_offset++;
+                client->scroll_active = true;
                 client->touch_down_y = cur_y;
                 (void)lumo_app_client_redraw(client);
             } else if (dy < -30.0 && client->scroll_offset > 0) {
                 client->scroll_offset--;
+                client->scroll_active = true;
                 client->touch_down_y = cur_y;
                 (void)lumo_app_client_redraw(client);
             }

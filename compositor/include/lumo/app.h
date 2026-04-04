@@ -63,8 +63,10 @@ struct lumo_app_render_context {
     bool alarm_firing;
     int selected_row;
     bool file_info_visible;
+    bool text_view_active;
     char file_info_name[256];
     char file_info_path[1100];
+    char text_view_content[4096];
     struct lumo_settings settings;
     char notes[8][128];
     int note_count;

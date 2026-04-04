@@ -317,6 +317,73 @@ void lumo_app_render_files(
         }
     }
 
+    /* text file viewer overlay */
+    if (ctx != NULL && ctx->text_view_active) {
+        struct lumo_app_theme theme;
+        lumo_app_theme_get(&theme);
+
+        /* dark overlay */
+        for (uint32_t i = 0; i < width * height; i++) {
+            uint32_t c = pixels[i];
+            pixels[i] = lumo_app_argb(0xFF,
+                (uint8_t)((c >> 16) & 0xFF) / 3,
+                (uint8_t)((c >> 8) & 0xFF) / 3,
+                (uint8_t)(c & 0xFF) / 3);
+        }
+
+        /* viewer card */
+        int cw = (int)width - 40;
+        int ch = (int)height - 80;
+        if (cw > 700) cw = 700;
+        int cx = ((int)width - cw) / 2;
+        int cy = 40;
+        struct lumo_rect card = { cx, cy, cw, ch };
+        lumo_app_fill_rounded_rect(pixels, width, height, &card, 12,
+            theme.card_bg);
+        lumo_app_draw_outline(pixels, width, height, &card, 1,
+            theme.card_stroke);
+
+        /* title */
+        lumo_app_draw_text(pixels, width, height, cx + 12, cy + 8, 2,
+            theme.accent, ctx->file_info_name);
+        lumo_app_fill_rect(pixels, width, height, cx + 12, cy + 28,
+            cw - 24, 1, theme.separator);
+
+        /* text content with scroll */
+        int text_y = cy + 36;
+        int max_y = cy + ch - 12;
+        int line_h = 16;
+        int scroll = ctx->scroll_offset; /* reuse scroll_offset for text */
+        const char *p = ctx->text_view_content;
+        int line_num = 0;
+
+        while (*p != '\0' && text_y < max_y) {
+            /* find end of line */
+            const char *eol = strchr(p, '\n');
+            int len = eol ? (int)(eol - p) : (int)strlen(p);
+            int max_chars = (cw - 24) / 7; /* approx char width at scale 1 */
+            if (len > max_chars) len = max_chars;
+
+            if (line_num >= scroll) {
+                char line_buf[256];
+                if (len > (int)sizeof(line_buf) - 1)
+                    len = (int)sizeof(line_buf) - 1;
+                memcpy(line_buf, p, (size_t)len);
+                line_buf[len] = '\0';
+
+                lumo_app_draw_text(pixels, width, height,
+                    cx + 12, text_y, 1, theme.text, line_buf);
+                text_y += line_h;
+            }
+            line_num++;
+            p = eol ? eol + 1 : p + strlen(p);
+        }
+
+        /* dismiss hint */
+        lumo_app_draw_text(pixels, width, height,
+            cx + 12, cy + ch - 20, 1, theme.text_dim, "TAP TO CLOSE");
+    }
+
     /* file info overlay */
     if (ctx != NULL && ctx->file_info_visible)
         draw_file_info_overlay(pixels, width, height, ctx);
