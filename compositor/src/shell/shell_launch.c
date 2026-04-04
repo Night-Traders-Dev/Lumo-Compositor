@@ -567,31 +567,41 @@ int lumo_shell_autostart_start(struct lumo_compositor *compositor) {
         return -1;
     }
 
-    wlr_log(WLR_INFO, "shell: launching clients from %s", state->binary_path);
+    wlr_log(WLR_INFO, "shell: launching unified client from %s",
+        state->binary_path);
 
-    for (size_t i = 0; i < sizeof(modes) / sizeof(modes[0]); i++) {
+    /* launch a single unified shell process that manages all 6 surfaces.
+     * This eliminates the configure roundtrip timing issues that cause
+     * panels/launcher to not render in non-unified mode with the GPU
+     * compositor. */
+    {
         bool spawned = false;
-        /* flush Wayland events between spawns so the socket is ready
-         * for the next client's connection attempt */
-        if (i > 0) {
-            wl_display_flush_clients(compositor->display);
-            usleep(50000); /* 50ms settle time between clients */
-        }
         for (int attempt = 0; attempt < 3 && !spawned; attempt++) {
             if (attempt > 0) {
-                wlr_log(WLR_INFO, "shell: retry %d for %s",
-                    attempt, lumo_shell_mode_name(modes[i]));
-                usleep(100000); /* 100ms between retries */
+                wlr_log(WLR_INFO, "shell: retry %d for unified client",
+                    attempt);
+                usleep(100000);
             }
-            spawned = lumo_shell_spawn_tracked_process(compositor, state,
-                modes[i]);
+            {
+                pid_t pid = fork();
+                if (pid < 0) {
+                    wlr_log_errno(WLR_ERROR, "shell: fork failed");
+                } else if (pid == 0) {
+                    setsid();
+                    execl(state->binary_path, state->binary_path,
+                        "--unified", (char *)NULL);
+                    _exit(127);
+                } else {
+                    state->processes[0].pid = pid;
+                    state->processes[0].mode = LUMO_SHELL_MODE_BACKGROUND;
+                    spawned = true;
+                    wlr_log(WLR_INFO, "shell: unified client pid=%d",
+                        (int)pid);
+                }
+            }
         }
         if (!spawned) {
-            wlr_log(WLR_ERROR, "shell: failed to spawn %s after 3 attempts"
-                " — continuing with remaining clients",
-                lumo_shell_mode_name(modes[i]));
-            /* continue instead of aborting — partial shell is better
-             * than no shell at all */
+            wlr_log(WLR_ERROR, "shell: failed to spawn unified client");
         }
     }
 
