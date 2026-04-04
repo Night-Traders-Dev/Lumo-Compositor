@@ -18,7 +18,8 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
     +-----------------------------+-----------------------------+
     |            Lumo Compositor Core (lumo-compositor)         |
     | backend | input | input_touch | input_pointer | output    |
-    | protocol | shell_launch                                   |
+    | protocol | protocol_setters                               |
+    | shell_launch | shell_bridge | shell_hw                    |
     +-----------------------------+-----------------------------+
                                   |
                      wlroots 0.18 (DRM + libinput + scene)
@@ -75,50 +76,91 @@ Priority-based touch dispatch:
 
 ## Protocol Layer (`src/protocol/`)
 
-### protocol.c
+### protocol.c (~1200 lines)
 - Manages xdg-shell toplevels and popups
 - Layer shell surface lifecycle (create, configure, destroy)
 - Text-input-v3 binding with enable/commit/disable listeners
 - Keyboard visibility state machine with `keyboard_auto_shown` flag
 - Shell hitbox registration and refresh
 - OSK scene node enable/disable to prevent touch interception
-- Weather timer (5-minute fetch via wttr.in)
+
+### protocol_setters.c (~420 lines)
+- All `lumo_protocol_set_*` state setter functions
+- Sidebar auto-hide timer (10-second wl_event_loop timer)
+- Hitbox registration and lookup
+- Layer surface configuration and arrangement
+- Shared types via `protocol_internal.h`
 
 ### shell_protocol.c
 - Line-based frame protocol parser
 - Frame format: `LUMO/1 <kind> <name> id=<n>\n<key>=<value>\n...\n\n`
-- Max 48 fields, 512-byte line buffer
+- Max 80 fields, 512-byte line buffer
+- Protocol version handshake (`hello` event on connect)
 - Token validation (no spaces/tabs in keys or values)
 
 ## Shell Layer (`src/shell/`)
 
-### shell_launch.c
-- Spawns and supervises 5 shell client processes
+### shell_launch.c (~765 lines)
+
+- Spawns and supervises 6 shell client processes
+- Process lifecycle, binary resolution, child signal handling
+
+### shell_bridge.c (~1508 lines)
+
 - Bridge protocol server (Unix socket at `$XDG_RUNTIME_DIR/lumo-shell-state.sock`)
 - State broadcast with dirty-flag coalescing (flushed per output frame)
-- 48 state fields: visibility, rotation, weather, volume, brightness, toast,
-  osk_page, etc.
+- 80 state fields: visibility, rotation, weather, volume, brightness, toast,
+  osk_page, running apps, sidebar state, etc.
+- Protocol hello handshake with version and feature flags
 - Request handlers: activate_target, set_keyboard_visible, set_volume,
-  set_brightness, show_toast, cycle_rotation, reload_session, close_app
+  set_brightness, show_toast, cycle_rotation, reload_session, close_app,
+  focus_app, new_window, open_drawer, minimize_focused
 - OSK key routing: shift toggle → page toggle → close → text-input-v3 → virtual keyboard fallback → search bar
-- Weather fetcher (fork + curl, 500ms poll timeout)
-- Volume/brightness control (fork + pactl/sysfs, non-blocking)
-- Boot chime (generated WAV, played via aplay)
+- Duplicate app prevention (focuses existing; terminal/browser exempt)
 
-### shell_client.c (~4000 lines)
-- Single binary, 5 modes: background, launcher, osk, gesture, status
+### shell_hw.c (~471 lines)
+
+- Volume/brightness control (fork + pactl/sysfs, non-blocking)
+- Weather fetcher (fork + curl, 500ms poll timeout)
+- Screenshot capture (async fork + lumo-screenshot)
+- Boot chime (generated WAV, played via aplay)
+- Platform-specific paths (HAL candidates — see `include/lumo/hal.h`)
+
+### shell_client.c (~1300 lines)
+
+- Single binary, 6 modes: background, launcher, osk, gesture, status, sidebar
 - SHM double-buffered rendering with force-recycle on size transitions
-- Continuous theme engine (12 time-of-day color stops with smoothstep interpolation, 7 weather conditions, exponential approach blending)
-- Renderers:
-  - **Background**: animated gradient with wave glow and light streaks
-  - **Launcher**: GNOME 3.x grid (4×3), search bar with live filtering
-  - **OSK**: Lomiri-style dark charcoal keys (33 keys, 4 rows, 2 pages: QWERTY + symbols)
-  - **Gesture**: subtle opacity gradient pill
-  - **Status**: clock, WiFi bars, LUMO branding
-  - **Quick settings**: WiFi, display, session, device, volume/brightness sliders, reload/rotate
-  - **Time panel**: large clock, date, week, weather (temp, condition, humidity, wind)
-- Toast notifications (fade-in/out pills)
 - State socket connect with 5-retry, 200ms delay
+- Sidebar auto-hide integration, boot splash flag management
+
+### shell_render.c (~1400 lines)
+
+- Main render dispatch (`lumo_render_surface`)
+- UI renderers:
+  - **Launcher**: GNOME 3.x grid (4×3), search bar with live filtering (no X button)
+  - **OSK**: Lomiri-style dark charcoal keys (33 keys, 4 rows, 2 pages)
+  - **Gesture**: invisible edge zone (no visual indicator)
+  - **Status**: clock, dynamic WiFi bars (via `iw`), LUMO branding
+  - **Sidebar**: Ubuntu Touch-style narrow icon strip with Lumo icon drawer button
+  - **Quick settings**: WiFi, display, session, device, volume/brightness sliders
+  - **Time panel**: large clock, date, week, weather
+- Toast notifications (fade-in/out pills)
+
+### shell_theme.c (~200 lines)
+
+- 12 time-of-day color stops with smoothstep interpolation
+- 7 weather condition hue shifts
+- Exponential approach blending for smooth transitions
+- Derived UI colors (bar, panel, tile, accent, text)
+
+### shell_background.c (~1050 lines)
+
+- Pre-rendered 5-minute PS4 Flow wave loop (1500 frames at 5fps, 366 MB)
+- 8-core thread pool for parallel wave computation
+- Half-res glow buffer (400×640) with 2× upscale composite
+- Seamless 3-second crossfade at loop boundary
+- Boot splash: Lumo icon + Ubuntu-style three-dot loading indicator
+- Smooth gradient interpolation between hour palettes
 
 ### shell_osk.c
 
@@ -155,8 +197,10 @@ Priority-based touch dispatch:
 - `app_videos.c`: library list with preview area
 - `app_ui.c`: shared rendering (fill_rect, gradient, rounded_rect, text, theme)
 
-### Browser (system Chromium v122)
-- Browser tile launches system `chromium-browser` with Wayland flags
+### Browser (native SHM)
+
+- Native SHM browser with toolbar, bookmarks, URL bar
+- Launches `lumo-webview` (WebKitGTK) for web content
 - `--ozone-platform=wayland --single-process --disable-gpu --enable-wayland-ime`
 - DuckDuckGo Lite as start page
 - Text-input-v3 integration for OSK auto-show in input fields

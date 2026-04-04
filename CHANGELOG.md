@@ -2,6 +2,46 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.70] - 2026-04-03
+
+### Architecture Refactoring
+
+- Split `shell_render.c` (2473 lines) into `shell_render.c` + `shell_theme.c` + `shell_background.c`.
+- Split `shell_launch.c` (2749 lines) into `shell_launch.c` + `shell_bridge.c` + `shell_hw.c`.
+- Split `protocol.c` (1634 lines) into `protocol.c` + `protocol_setters.c`.
+- New internal headers: `shell_render_internal.h`, `shell_launch_internal.h`, `protocol_internal.h`.
+- Restored `input_internal.h` (shared types for input subsystem modules).
+- No runtime behavior changes — purely structural.
+
+### Protocol Versioning
+
+- Bridge now sends `hello` event frame on client connect with protocol version and feature flags.
+- Fields: `version`, `compositor`, `sidebar_support`, `wave_background`.
+- Enables safe protocol evolution between shell and compositor.
+
+### Hardware Abstraction Layer
+
+- Created `include/lumo/hal.h` — function pointer interface for platform-specific operations.
+- Covers: backlight, volume, sound, weather, device quirks (GPU, NVMe, touch calibration).
+- Default implementation targets OrangePi RV2; alternative backends can be plugged in.
+
+### GPU Rendering Documentation
+
+- Created `docs/lumo-gpu-rendering.md` — current pipeline, RVV extensions, PowerVR status.
+- Documents split GPU/display architecture and path to enabling GPU compositing.
+- Performance metrics table and optimization opportunities.
+
+### UI Changes
+
+- Sidebar matches Ubuntu Touch style — narrow icon strip (~10% screen width, 72-96px).
+- Removed X close button from app drawer (gesture-based navigation handles dismiss).
+- Duplicate app prevention: focuses existing instance instead of launching second copy.
+- Terminal and Browser exempt from duplicate prevention — support "New Window" via sidebar context menu.
+
+### Version
+
+- Bumped to 0.0.70.
+
 ## [0.0.69] - 2026-04-03
 
 ### Sidebar Multitasking Bar (Ubuntu Touch-style)
