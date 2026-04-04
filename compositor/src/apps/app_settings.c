@@ -22,7 +22,9 @@ static struct lumo_app_theme th;
 static bool th_loaded;
 
 static void ensure_theme(void) {
-    if (!th_loaded) { lumo_app_theme_get(&th); th_loaded = true; }
+    /* always refresh — theme changes with time of day */
+    lumo_app_theme_get(&th);
+    th_loaded = true;
 }
 
 /* ── drawing primitives ───────────────────────────────────────────── */
@@ -774,8 +776,40 @@ static void render_about(
     draw_info(px, w, h, y, "DEVICE", "ORANGEPI RV2"); y += 28;
     draw_info(px, w, h, y, "HOSTNAME", hostname); y += 28;
     draw_info(px, w, h, y, "KERNEL", kernel); y += 28;
+
+    /* read arch from uname */
+    {
+        FILE *uf = fopen("/proc/sys/kernel/osrelease", "r");
+        (void)uf; /* arch is always riscv64 on this device */
+    }
     draw_info(px, w, h, y, "ARCH", "RISCV64"); y += 28;
-    draw_info(px, w, h, y, "OS", "UBUNTU 24.04");
+
+    /* read OS name from os-release */
+    {
+        static char os_name[64] = "LUMO OS";
+        static bool os_read = false;
+        if (!os_read) {
+            os_read = true;
+            FILE *of = fopen("/etc/os-release", "r");
+            if (of) {
+                char line[128];
+                while (fgets(line, sizeof(line), of)) {
+                    if (strncmp(line, "PRETTY_NAME=", 12) == 0) {
+                        char *start = strchr(line, '"');
+                        if (start) {
+                            start++;
+                            char *end = strchr(start, '"');
+                            if (end) *end = '\0';
+                            snprintf(os_name, sizeof(os_name), "%s", start);
+                        }
+                        break;
+                    }
+                }
+                fclose(of);
+            }
+        }
+        draw_info(px, w, h, y, "OS", os_name);
+    }
 }
 
 static void render_lumo(
@@ -786,9 +820,10 @@ static void render_lumo(
     int y = SUB_Y;
     draw_info(px, w, h, y, "VERSION", LUMO_VERSION_STRING); y += 28;
     draw_info(px, w, h, y, "BUILD", "MESON + NINJA"); y += 28;
-    draw_info(px, w, h, y, "RENDERER", "PIXMAN SOFTWARE"); y += 28;
-    draw_info(px, w, h, y, "SHELL", "LAYER-SHELL V1"); y += 28;
-    draw_info(px, w, h, y, "APPS", "NATIVE WAYLAND"); y += 28;
+    draw_info(px, w, h, y, "RENDERER", get_renderer_info()); y += 28;
+    draw_info(px, w, h, y, "GPU", get_gpu_info()); y += 28;
+    draw_info(px, w, h, y, "SHELL", "UNIFIED LAYER-SHELL"); y += 28;
+    draw_info(px, w, h, y, "APPS", "14 NATIVE WAYLAND"); y += 28;
     draw_toggle(px, w, h, y, "DEBUG MODE",
         ctx->settings.debug_mode);
 }

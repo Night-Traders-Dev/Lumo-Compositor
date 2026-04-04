@@ -883,6 +883,8 @@ static void lumo_protocol_new_toplevel(
     }
 
     toplevel->scene_tree->node.data = toplevel;
+    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
+    wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
 
     toplevel->request_maximize.notify = lumo_protocol_toplevel_request_maximize;
     wl_signal_add(&xdg_toplevel->events.request_maximize,
