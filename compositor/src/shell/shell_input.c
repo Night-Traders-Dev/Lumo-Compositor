@@ -403,6 +403,10 @@ static void lumo_shell_touch_handle_down(
     /* record press start time for sidebar long-press detection */
     if (client->mode == LUMO_SHELL_MODE_SIDEBAR)
         client->sidebar_press_start_msec = lumo_now_msec();
+
+    /* record swipe start for launcher page navigation */
+    if (client->mode == LUMO_SHELL_MODE_LAUNCHER)
+        client->launcher_swipe_x = client->pointer_x;
 }
 
 static void lumo_shell_touch_handle_up(
@@ -562,6 +566,26 @@ static void lumo_shell_touch_handle_up(
 
         lumo_shell_client_clear_active_target(client);
         return;
+    }
+
+    /* launcher page swipe — horizontal swipe changes page */
+    if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
+            client->compositor_launcher_visible) {
+        double dx = client->pointer_x - client->launcher_swipe_x;
+        if (dx < -60.0) {
+            /* swipe left → next page */
+            client->launcher_page++;
+            lumo_shell_client_clear_active_target(client);
+            (void)lumo_shell_client_redraw(client);
+            return;
+        } else if (dx > 60.0) {
+            /* swipe right → previous page */
+            if (client->launcher_page > 0)
+                client->launcher_page--;
+            lumo_shell_client_clear_active_target(client);
+            (void)lumo_shell_client_redraw(client);
+            return;
+        }
     }
 
     if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&

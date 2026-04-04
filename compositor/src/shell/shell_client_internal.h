@@ -146,6 +146,8 @@ struct lumo_shell_client {
     bool search_active;
     char search_query[32];
     int search_len;
+    int launcher_page;           /* current page in multi-page drawer */
+    double launcher_swipe_x;     /* touch-down x for page swipe */
     char weather_condition[32];
     char weather_humidity[16];
     char weather_wind[24];

@@ -483,9 +483,20 @@ static void lumo_draw_launcher(
             subtitle_color, "TYPE TO SEARCH...");
     }
 
-    for (uint32_t visible_index = 0;
-            visible_index < (uint32_t)lumo_shell_launcher_filtered_tile_count(
-                query);
+    /* paginate tiles — tiles_per_page from grid, page from client state */
+    uint32_t tiles_per_page = (uint32_t)lumo_shell_launcher_tile_count();
+    uint32_t total_tiles = (uint32_t)lumo_shell_launcher_filtered_tile_count(query);
+    int page = (client != NULL) ? client->launcher_page : 0;
+    int total_pages = (int)((total_tiles + tiles_per_page - 1) / tiles_per_page);
+    if (total_pages < 1) total_pages = 1;
+    if (page >= total_pages) page = total_pages - 1;
+    if (page < 0) page = 0;
+    uint32_t page_start = (uint32_t)page * tiles_per_page;
+    uint32_t page_end = page_start + tiles_per_page;
+    if (page_end > total_tiles) page_end = total_tiles;
+
+    for (uint32_t visible_index = page_start;
+            visible_index < page_end;
             visible_index++) {
         struct lumo_rect tile_rect = {0};
         struct lumo_rect icon_rect = {0};
@@ -497,6 +508,7 @@ static void lumo_draw_launcher(
         const char *label;
         uint32_t accent;
 
+        /* global index for tile data, page-relative for grid position */
         if (!lumo_shell_launcher_filtered_tile_rect(width, height, query,
                 visible_index, &tile_index, &tile_rect)) {
             continue;
@@ -660,6 +672,24 @@ static void lumo_draw_launcher(
         lumo_draw_text_centered(pixels, width, height, &label_rect, 2,
             active ? highlight : subtitle_color,
             label != NULL ? label : "APP");
+    }
+
+    /* page indicator dots */
+    if (total_pages > 1) {
+        int dot_r = 4;
+        int dot_gap = 16;
+        int dots_w = total_pages * (dot_r * 2 + dot_gap) - dot_gap;
+        int dot_x = (int)width / 2 - dots_w / 2;
+        int dot_y = (int)height - 30 + slide_y;
+        for (int p = 0; p < total_pages; p++) {
+            struct lumo_rect dot = {
+                dot_x + p * (dot_r * 2 + dot_gap),
+                dot_y, dot_r * 2, dot_r * 2
+            };
+            lumo_fill_rounded_rect(pixels, width, height, &dot, dot_r,
+                p == page ? highlight
+                    : lumo_argb(0x40, 0xFF, 0xFF, 0xFF));
+        }
     }
 }
 

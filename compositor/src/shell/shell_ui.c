@@ -699,13 +699,19 @@ bool lumo_shell_launcher_filtered_tile_rect(
     uint32_t *tile_index,
     struct lumo_rect *rect
 ) {
-    uint32_t visible_tiles[12] = {0};
+    uint32_t visible_tiles[32] = {0};
     size_t visible_count = lumo_shell_launcher_collect_filtered_tiles(query,
         visible_tiles, sizeof(visible_tiles) / sizeof(visible_tiles[0]));
 
-    if (visible_index >= visible_count ||
-            !lumo_shell_launcher_visible_tile_geometry(output_width,
-                output_height, visible_index, rect)) {
+    if (visible_index >= visible_count) {
+        return false;
+    }
+
+    /* compute grid position using page-relative index */
+    uint32_t per_page = lumo_shell_launcher_columns * lumo_shell_launcher_rows;
+    uint32_t pos_index = visible_index % per_page;
+    if (!lumo_shell_launcher_visible_tile_geometry(output_width,
+                output_height, pos_index, rect)) {
         return false;
     }
 
