@@ -1136,8 +1136,12 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
             if (client->unified) {
                 lumo_shell_client_redraw_unified(client);
             } else {
+                /* redraw periodic surfaces + any animating surface */
                 if (client->mode == LUMO_SHELL_MODE_STATUS ||
-                        client->mode == LUMO_SHELL_MODE_BACKGROUND)
+                        client->mode == LUMO_SHELL_MODE_BACKGROUND ||
+                        client->animation_active ||
+                        (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
+                         client->compositor_time_panel_visible))
                     (void)lumo_shell_client_redraw(client);
                 lumo_shell_client_tick_animation(client);
             }
@@ -1166,6 +1170,7 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
             }
         } else if (client->animation_active) {
             lumo_shell_client_tick_animation(client);
+            (void)lumo_shell_client_redraw(client);
         }
     }
     return 0;
