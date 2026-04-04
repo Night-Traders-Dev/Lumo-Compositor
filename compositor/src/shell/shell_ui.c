@@ -1073,12 +1073,12 @@ bool lumo_shell_surface_config_for_mode(
         config->background_rgba = 0xFF2C001E;
         break;
     case LUMO_SHELL_MODE_SIDEBAR: {
-        /* sidebar width: 25% of screen in portrait, 10% in landscape.
+        /* sidebar width: 50% of screen in portrait, 20% in landscape.
          * keyboard_interactive = true so wlroots gives it touch focus. */
         bool portrait = output_height > output_width;
         uint32_t sidebar_w = portrait
-            ? lumo_shell_clamp_u32(output_width / 4, 200, 320)
-            : lumo_shell_clamp_u32(output_width / 10, 100, 160);
+            ? lumo_shell_clamp_u32(output_width / 2, 400, 640)
+            : lumo_shell_clamp_u32(output_width / 5, 200, 320);
         config->name = "sidebar";
         config->width = sidebar_w;
         config->height = output_height;
