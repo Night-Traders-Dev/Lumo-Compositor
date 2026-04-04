@@ -1352,7 +1352,25 @@ static int lumo_shell_bridge_accept_event(
             continue;
         }
 
+        client->protocol_version = LUMO_SHELL_PROTOCOL_VERSION;
         wl_list_insert(&state->bridge.clients, &client->link);
+
+        /* send protocol hello with version and feature flags */
+        {
+            struct lumo_shell_protocol_frame hello;
+            lumo_shell_protocol_frame_init(&hello,
+                LUMO_SHELL_PROTOCOL_FRAME_EVENT, "hello", 0);
+            lumo_shell_protocol_frame_add_u32(&hello, "version",
+                LUMO_SHELL_PROTOCOL_VERSION);
+            lumo_shell_protocol_frame_add_string(&hello, "compositor",
+                "lumo");
+            lumo_shell_protocol_frame_add_bool(&hello, "sidebar_support",
+                true);
+            lumo_shell_protocol_frame_add_bool(&hello, "wave_background",
+                true);
+            lumo_shell_bridge_send_frame(client_fd, &hello);
+        }
+
         lumo_shell_bridge_send_state_snapshot(compositor, client_fd);
     }
 

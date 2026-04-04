@@ -1073,12 +1073,10 @@ bool lumo_shell_surface_config_for_mode(
         config->background_rgba = 0xFF2C001E;
         break;
     case LUMO_SHELL_MODE_SIDEBAR: {
-        /* sidebar width: 50% of screen in portrait, 20% in landscape.
+        /* Ubuntu Touch-style narrow sidebar: ~10% of screen width,
+         * clamped to 72-96px (enough for icon + label).
          * keyboard_interactive = true so wlroots gives it touch focus. */
-        bool portrait = output_height > output_width;
-        uint32_t sidebar_w = portrait
-            ? lumo_shell_clamp_u32(output_width / 2, 400, 640)
-            : lumo_shell_clamp_u32(output_width / 5, 200, 320);
+        uint32_t sidebar_w = lumo_shell_clamp_u32(output_width / 10, 72, 96);
         config->name = "sidebar";
         config->width = sidebar_w;
         config->height = output_height;
@@ -1168,7 +1166,7 @@ bool lumo_shell_surface_bootstrap_config(
         return true;
     case LUMO_SHELL_MODE_SIDEBAR:
         config->name = "sidebar";
-        config->width = 64;
+        config->width = 80;
         config->height = 0;
         config->anchor = LUMO_SHELL_ANCHOR_TOP |
             LUMO_SHELL_ANCHOR_BOTTOM |
@@ -1193,8 +1191,8 @@ bool lumo_shell_sidebar_app_rect(
     uint32_t app_index,
     struct lumo_rect *rect
 ) {
-    int icon_size = 64;
-    int spacing = 12;
+    int icon_size = 48;
+    int spacing = 8;
     /* start below status bar area */
     int status_h = (int)surface_height / 18;
     if (status_h < 32) status_h = 32;
@@ -1222,7 +1220,7 @@ bool lumo_shell_sidebar_drawer_button_rect(
     uint32_t surface_height,
     struct lumo_rect *rect
 ) {
-    int btn_size = 64;
+    int btn_size = 48;
 
     if (rect == NULL || surface_width == 0 || surface_height < 80)
         return false;

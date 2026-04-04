@@ -25,6 +25,7 @@ struct lumo_shell_bridge_client {
     struct wl_list link;
     struct wl_event_source *source;
     int fd;
+    uint32_t protocol_version;
     struct lumo_compositor *compositor;
     struct lumo_shell_protocol_stream stream;
 };
