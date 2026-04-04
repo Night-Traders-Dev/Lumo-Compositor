@@ -226,8 +226,6 @@ static void lumo_draw_launcher(
     const uint32_t tile_fill = lumo_theme.tile_fill;
     const uint32_t tile_stroke = lumo_theme.tile_stroke;
     const uint32_t highlight = lumo_theme.accent;
-    const uint32_t close_fill = lumo_argb(0xFF, 0x3B, 0x1F, 0x34);
-    const uint32_t close_label = lumo_argb(0xFF, 0xFF, 0xFF, 0xFF);
     const uint32_t accent_colors[] = {
         lumo_argb(0xFF, 0xE9, 0x54, 0x20),
         lumo_argb(0xFF, 0x77, 0x21, 0x6F),
@@ -237,8 +235,6 @@ static void lumo_draw_launcher(
     struct lumo_rect panel_rect = {0};
     struct lumo_rect accent_rect = {0};
     struct lumo_rect title_badge = {0};
-    struct lumo_rect close_rect = {0};
-    struct lumo_rect close_label_rect = {0};
     struct lumo_rect search_rect = {0};
     const char *query = client != NULL ? client->toast_message : NULL;
     bool has_query = query != NULL && query[0] != '\0' &&
@@ -467,19 +463,7 @@ static void lumo_draw_launcher(
     lumo_draw_text(pixels, width, height, title_badge.x, title_badge.y, 2,
         title_color, "APPLICATIONS");
 
-    if (lumo_shell_launcher_close_rect(width, height, &close_rect)) {
-        bool close_active = active_target != NULL &&
-            active_target->kind == LUMO_SHELL_TARGET_LAUNCHER_CLOSE;
-
-        close_rect.y += slide_y;
-        close_label_rect = close_rect;
-        lumo_fill_rounded_rect(pixels, width, height, &close_rect, 14,
-            close_active ? highlight : close_fill);
-        lumo_draw_outline(pixels, width, height, &close_rect, 1,
-            close_active ? highlight : panel_stroke);
-    lumo_draw_text_centered(pixels, width, height, &close_label_rect, 3,
-            close_label, "X");
-    }
+    /* close button removed — gesture-based navigation handles dismiss */
 
     lumo_fill_rounded_rect(pixels, width, height, &search_rect, 20,
         has_query ? lumo_theme.panel_bg : lumo_theme.tile_fill);
