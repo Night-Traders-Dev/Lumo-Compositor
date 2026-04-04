@@ -34,6 +34,8 @@ const char *lumo_app_title(enum lumo_app_id app_id);
 const char *lumo_app_subtitle(enum lumo_app_id app_id);
 uint32_t lumo_app_accent_argb(enum lumo_app_id app_id);
 bool lumo_app_wants_osk(enum lumo_app_id app_id, int note_editing);
+int lumo_app_github_button_at(
+    uint32_t width, uint32_t height, double x, double y);
 bool lumo_app_close_rect(
     uint32_t width,
     uint32_t height,

@@ -1522,6 +1522,25 @@ static void lumo_app_touch_handle_up(
         }
     }
 
+    /* GitHub app touch handling */
+    if (client->app_id == LUMO_APP_GITHUB && client->width > 0 &&
+            client->height > 0) {
+        if (client->scroll_active) {
+            client->scroll_active = false;
+            (void)lumo_app_client_redraw(client);
+            return;
+        }
+        int btn = lumo_app_github_button_at(client->width, client->height,
+            client->touch_down_x, client->touch_down_y);
+        if (btn >= 0) {
+            /* send button press to GitHub app */
+            extern void lumo_app_github_handle_tap(int btn);
+            lumo_app_github_handle_tap(btn);
+            (void)lumo_app_client_redraw(client);
+        }
+        return;
+    }
+
     if (client->app_id == LUMO_APP_FILES && client->width > 0 &&
             client->height > 0) {
         /* dismiss text viewer on any tap */
@@ -2131,8 +2150,24 @@ static void lumo_app_touch_handle_motion(
         lumo_app_client_set_close_active(client,
             lumo_app_client_close_contains(client, cur_x, cur_y));
 
+        /* GitHub content view scrolls internally */
+        if (client->app_id == LUMO_APP_GITHUB) {
+            extern void lumo_app_github_scroll(int direction);
+            double dy = client->touch_down_y - cur_y;
+            if (dy > 30.0) {
+                lumo_app_github_scroll(1);
+                client->scroll_active = true;
+                client->touch_down_y = cur_y;
+                (void)lumo_app_client_redraw(client);
+            } else if (dy < -30.0) {
+                lumo_app_github_scroll(-1);
+                client->scroll_active = true;
+                client->touch_down_y = cur_y;
+                (void)lumo_app_client_redraw(client);
+            }
+        }
+
         if (client->app_id == LUMO_APP_FILES ||
-                client->app_id == LUMO_APP_GITHUB ||
                 (client->app_id == LUMO_APP_PHOTOS && !client->photo_viewing)) {
             double dy = client->touch_down_y - cur_y;
             if (dy > 30.0) {

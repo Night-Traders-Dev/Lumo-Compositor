@@ -147,7 +147,7 @@ static char *github_api_get(const char *token, const char *endpoint) {
 /* ── GitHub data model ─────────────────────────────────────────── */
 
 #define GH_MAX_REPOS 20
-#define GH_MAX_ITEMS 10
+#define GH_MAX_FILES 30
 
 struct gh_repo {
     char name[64];
@@ -159,6 +159,13 @@ struct gh_repo {
     bool is_private;
 };
 
+struct gh_file {
+    char name[128];
+    char path[256];
+    char type[16]; /* "file" or "dir" */
+    int size;
+};
+
 struct gh_state {
     /* auth */
     char token[128];
@@ -168,12 +175,24 @@ struct gh_state {
     int public_repos;
     int followers;
 
-    /* data */
+    /* repos */
     struct gh_repo repos[GH_MAX_REPOS];
     int repo_count;
 
+    /* file tree */
+    struct gh_file files[GH_MAX_FILES];
+    int file_count;
+    char current_path[512];
+    char current_repo[128];
+
+    /* file content viewer */
+    char *file_content;
+    size_t file_content_len;
+    char file_name[128];
+    int content_scroll;
+
     /* UI state */
-    int view;          /* 0=login, 1=repos, 2=detail, 3=issues */
+    int view;          /* 0=login, 1=repos, 2=files, 3=content */
     int selected_repo;
     int scroll_offset;
 
@@ -289,6 +308,146 @@ static void gh_fetch_repos(void) {
     }
 
     free(json);
+}
+
+static void gh_fetch_files(const char *repo, const char *path) {
+    char endpoint[512];
+    if (path[0] != '\0')
+        snprintf(endpoint, sizeof(endpoint), "/repos/%s/contents/%s",
+            repo, path);
+    else
+        snprintf(endpoint, sizeof(endpoint), "/repos/%s/contents", repo);
+
+    char *json = github_api_get(gh.token, endpoint);
+    if (!json) {
+        snprintf(gh.status_msg, sizeof(gh.status_msg), "FETCH ERROR");
+        return;
+    }
+
+    const char *objects[GH_MAX_FILES];
+    int count = json_get_array_objects(json, objects, GH_MAX_FILES);
+    gh.file_count = 0;
+
+    for (int i = 0; i < count && i < GH_MAX_FILES; i++) {
+        struct gh_file *f = &gh.files[gh.file_count];
+        char buf[256];
+        char chunk[2048];
+        const char *start = objects[i];
+        int depth = 0;
+        size_t len = 0;
+        for (const char *p = start; *p && len < sizeof(chunk) - 1; p++) {
+            chunk[len++] = *p;
+            if (*p == '{') depth++;
+            else if (*p == '}') { depth--; if (depth == 0) break; }
+        }
+        chunk[len] = '\0';
+
+        if (json_get_string(chunk, "name", buf, sizeof(buf)))
+            snprintf(f->name, sizeof(f->name), "%s", buf);
+        if (json_get_string(chunk, "path", buf, sizeof(buf)))
+            snprintf(f->path, sizeof(f->path), "%s", buf);
+        if (json_get_string(chunk, "type", buf, sizeof(buf)))
+            snprintf(f->type, sizeof(f->type), "%s", buf);
+        if (json_get_string(chunk, "size", buf, sizeof(buf)))
+            f->size = atoi(buf);
+
+        if (f->name[0] != '\0')
+            gh.file_count++;
+    }
+    free(json);
+    snprintf(gh.status_msg, sizeof(gh.status_msg),
+        "%d ITEMS", gh.file_count);
+}
+
+static void gh_fetch_file_content(const char *repo, const char *path) {
+    char endpoint[512];
+    snprintf(endpoint, sizeof(endpoint),
+        "/repos/%s/contents/%s", repo, path);
+
+    char *json = github_api_get(gh.token, endpoint);
+    if (!json) return;
+
+    /* extract download_url and fetch raw content */
+    char url_buf[1024];
+    if (json_get_string(json, "download_url", url_buf, sizeof(url_buf))) {
+        free(json);
+        /* fetch raw content */
+        CURL *curl = curl_easy_init();
+        if (!curl) return;
+
+        struct curl_buf buf = {0};
+        buf.data = malloc(65536);
+        buf.capacity = 65536;
+        buf.data[0] = '\0';
+
+        curl_easy_setopt(curl, CURLOPT_URL, url_buf);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Lumo-OS/0.0.77");
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+        CURLcode res = curl_easy_perform(curl);
+        curl_easy_cleanup(curl);
+
+        if (res == CURLE_OK && buf.size > 0) {
+            if (gh.file_content) free(gh.file_content);
+            gh.file_content = buf.data;
+            gh.file_content_len = buf.size;
+        } else {
+            free(buf.data);
+        }
+    } else {
+        free(json);
+    }
+}
+
+/* ── syntax highlighting colors ────────────────────────────────── */
+
+static uint32_t syntax_color_for_token(const char *line, int pos,
+    const char *ext)
+{
+    /* simple keyword-based highlighting */
+    static const char *c_keywords[] = {
+        "int", "char", "void", "bool", "if", "else", "for", "while",
+        "return", "struct", "enum", "static", "const", "switch", "case",
+        "break", "continue", "typedef", "sizeof", "NULL", "true", "false",
+        "#include", "#define", "#ifdef", "#ifndef", "#endif", "#if", NULL
+    };
+    static const char *py_keywords[] = {
+        "def", "class", "import", "from", "return", "if", "else", "elif",
+        "for", "while", "in", "not", "and", "or", "True", "False", "None",
+        "with", "as", "try", "except", "raise", "self", NULL
+    };
+    static const char *js_keywords[] = {
+        "function", "const", "let", "var", "if", "else", "for", "while",
+        "return", "class", "import", "export", "from", "async", "await",
+        "true", "false", "null", "undefined", "this", "new", NULL
+    };
+
+    const char **keywords = c_keywords;
+    if (ext && (strcmp(ext, ".py") == 0)) keywords = py_keywords;
+    if (ext && (strcmp(ext, ".js") == 0 || strcmp(ext, ".ts") == 0))
+        keywords = js_keywords;
+
+    /* check if current position starts a keyword */
+    for (int k = 0; keywords[k]; k++) {
+        size_t klen = strlen(keywords[k]);
+        if (strncmp(line + pos, keywords[k], klen) == 0) {
+            char after = line[pos + klen];
+            char before = pos > 0 ? line[pos - 1] : ' ';
+            if ((after == '\0' || after == ' ' || after == '(' ||
+                    after == ')' || after == ';' || after == ',' ||
+                    after == '{' || after == '}' || after == ':' ||
+                    after == '[' || after == ']' || after == '\n') &&
+                    (before == ' ' || before == '\t' || before == '(' ||
+                     before == '{' || before == ',' || before == ';' ||
+                     pos == 0)) {
+                return 0; /* keyword marker */
+            }
+        }
+    }
+    return 1; /* normal */
 }
 
 static void *gh_fetch_thread(void *arg) {
@@ -473,29 +632,338 @@ void lumo_app_render_github(
         }
         return;
     }
+
+    /* ── view 2: file tree ────────────────────────────────────── */
+    if (gh.view == 2) {
+        /* back button */
+        {
+            struct lumo_rect back_btn = {pad, y, 60, 24};
+            lumo_app_fill_rounded_rect(pixels, width, height, &back_btn,
+                8, theme.card_bg);
+            lumo_app_draw_text_centered(pixels, width, height, &back_btn,
+                2, theme.accent, "< BACK");
+        }
+
+        /* repo + path */
+        lumo_app_draw_text(pixels, width, height, pad + 70, y, 2,
+            theme.text, gh.current_repo);
+        y += 22;
+        if (gh.current_path[0] != '\0') {
+            snprintf(buf, sizeof(buf), "/%s", gh.current_path);
+            lumo_app_draw_text(pixels, width, height, pad, y, 1,
+                theme.text_dim, buf);
+            y += 14;
+        }
+        lumo_app_fill_rect(pixels, width, height, pad, y, col_w, 1,
+            theme.separator);
+        y += 8;
+
+        /* file list */
+        int row_h = 40;
+        int scroll = gh.scroll_offset;
+        int max_visible = ((int)height - y - 20) / row_h;
+        if (max_visible < 1) max_visible = 1;
+
+        for (int i = scroll; i < gh.file_count && i < scroll + max_visible;
+                i++) {
+            struct gh_file *f = &gh.files[i];
+            struct lumo_rect row = {pad, y, col_w, row_h - 4};
+            bool is_dir = (strcmp(f->type, "dir") == 0);
+
+            lumo_app_fill_rounded_rect(pixels, width, height, &row,
+                8, theme.card_bg);
+
+            /* icon: folder or file */
+            lumo_app_draw_text(pixels, width, height,
+                row.x + 8, row.y + 8, 2,
+                is_dir ? theme.accent
+                    : lumo_app_argb(0xFF, 0x77, 0x21, 0x6F),
+                is_dir ? ">" : "*");
+
+            /* name */
+            lumo_app_draw_text(pixels, width, height,
+                row.x + 28, row.y + 8, 2, theme.text, f->name);
+
+            /* size for files */
+            if (!is_dir && f->size > 0) {
+                if (f->size < 1024)
+                    snprintf(buf, sizeof(buf), "%dB", f->size);
+                else if (f->size < 1024 * 1024)
+                    snprintf(buf, sizeof(buf), "%dK", f->size / 1024);
+                else
+                    snprintf(buf, sizeof(buf), "%dM",
+                        f->size / (1024 * 1024));
+                lumo_app_draw_text(pixels, width, height,
+                    row.x + row.width - 50, row.y + 8, 1,
+                    theme.text_dim, buf);
+            }
+
+            y += row_h;
+        }
+        return;
+    }
+
+    /* ── view 3: file content viewer with syntax highlighting ─── */
+    if (gh.view == 3 && gh.file_content != NULL) {
+        /* back button */
+        {
+            struct lumo_rect back_btn = {pad, y, 60, 24};
+            lumo_app_fill_rounded_rect(pixels, width, height, &back_btn,
+                8, theme.card_bg);
+            lumo_app_draw_text_centered(pixels, width, height, &back_btn,
+                2, theme.accent, "< BACK");
+        }
+
+        /* file name */
+        {
+            const char *base = strrchr(gh.file_name, '/');
+            const char *display = base ? base + 1 : gh.file_name;
+            lumo_app_draw_text(pixels, width, height, pad + 70, y, 2,
+                theme.text, display);
+        }
+        y += 24;
+        lumo_app_fill_rect(pixels, width, height, pad, y, col_w, 1,
+            theme.separator);
+        y += 6;
+
+        /* determine file extension for syntax highlighting */
+        const char *ext = strrchr(gh.file_name, '.');
+
+        /* syntax highlighting colors */
+        uint32_t color_keyword = lumo_app_argb(0xFF, 0xCC, 0x77, 0xFF);
+        uint32_t color_string = lumo_app_argb(0xFF, 0x66, 0xCC, 0x66);
+        uint32_t color_comment = lumo_app_argb(0xFF, 0x66, 0x88, 0x88);
+        uint32_t color_number = lumo_app_argb(0xFF, 0xFF, 0xAA, 0x44);
+        uint32_t color_normal = theme.text;
+        uint32_t color_heading = theme.accent;
+
+        int line_h = 14;
+        int max_y = (int)height - 10;
+        int line_num = 0;
+        int scroll = gh.content_scroll;
+        const char *p = gh.file_content;
+        bool is_md = ext && (strcmp(ext, ".md") == 0);
+
+        while (*p && y < max_y) {
+            const char *eol = strchr(p, '\n');
+            int len = eol ? (int)(eol - p) : (int)strlen(p);
+            int max_chars = (col_w - 8) / 6;
+            if (len > max_chars) len = max_chars;
+
+            if (line_num >= scroll) {
+                char line_buf[512];
+                if (len > (int)sizeof(line_buf) - 1)
+                    len = (int)sizeof(line_buf) - 1;
+                memcpy(line_buf, p, (size_t)len);
+                line_buf[len] = '\0';
+
+                /* choose color based on content */
+                uint32_t line_color = color_normal;
+
+                if (is_md && line_buf[0] == '#') {
+                    line_color = color_heading;
+                } else if (line_buf[0] == '/' && line_buf[1] == '/') {
+                    line_color = color_comment;
+                } else if (line_buf[0] == '#' && ext &&
+                        (strcmp(ext, ".py") == 0 ||
+                         strcmp(ext, ".sh") == 0 ||
+                         strcmp(ext, ".yml") == 0 ||
+                         strcmp(ext, ".yaml") == 0)) {
+                    line_color = color_comment;
+                } else if (strstr(line_buf, "/*") ||
+                        strstr(line_buf, "*/")) {
+                    line_color = color_comment;
+                } else {
+                    /* check for keywords at start of line */
+                    int start = 0;
+                    while (line_buf[start] == ' ' ||
+                            line_buf[start] == '\t') start++;
+                    if (start < len &&
+                            syntax_color_for_token(line_buf, start, ext) == 0)
+                        line_color = color_keyword;
+                    /* check for strings */
+                    else if (strchr(line_buf, '"') || strchr(line_buf, '\''))
+                        line_color = color_string;
+                    /* check for numbers at start */
+                    else if (start < len &&
+                            line_buf[start] >= '0' && line_buf[start] <= '9')
+                        line_color = color_number;
+                }
+
+                /* line number */
+                snprintf(buf, sizeof(buf), "%3d", line_num + 1);
+                lumo_app_draw_text(pixels, width, height,
+                    pad, y, 1,
+                    lumo_app_argb(0x60, 0x80, 0x80, 0x80), buf);
+
+                /* content */
+                lumo_app_draw_text(pixels, width, height,
+                    pad + 28, y, 1, line_color, line_buf);
+                y += line_h;
+            }
+            line_num++;
+            p = eol ? eol + 1 : p + strlen(p);
+        }
+
+        /* scroll indicator */
+        snprintf(buf, sizeof(buf), "LINE %d  SIZE %zuB",
+            scroll + 1, gh.file_content_len);
+        lumo_app_draw_text(pixels, width, height,
+            pad, (int)height - 16, 1, theme.text_dim, buf);
+        return;
+    }
 }
 
-/* ── touch handling (called from app_client.c) ─────────────────── */
+/* ── file tree fetch thread ────────────────────────────────────── */
+
+static void *gh_fetch_files_thread(void *arg) {
+    (void)arg;
+    gh.loading = true;
+    snprintf(gh.status_msg, sizeof(gh.status_msg), "LOADING FILES...");
+    gh_fetch_files(gh.current_repo, gh.current_path);
+    gh.loading = false;
+    return NULL;
+}
+
+static void *gh_fetch_content_thread(void *arg) {
+    (void)arg;
+    gh.loading = true;
+    snprintf(gh.status_msg, sizeof(gh.status_msg), "LOADING...");
+    gh_fetch_file_content(gh.current_repo, gh.file_name);
+    gh.view = 3;
+    gh.content_scroll = 0;
+    gh.loading = false;
+    return NULL;
+}
+
+/* ── touch handling ────────────────────────────────────────────── */
+
+void lumo_app_github_handle_tap(int btn) {
+    if (gh.loading) return;
+
+    if (gh.view == 0) {
+        /* retry auth */
+        gh_load_token();
+        if (gh.token[0] != '\0') {
+            pthread_t tid;
+            pthread_create(&tid, NULL, gh_fetch_thread, NULL);
+            pthread_detach(tid);
+        }
+        return;
+    }
+
+    if (gh.view == 1 && btn >= 100) {
+        /* repo tapped — open file tree */
+        int idx = btn - 100;
+        if (idx >= 0 && idx < gh.repo_count) {
+            snprintf(gh.current_repo, sizeof(gh.current_repo),
+                "%s", gh.repos[idx].full_name);
+            gh.current_path[0] = '\0';
+            gh.scroll_offset = 0;
+            gh.view = 2;
+            pthread_t tid;
+            pthread_create(&tid, NULL, gh_fetch_files_thread, NULL);
+            pthread_detach(tid);
+        }
+        return;
+    }
+
+    if (gh.view == 1 && btn == 50) {
+        /* back to login — shouldn't normally happen */
+        return;
+    }
+
+    if (gh.view == 2 && btn == 1) {
+        /* back button — go up one directory or back to repos */
+        char *last_slash = strrchr(gh.current_path, '/');
+        if (last_slash != NULL) {
+            *last_slash = '\0';
+            gh.scroll_offset = 0;
+            pthread_t tid;
+            pthread_create(&tid, NULL, gh_fetch_files_thread, NULL);
+            pthread_detach(tid);
+        } else if (gh.current_path[0] != '\0') {
+            gh.current_path[0] = '\0';
+            gh.scroll_offset = 0;
+            pthread_t tid;
+            pthread_create(&tid, NULL, gh_fetch_files_thread, NULL);
+            pthread_detach(tid);
+        } else {
+            gh.view = 1;
+            gh.scroll_offset = 0;
+        }
+        return;
+    }
+
+    if (gh.view == 2 && btn >= 100) {
+        /* file/dir tapped */
+        int idx = btn - 100;
+        if (idx >= 0 && idx < gh.file_count) {
+            struct gh_file *f = &gh.files[idx];
+            if (strcmp(f->type, "dir") == 0) {
+                snprintf(gh.current_path, sizeof(gh.current_path),
+                    "%s", f->path);
+                gh.scroll_offset = 0;
+                pthread_t tid;
+                pthread_create(&tid, NULL, gh_fetch_files_thread, NULL);
+                pthread_detach(tid);
+            } else {
+                /* open file content */
+                snprintf(gh.file_name, sizeof(gh.file_name),
+                    "%s", f->path);
+                pthread_t tid;
+                pthread_create(&tid, NULL, gh_fetch_content_thread, NULL);
+                pthread_detach(tid);
+            }
+        }
+        return;
+    }
+
+    if (gh.view == 3 && btn == 1) {
+        /* back from content viewer */
+        if (gh.file_content) { free(gh.file_content); gh.file_content = NULL; }
+        gh.file_content_len = 0;
+        gh.view = 2;
+        gh.content_scroll = 0;
+        return;
+    }
+}
+
+void lumo_app_github_scroll(int direction) {
+    if (gh.view == 3) {
+        gh.content_scroll += direction * 3;
+        if (gh.content_scroll < 0) gh.content_scroll = 0;
+    } else {
+        gh.scroll_offset += direction;
+        if (gh.scroll_offset < 0) gh.scroll_offset = 0;
+    }
+}
 
 int lumo_app_github_button_at(
     uint32_t width, uint32_t height, double x, double y
 ) {
-    int pad = 20;
-    int header_h = 100;
+    (void)width;
+    int header_h = 84;
+    int row_h = 56;
 
-    /* repo rows */
-    if (gh.view == 1 && y > header_h) {
-        int row_h = 56;
+    /* back button area (top-right or top-left) */
+    if (y < (double)header_h && x < 80.0 && (gh.view == 2 || gh.view == 3))
+        return 1;
+
+    /* repo/file rows */
+    if ((gh.view == 1 || gh.view == 2) && y > (double)header_h) {
         int row = (int)(y - header_h) / row_h;
         return 100 + row + gh.scroll_offset;
     }
 
-    /* login view — tap anywhere to retry */
-    if (gh.view == 0) {
-        return 0;
-    }
+    /* content view — tap for back */
+    if (gh.view == 3)
+        return 1;
 
-    (void)width;
-    (void)pad;
+    /* login — retry */
+    if (gh.view == 0)
+        return 0;
+
+    (void)height;
     return -1;
 }
