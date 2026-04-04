@@ -708,13 +708,21 @@ void lumo_shell_client_redraw_unified(struct lumo_shell_client *client) {
                 needs_render = true;
             }
 
-            /* periodic surfaces: background animates, status updates clock.
-             * Skip background rendering when an app covers it — saves
-             * the entire 8-thread wave computation per frame. */
-            if (client->mode == LUMO_SHELL_MODE_BACKGROUND &&
-                    client->compositor_scrim_state ==
-                        LUMO_SHELL_REMOTE_SCRIM_HIDDEN) {
-                needs_render = true;
+            /* Background: render when visible and no animation running.
+             * During sidebar/launcher animations, skip the expensive
+             * 8-thread wave computation so transitions stay smooth. */
+            if (client->mode == LUMO_SHELL_MODE_BACKGROUND) {
+                bool bg_visible = client->compositor_scrim_state ==
+                    LUMO_SHELL_REMOTE_SCRIM_HIDDEN;
+                bool any_slot_animating = false;
+                for (int j = 0; j < client->surface_count; j++) {
+                    if (client->slots[j].animation_active) {
+                        any_slot_animating = true;
+                        break;
+                    }
+                }
+                if (bg_visible && !any_slot_animating)
+                    needs_render = true;
             } else if (client->mode == LUMO_SHELL_MODE_STATUS) {
                 needs_render = true;
             } else if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
