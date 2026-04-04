@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.75] - 2026-04-04
+
+### System Monitor App (SysMon)
+
+- New native SHM app: btop-style GUI system monitor.
+- Real-time CPU usage: total bar + per-core bars (8 cores), color-coded (green/yellow/red).
+- GPU info: PowerVR BXE-2-32, API versions, active renderer (pixman/gles2).
+- RAM: used/total with bar, swap usage, uptime, load average.
+- Storage: root/data/tmp filesystems with usage bars.
+- Process count and CPU temperature.
+- ISA info from /proc/cpuinfo.
+
+### Browser Fixes
+
+- Bookmarks fill URL bar instead of auto-launching webview (prevents black screen).
+- Top-edge suppressed only when app toplevel visible at touch point.
+- Right/bottom swipe sends xdg_toplevel_send_close (fixes stuck GTK4 apps).
+- GSK_RENDERER=gl for GPU-accelerated WebKit rendering.
+
+### Version
+
+- Bumped to 0.0.75.
+
 ## [0.0.74] - 2026-04-04
 
 ### SHM Browser Restored

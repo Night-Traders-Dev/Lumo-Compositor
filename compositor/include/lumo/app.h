@@ -22,6 +22,7 @@ enum lumo_app_id {
     LUMO_APP_NOTES,
     LUMO_APP_FILES,
     LUMO_APP_SETTINGS,
+    LUMO_APP_SYSMON,
 };
 
 size_t lumo_app_count(void);

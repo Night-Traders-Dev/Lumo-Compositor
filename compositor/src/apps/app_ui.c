@@ -526,6 +526,8 @@ void lumo_app_render(
         lumo_app_render_files(ctx, pixels, width, height); return;
     case LUMO_APP_SETTINGS:
         lumo_app_render_settings(ctx, pixels, width, height); return;
+    case LUMO_APP_SYSMON:
+        lumo_app_render_sysmon(ctx, pixels, width, height); return;
     case LUMO_APP_NOTES:
         lumo_app_render_notes(ctx, pixels, width, height); return;
     case LUMO_APP_MESSAGES:

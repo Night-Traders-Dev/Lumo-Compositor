@@ -35,6 +35,8 @@ static const struct lumo_app_definition lumo_apps[] = {
         0xFF7BA3FFu},
     {LUMO_APP_SETTINGS, "settings", "Settings", "Display, sound, and privacy",
         0xFF8FA5BAu},
+    {LUMO_APP_SYSMON, "sysmon", "System Monitor", "CPU, GPU, RAM, storage stats",
+        0xFF44CC88u},
 };
 
 size_t lumo_app_count(void) {

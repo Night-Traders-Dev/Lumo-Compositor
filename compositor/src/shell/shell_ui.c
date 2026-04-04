@@ -20,6 +20,7 @@ static const char *const lumo_shell_launcher_labels[] = {
     "NOTES",
     "FILES",
     "SETTINGS",
+    "SYSMON",
 };
 static const char *const lumo_shell_launcher_commands[] = {
     "lumo-app:phone",
@@ -34,6 +35,7 @@ static const char *const lumo_shell_launcher_commands[] = {
     "lumo-app:notes",
     "lumo-app:files",
     "lumo-app:settings",
+    "lumo-app:sysmon",
 };
 static const char *const lumo_shell_touch_audit_names[] = {
     "top-left",
