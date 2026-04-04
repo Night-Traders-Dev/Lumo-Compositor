@@ -781,13 +781,13 @@ static void lumo_input_touch_down(
     if (edge_zone != LUMO_EDGE_NONE &&
             (point->hitbox == NULL ||
              point->hitbox->kind != LUMO_HITBOX_EDGE_GESTURE)) {
-        /* For top edge: only capture when no app is focused, so app
-         * UI at the top of the screen (browser URL bar, etc) receives
-         * touches. The shell-edge-top hitbox still triggers panels.
-         * For left/right/bottom edges: always capture for gestures. */
-        bool app_focused = !wl_list_empty(&compositor->toplevels) &&
-            target.surface != NULL;
-        if (app_focused && edge_zone == LUMO_EDGE_TOP) {
+        /* For top edge: only suppress capture when an app toplevel is
+         * actually visible at the touch point, so app UI at the top
+         * (browser URL bar) gets touches. When on home screen or
+         * touching a shell surface, top edge captures normally. */
+        bool app_visible_at_touch = (target.surface != NULL &&
+            target.role == LUMO_SCENE_OBJECT_TOPLEVEL);
+        if (app_visible_at_touch && edge_zone == LUMO_EDGE_TOP) {
             /* let touch fall through to the app */
         } else {
             point->capture_edge = edge_zone;
@@ -816,9 +816,9 @@ static void lumo_input_touch_down(
          * at the top (browser URL bar) gets the touch. Left/right/bottom
          * edge hitboxes always capture for navigation gestures. */
         enum lumo_edge_zone hb_edge = lumo_hitbox_edge_zone(point->hitbox);
-        bool app_focused = !wl_list_empty(&compositor->toplevels) &&
-            target.surface != NULL;
-        if (app_focused && hb_edge == LUMO_EDGE_TOP) {
+        bool app_visible_here = (target.surface != NULL &&
+            target.role == LUMO_SCENE_OBJECT_TOPLEVEL);
+        if (app_visible_here && hb_edge == LUMO_EDGE_TOP) {
             /* fall through to app delivery */
         } else {
             point->capture_edge = hb_edge;
