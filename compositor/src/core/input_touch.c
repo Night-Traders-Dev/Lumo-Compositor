@@ -934,16 +934,19 @@ void lumo_input_touch_point_trigger_edge_action(
                 time_msec);
             return;
         }
-        /* minimize focused app (hide but keep alive) → go home */
+        /* close focused app → go home.  Sends xdg close request so
+         * GTK4/WebKit apps actually dismiss (just hiding the scene node
+         * isn't enough — GTK re-presents the window). */
         if (!wl_list_empty(&compositor->toplevels)) {
             struct lumo_toplevel *tl;
             wl_list_for_each(tl, &compositor->toplevels, link) {
                 if (tl->scene_tree->node.enabled) {
+                    wlr_xdg_toplevel_send_close(tl->xdg_toplevel);
                     tl->scene_tree->node.enabled = false;
                     wlr_seat_keyboard_clear_focus(compositor->seat);
                     lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_HIDDEN);
                     wlr_log(WLR_INFO,
-                        "input: touch %d back-minimized app at %u",
+                        "input: touch %d back-closed app at %u",
                         point->touch_id, time_msec);
                     return;
                 }
@@ -979,10 +982,11 @@ void lumo_input_touch_point_trigger_edge_action(
                 point->touch_id, time_msec);
             return;
         }
-        /* minimize all running apps (go to home screen) */
+        /* close all running apps (go to home screen) */
         if (!wl_list_empty(&compositor->toplevels)) {
             struct lumo_toplevel *tl;
             wl_list_for_each(tl, &compositor->toplevels, link) {
+                wlr_xdg_toplevel_send_close(tl->xdg_toplevel);
                 tl->scene_tree->node.enabled = false;
             }
             wlr_seat_keyboard_clear_focus(compositor->seat);
