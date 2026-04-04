@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.77] - 2026-04-04
+
+### GitHub App
+
+- Native Lumo GitHub client using libcurl + GitHub REST API.
+- Token-based auth via `~/.lumo-github-token` (chmod 0600, gitignored).
+- Profile view: @username, repo count, followers.
+- Repository list: name, description, language, stars, forks, private badge.
+- Scrollable repo list with async API fetching (non-blocking UI).
+- Periodic refresh every 2 seconds for loading state.
+
+### SysMon Improvements
+
+- Real-time 1-second refresh for CPU/RAM/storage stats.
+- GPU memory usage from PVR driver_stats.
+- GPU firmware status (OK/error).
+- Per-core CPU bars in 2×4 grid with percentage labels.
+
+### Performance
+
+- Background animation bumped to 30fps (GPU compositing provides headroom).
+- Unified shell mode eliminates panel rendering race condition.
+- Sidebar animation: wave rendering pauses during transitions for smooth 33ms frames.
+
+### Fixes
+
+- Duplicate app prevention checks surface liveness (prevents stale toplevel focus).
+- Plymouth boot splash enabled (`splash quiet` in kernel cmdline, initramfs updated).
+
+### Version
+
+- Bumped to 0.0.77.
+- 14 native apps: Phone, Terminal, Browser, Camera, Maps, Music, Photos, Videos, Clock, Notes, Files, Settings, SysMon, GitHub.
+
 ## [0.0.76] - 2026-04-04
 
 ### Multi-Page App Drawer

@@ -224,7 +224,7 @@ More detailed notes live in:
 
 ## Status
 
-The project is at v0.0.75 (Lumo OS) running on OrangePi RV2 hardware.
+The project is at v0.0.77 (Lumo OS) running on OrangePi RV2 hardware.
 
 Current capabilities:
 

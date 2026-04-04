@@ -25,7 +25,7 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, GPU compositing via PowerVR BXE-2-32
                      wlroots 0.18 (DRM + libinput + scene)
                                   |
     +-----------------------------+-----------------------------+
-    |  App Clients: lumo-app (13 native) | lumo-browser (SHM)  |
+    |  App Clients: lumo-app (14 native) | lumo-browser (SHM)  |
     +-------------------------------------------------------+
 ```
 
