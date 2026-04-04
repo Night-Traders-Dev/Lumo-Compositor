@@ -2132,6 +2132,7 @@ static void lumo_app_touch_handle_motion(
             lumo_app_client_close_contains(client, cur_x, cur_y));
 
         if (client->app_id == LUMO_APP_FILES ||
+                client->app_id == LUMO_APP_GITHUB ||
                 (client->app_id == LUMO_APP_PHOTOS && !client->photo_viewing)) {
             double dy = client->touch_down_y - cur_y;
             if (dy > 30.0) {

@@ -208,6 +208,7 @@ app_sources = files(
   'src/apps/app_videos.c',
   'src/apps/app_browser.c',
   'src/apps/app_sysmon.c',
+  'src/apps/app_github.c',
   'src/apps/app_stubs.c',
   'src/apps/app_client.c',
 ) + xdg_client_protocol_files + text_input_client_protocol_files
@@ -248,12 +249,13 @@ executable(
 
 libpng = dependency('libpng', required: true)
 libjpeg = meson.get_compiler('c').find_library('jpeg', required: true)
+libcurl = dependency('libcurl', required: true)
 
 executable(
   'lumo-app',
   app_sources,
   include_directories: lumo_inc,
-  dependencies: app_deps + [libutil, libpng, libjpeg, libm],
+  dependencies: app_deps + [libutil, libpng, libjpeg, libcurl, libm],
   install: true,
 )
 
@@ -355,10 +357,12 @@ app_test_exe = executable(
     'src/apps/app_videos.c',
     'src/apps/app_browser.c',
     'src/apps/app_sysmon.c',
+    'src/apps/app_github.c',
     'src/apps/app_stubs.c',
     'tests/apps/test_app.c',
   ),
   include_directories: lumo_inc,
+  dependencies: [libcurl, libm],
   install: false,
 )
 
@@ -391,6 +395,7 @@ fuzz_test_sources = files(
   'src/apps/app_videos.c',
   'src/apps/app_browser.c',
     'src/apps/app_sysmon.c',
+    'src/apps/app_github.c',
   'src/apps/app_stubs.c',
   'tests/core/test_fuzz.c',
 ) + lumo_sources
@@ -399,7 +404,7 @@ fuzz_test_exe = executable(
   'lumo-fuzz-tests',
   fuzz_test_sources,
   include_directories: lumo_inc,
-  dependencies: lumo_deps + [libm],
+  dependencies: lumo_deps + [libcurl, libm],
   install: false,
 )
 
@@ -421,6 +426,7 @@ perf_test_sources = files(
   'src/apps/app_videos.c',
   'src/apps/app_browser.c',
     'src/apps/app_sysmon.c',
+    'src/apps/app_github.c',
   'src/apps/app_stubs.c',
   'tests/core/test_perf.c',
 )
@@ -429,6 +435,7 @@ perf_test_exe = executable(
   'lumo-perf-tests',
   perf_test_sources,
   include_directories: lumo_inc,
+  dependencies: [libcurl, libm],
   install: false,
 )
 
