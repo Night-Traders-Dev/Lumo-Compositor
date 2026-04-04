@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.72] - 2026-04-04
+
+### Security Fixes
+
+- **Critical**: Replaced `system()` with `fork()`+`execlp()` for media playback in file manager (prevents command injection via crafted filenames).
+- **High**: Moved boot marker from `/tmp/` to `$XDG_RUNTIME_DIR` (prevents symlink attacks).
+- **High**: Bridge Unix socket now created with `umask(0077)` (restricts to owner).
+- **Medium**: Static path buffers replaced with stack-local in app launcher.
+- **Low**: Fixed BOKEH_COUNT mismatch (was 10, initializer had 18 entries).
+
+### Performance Fixes
+
+- Background poll timeout reduced from 33ms (30fps) to 200ms (5fps), matching pre-rendered wave playback rate. ~75% CPU reduction on home screen.
+- WiFi signal read moved from blocking `popen()` in render thread to async `fork()`+pipe. Eliminates 20-50ms render stalls every 30 seconds.
+- Zombie process fix: WiFi child processes now reaped via `waitpid()`.
+- Gesture surface clear skipped (surface is invisible, saves 245KB memset/frame).
+
+### Version
+
+- Bumped to 0.0.72.
+
 ## [0.0.71] - 2026-04-03
 
 ### File Manager Improvements

@@ -1,6 +1,6 @@
 # Lumo Compositor Security Audit
 
-Completed: 2026-03-28 (v0.0.52), updated 2026-03-30 (v0.0.57), current: v0.0.58
+Completed: 2026-03-28 (v0.0.52), updated 2026-04-04 (v0.0.72)
 
 ## Scope
 
@@ -18,6 +18,15 @@ protocol robustness, and performance.
 | High     | 8     | 8     |
 | Medium   | 12    | 12    |
 | Low/Perf | 12    | 12    |
+
+### v0.0.72 Security Audit Fixes
+
+- **Critical: Command injection via `system()`** — File manager used `system("mpv '...'")` for media playback, allowing shell injection via crafted filenames. Replaced with `fork()`+`execlp()` which passes paths as arguments without shell interpretation.
+- **High: Boot marker in /tmp** — `/tmp/lumo-boot-active` was writable by any user (symlink attack). Moved to `$XDG_RUNTIME_DIR` (`/run/user/1001/`).
+- **High: Bridge socket permissions** — Unix socket created without restrictive umask. Added `umask(0077)` around `bind()` to restrict to owner only.
+- **Medium: Static buffers in launch_app** — `static char` path buffers replaced with stack-local to prevent reentrancy bugs.
+- **Medium: Bokeh array overrun** — `BOKEH_COUNT` was 10 but initializer had 18 entries. Fixed to 18.
+- **Low: weather_temp_c naming** — Field stores Fahrenheit despite `_c` suffix. Documented, not renamed (too much churn).
 
 ### v0.0.57 Additional Fixes
 

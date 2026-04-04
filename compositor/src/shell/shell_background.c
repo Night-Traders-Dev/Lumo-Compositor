@@ -20,7 +20,7 @@
 
 /* ── bokeh ball system ────────────────────────────────────────────── */
 
-#define BOKEH_COUNT 10
+#define BOKEH_COUNT 18
 
 struct bokeh_ball {
     /* base position as fraction of screen (0.0-1.0) */
@@ -833,7 +833,7 @@ void lumo_draw_animated_bg(
         /* signal other shell processes to hide during boot */
         static bool boot_flag_set = false;
         if (!boot_flag_set) {
-            FILE *bf = fopen("/tmp/lumo-boot-active", "w");
+            FILE *bf = fopen("/run/user/1001/lumo-boot-active", "w");
             if (bf) { fputs("1", bf); fclose(bf); }
             boot_flag_set = true;
         }
@@ -905,7 +905,7 @@ void lumo_draw_animated_bg(
     {
         static bool boot_flag_cleared = false;
         if (!boot_flag_cleared) {
-            unlink("/tmp/lumo-boot-active");
+            unlink("/run/user/1001/lumo-boot-active");
             boot_flag_cleared = true;
         }
     }

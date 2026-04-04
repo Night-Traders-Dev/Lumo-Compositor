@@ -681,7 +681,7 @@ static void lumo_shell_launch_app(
     if (strncmp(command, native_prefix, strlen(native_prefix)) == 0) {
         app_id = command + strlen(native_prefix);
         if (state != NULL && state->binary_path[0] != '\0') {
-            static char app_path[PATH_MAX];
+            char app_path[PATH_MAX];
             char parent_directory[PATH_MAX];
 
             if (lumo_shell_parent_directory(state->binary_path,
@@ -696,7 +696,7 @@ static void lumo_shell_launch_app(
     /* for non-native commands (e.g. lumo-browser), also try the sibling
      * builddir path so uninstalled sessions work */
     if (app_id == NULL && state != NULL && state->binary_path[0] != '\0') {
-        static char ext_path[PATH_MAX];
+        char ext_path[PATH_MAX];
         char parent_directory[PATH_MAX];
         if (lumo_shell_parent_directory(state->binary_path,
                 parent_directory, sizeof(parent_directory)) &&
@@ -1430,14 +1430,19 @@ bool lumo_shell_bridge_start(struct lumo_compositor *compositor) {
     }
 
     unlink(state->bridge.socket_path);
+    /* restrict socket to owner only (prevents local privilege escalation) */
+    mode_t old_umask = umask(0077);
     if (bind(state->bridge.listen_fd, (struct sockaddr *)&address,
             sizeof(address)) != 0) {
+        umask(old_umask);
         wlr_log_errno(WLR_ERROR, "shell: failed to bind state socket");
         close(state->bridge.listen_fd);
         state->bridge.listen_fd = -1;
         unlink(state->bridge.socket_path);
         return false;
     }
+
+    umask(old_umask);
 
     if (listen(state->bridge.listen_fd, 4) != 0) {
         wlr_log_errno(WLR_ERROR, "shell: failed to listen on state socket");

@@ -1640,17 +1640,21 @@ static void lumo_app_touch_handle_up(
                                     /* TODO: launch photos with path */
                                     opened = false; /* fall through to info */
                                 }
-                                /* audio files → music app */
+                                /* audio files → music app via fork+exec
+                                 * (no shell — prevents command injection
+                                 * via crafted filenames) */
                                 else if (strcasecmp(ext, ".mp3") == 0 ||
                                         strcasecmp(ext, ".wav") == 0 ||
                                         strcasecmp(ext, ".ogg") == 0 ||
                                         strcasecmp(ext, ".flac") == 0 ||
                                         strcasecmp(ext, ".m4a") == 0 ||
                                         strcasecmp(ext, ".aac") == 0) {
-                                    char cmd[1200];
-                                    snprintf(cmd, sizeof(cmd),
-                                        "mpv --no-video '%s' &", full_path);
-                                    (void)system(cmd);
+                                    pid_t pid = fork();
+                                    if (pid == 0) {
+                                        execlp("mpv", "mpv", "--no-video",
+                                            full_path, (char *)NULL);
+                                        _exit(1);
+                                    }
                                     opened = true;
                                 }
                                 /* video files → video player */
@@ -1659,10 +1663,12 @@ static void lumo_app_touch_handle_up(
                                         strcasecmp(ext, ".avi") == 0 ||
                                         strcasecmp(ext, ".mov") == 0 ||
                                         strcasecmp(ext, ".webm") == 0) {
-                                    char cmd[1200];
-                                    snprintf(cmd, sizeof(cmd),
-                                        "mpv '%s' &", full_path);
-                                    (void)system(cmd);
+                                    pid_t pid = fork();
+                                    if (pid == 0) {
+                                        execlp("mpv", "mpv",
+                                            full_path, (char *)NULL);
+                                        _exit(1);
+                                    }
                                     opened = true;
                                 }
                             }

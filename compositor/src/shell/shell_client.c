@@ -1103,15 +1103,13 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
         }
 
         if (client->unified) {
-            /* unified: choose timeout based on what's visible.
-             * Background animation only needs 30 FPS when no app is
-             * covering it.  When an app is focused (scrim active), the
-             * background is hidden so we can sleep much longer and
-             * save ~30% CPU. */
+            /* unified: background only needs 5 FPS (200ms) since waves
+             * are pre-rendered at WAVE_LOOP_FPS=5.  Use 33ms only
+             * during active animations. When app covers bg, sleep 5s. */
             bool bg_visible =
                 client->compositor_scrim_state == LUMO_SHELL_REMOTE_SCRIM_HIDDEN;
             bool any_anim = false;
-            timeout_ms = bg_visible ? 33 : 5000;
+            timeout_ms = bg_visible ? 200 : 5000;
             for (int i = 0; i < client->surface_count; i++) {
                 struct lumo_shell_surface_slot *slot = &client->slots[i];
                 if (slot->animation_active) {
