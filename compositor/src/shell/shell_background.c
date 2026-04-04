@@ -252,7 +252,7 @@ static void lumo_draw_wave_layer(
 
                 float glow = smoothstep(max_d, 0.0f, dist);
                 glow = fast_pow(glow, (int)waves[w].sharp);
-                total_glow += glow * 0.35f;
+                total_glow += glow * 0.50f;
             }
 
             if (total_glow < 0.004f) continue;
@@ -395,7 +395,7 @@ static void bg_worker_wave_pass(struct lumo_bg_stripe *t) {
 
                 float gl = smoothstep(max_d, 0.0f, dist);
                 gl = fast_pow(gl, (int)wv[w].sharp);
-                total_glow += gl * 0.35f;
+                total_glow += gl * 0.50f;
             }
 
             if (total_glow > 1.0f) total_glow = 1.0f;
@@ -803,7 +803,9 @@ void lumo_draw_animated_bg(
     uint32_t wave_tr = base_r + 0x40 > 0xFF ? 0xFF : base_r + 0x40;
     uint32_t wave_tg = base_g + 0x30 > 0xFF ? 0xFF : base_g + 0x30;
     uint32_t wave_tb = base_b + 0x48 > 0xFF ? 0xFF : base_b + 0x48;
-    float wave_t = (float)frame * 0.003f;
+    /* PS4 XMB-style slow drift — waves move glacially.
+     * 0.001 at 30fps = 0.03/sec (matches PS4 dynamic theme speed) */
+    float wave_t = (float)frame * 0.001f;
 
     /* real-time wave rendering — GPU handles compositing so CPU
      * has plenty of headroom for the 8-thread wave computation.

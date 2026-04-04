@@ -191,8 +191,13 @@ struct gh_state {
     char file_name[128];
     int content_scroll;
 
+    /* README */
+    char *readme_content;
+    size_t readme_len;
+    bool readme_loaded;
+
     /* UI state */
-    int view;          /* 0=login, 1=repos, 2=files, 3=content */
+    int view;          /* 0=login, 1=repos, 2=files/readme, 3=content */
     int selected_repo;
     int scroll_offset;
 
@@ -658,6 +663,89 @@ void lumo_app_render_github(
             theme.separator);
         y += 8;
 
+        /* README.md rendered at top when at repo root */
+        if (gh.current_path[0] == '\0' && gh.readme_loaded &&
+                gh.readme_content != NULL) {
+            /* README card */
+            int readme_card_h = 160;
+            if (y + readme_card_h > (int)height - 100)
+                readme_card_h = (int)height - y - 100;
+            if (readme_card_h > 40) {
+                struct lumo_rect readme_card = {pad, y, col_w, readme_card_h};
+                lumo_app_fill_rounded_rect(pixels, width, height,
+                    &readme_card, 8, theme.card_bg);
+                lumo_app_draw_outline(pixels, width, height,
+                    &readme_card, 1, theme.card_stroke);
+
+                /* README header */
+                lumo_app_draw_text(pixels, width, height,
+                    pad + 12, y + 6, 1, theme.accent, "README.md");
+                int ry = y + 20;
+                int max_ry = y + readme_card_h - 8;
+
+                /* render markdown content */
+                const char *p = gh.readme_content;
+                while (*p && ry < max_ry) {
+                    const char *eol = strchr(p, '\n');
+                    int len = eol ? (int)(eol - p) : (int)strlen(p);
+                    int max_chars = (col_w - 24) / 6;
+                    if (len > max_chars) len = max_chars;
+
+                    char line_buf[256];
+                    if (len > (int)sizeof(line_buf) - 1)
+                        len = (int)sizeof(line_buf) - 1;
+                    memcpy(line_buf, p, (size_t)len);
+                    line_buf[len] = '\0';
+
+                    /* markdown styling */
+                    uint32_t line_color = theme.text;
+                    int scale = 1;
+                    const char *display = line_buf;
+
+                    if (line_buf[0] == '#' && line_buf[1] == '#' &&
+                            line_buf[2] == '#') {
+                        /* ### h3 */
+                        display = line_buf + 3;
+                        while (*display == ' ') display++;
+                        line_color = theme.accent;
+                        scale = 1;
+                    } else if (line_buf[0] == '#' && line_buf[1] == '#') {
+                        /* ## h2 */
+                        display = line_buf + 2;
+                        while (*display == ' ') display++;
+                        line_color = theme.accent;
+                        scale = 2;
+                    } else if (line_buf[0] == '#') {
+                        /* # h1 */
+                        display = line_buf + 1;
+                        while (*display == ' ') display++;
+                        line_color = theme.accent;
+                        scale = 2;
+                    } else if (line_buf[0] == '-' || line_buf[0] == '*') {
+                        /* bullet list */
+                        line_color = theme.text;
+                    } else if (line_buf[0] == '`') {
+                        /* code block */
+                        line_color = lumo_app_argb(0xFF, 0x66, 0xCC, 0x66);
+                    } else if (line_buf[0] == '>') {
+                        /* blockquote */
+                        line_color = theme.text_dim;
+                    } else if (len == 0) {
+                        /* blank line */
+                        p = eol ? eol + 1 : p + strlen(p);
+                        ry += 6;
+                        continue;
+                    }
+
+                    lumo_app_draw_text(pixels, width, height,
+                        pad + 12, ry, scale, line_color, display);
+                    ry += (scale > 1) ? 18 : 12;
+                    p = eol ? eol + 1 : p + strlen(p);
+                }
+                y += readme_card_h + 6;
+            }
+        }
+
         /* file list */
         int row_h = 40;
         int scroll = gh.scroll_offset;
@@ -814,6 +902,47 @@ void lumo_app_render_github(
     }
 }
 
+static void gh_fetch_readme(const char *repo) {
+    char endpoint[512];
+    snprintf(endpoint, sizeof(endpoint), "/repos/%s/readme", repo);
+
+    char *json = github_api_get(gh.token, endpoint);
+    if (!json) return;
+
+    char url_buf[1024];
+    if (json_get_string(json, "download_url", url_buf, sizeof(url_buf))) {
+        free(json);
+        CURL *curl = curl_easy_init();
+        if (!curl) return;
+
+        struct curl_buf buf = {0};
+        buf.data = malloc(32768);
+        buf.capacity = 32768;
+        buf.data[0] = '\0';
+
+        curl_easy_setopt(curl, CURLOPT_URL, url_buf);
+        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, curl_write_cb);
+        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &buf);
+        curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
+        curl_easy_setopt(curl, CURLOPT_USERAGENT, "Lumo-OS/0.0.77");
+        curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+        CURLcode res = curl_easy_perform(curl);
+        curl_easy_cleanup(curl);
+
+        if (res == CURLE_OK && buf.size > 0) {
+            if (gh.readme_content) free(gh.readme_content);
+            gh.readme_content = buf.data;
+            gh.readme_len = buf.size;
+            gh.readme_loaded = true;
+        } else {
+            free(buf.data);
+        }
+    } else {
+        free(json);
+    }
+}
+
 /* ── file tree fetch thread ────────────────────────────────────── */
 
 static void *gh_fetch_files_thread(void *arg) {
@@ -821,6 +950,11 @@ static void *gh_fetch_files_thread(void *arg) {
     gh.loading = true;
     snprintf(gh.status_msg, sizeof(gh.status_msg), "LOADING FILES...");
     gh_fetch_files(gh.current_repo, gh.current_path);
+    /* fetch README when at repo root */
+    if (gh.current_path[0] == '\0' && !gh.readme_loaded) {
+        snprintf(gh.status_msg, sizeof(gh.status_msg), "LOADING README...");
+        gh_fetch_readme(gh.current_repo);
+    }
     gh.loading = false;
     return NULL;
 }
@@ -853,7 +987,7 @@ void lumo_app_github_handle_tap(int btn) {
     }
 
     if (gh.view == 1 && btn >= 100) {
-        /* repo tapped — open file tree */
+        /* repo tapped — open file tree + README */
         int idx = btn - 100;
         if (idx >= 0 && idx < gh.repo_count) {
             snprintf(gh.current_repo, sizeof(gh.current_repo),
@@ -861,6 +995,10 @@ void lumo_app_github_handle_tap(int btn) {
             gh.current_path[0] = '\0';
             gh.scroll_offset = 0;
             gh.view = 2;
+            /* reset README */
+            if (gh.readme_content) { free(gh.readme_content); gh.readme_content = NULL; }
+            gh.readme_len = 0;
+            gh.readme_loaded = false;
             pthread_t tid;
             pthread_create(&tid, NULL, gh_fetch_files_thread, NULL);
             pthread_detach(tid);
