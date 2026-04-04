@@ -6,7 +6,7 @@
 #include <string.h>
 
 static const uint32_t lumo_shell_launcher_columns = 4;
-static const uint32_t lumo_shell_launcher_rows = 3;
+static const uint32_t lumo_shell_launcher_rows = 4;
 static const char *const lumo_shell_launcher_labels[] = {
     "PHONE",
     "TERMINAL",
