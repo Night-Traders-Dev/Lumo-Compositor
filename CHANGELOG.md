@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.73] - 2026-04-04
+
+### GPU Compositing — Compositor CPU 92% → 0%
+
+- **GPU ACTIVE**: PowerVR BXE-2-32 GLES 3.2 now handles all surface compositing.
+- Four wlroots-0.18 patches for split GPU/display on SpacemiT K1:
+  - `render/egl.c`: Inject XRGB8888/ARGB8888+LINEAR render formats for PowerVR (driver reports 0 despite supporting 20 DMA-BUF formats).
+  - `render/allocator/allocator.c`: GBM allocator falls back to renderD128 when display controller has no render node.
+  - `backend/drm/drm.c`: Skip PRIME export and KMS capability checks for render-only GPUs (0 CRTCs).
+  - `types/output/render.c`: LINEAR modifier fallback when GPU/display format intersection is empty.
+- Environment: `WLR_RENDER_DRM_DEVICE=/dev/dri/renderD128` + `WLR_RENDERER=gles2` in `/etc/environment`.
+
+### Browser Fix
+
+- Browser tile now launches `lumo-browser` (WebKitGTK 6.0) as standalone Wayland client instead of the "Coming Soon" stub.
+- `GSK_RENDERER=cairo` set automatically for GTK4 apps on riscv64.
+
+### Performance Fixes (P0)
+
+- App client double-buffered SHM (was mmap/munmap per frame — ~5-8% CPU on RISC-V).
+- App NVMe surface cache throttled to every 10 seconds (was per-frame, 35-105 MB/s I/O).
+- Panel/launcher dispatch fix: flush+dispatch_pending before redraw after state change.
+
+### Version
+
+- Bumped to 0.0.73.
+
 ## [0.0.72] - 2026-04-04
 
 ### Security Fixes

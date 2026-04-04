@@ -717,6 +717,8 @@ static void lumo_shell_launch_app(
 
     if (pid == 0) {
         setsid();
+        /* set GSK_RENDERER for GTK4 apps on riscv64 (avoids GPU issues) */
+        setenv("GSK_RENDERER", "cairo", 0);
         if (app_id != NULL && app_id[0] != '\0') {
             execlp(binary, binary, "--app", app_id, (char *)NULL);
         } else if (strchr(command, ' ') != NULL) {
