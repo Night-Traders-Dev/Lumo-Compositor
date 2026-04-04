@@ -206,6 +206,7 @@ app_sources = files(
   'src/apps/app_music.c',
   'src/apps/app_photos.c',
   'src/apps/app_videos.c',
+  'src/apps/app_browser.c',
   'src/apps/app_stubs.c',
   'src/apps/app_client.c',
 ) + xdg_client_protocol_files + text_input_client_protocol_files
@@ -351,6 +352,7 @@ app_test_exe = executable(
     'src/apps/app_music.c',
     'src/apps/app_photos.c',
     'src/apps/app_videos.c',
+    'src/apps/app_browser.c',
     'src/apps/app_stubs.c',
     'tests/apps/test_app.c',
   ),
@@ -385,6 +387,7 @@ fuzz_test_sources = files(
   'src/apps/app_music.c',
   'src/apps/app_photos.c',
   'src/apps/app_videos.c',
+  'src/apps/app_browser.c',
   'src/apps/app_stubs.c',
   'tests/core/test_fuzz.c',
 ) + lumo_sources
@@ -413,6 +416,7 @@ perf_test_sources = files(
   'src/apps/app_music.c',
   'src/apps/app_photos.c',
   'src/apps/app_videos.c',
+  'src/apps/app_browser.c',
   'src/apps/app_stubs.c',
   'tests/core/test_perf.c',
 )

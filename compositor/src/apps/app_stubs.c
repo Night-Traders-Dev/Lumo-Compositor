@@ -46,13 +46,7 @@ static void draw_coming_soon(
     }
 }
 
-void lumo_app_render_browser(
-    const struct lumo_app_render_context *ctx,
-    uint32_t *pixels, uint32_t width, uint32_t height)
-{
-    (void)ctx;
-    draw_coming_soon(pixels, width, height, "BROWSER");
-}
+/* browser is in app_browser.c — no stub needed */
 
 void lumo_app_render_phone(
     const struct lumo_app_render_context *ctx,
@@ -78,13 +72,7 @@ void lumo_app_render_maps(
     draw_coming_soon(pixels, width, height, "MAPS");
 }
 
-int lumo_app_browser_button_at(
-    uint32_t width, uint32_t height,
-    double x, double y)
-{
-    (void)width; (void)height; (void)x; (void)y;
-    return -1;
-}
+/* browser_button_at is in app_browser.c */
 
 int lumo_app_phone_button_at(
     uint32_t width, uint32_t height,

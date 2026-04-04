@@ -24,7 +24,7 @@ static const char *const lumo_shell_launcher_labels[] = {
 static const char *const lumo_shell_launcher_commands[] = {
     "lumo-app:phone",
     "lumo-app:messages",
-    "lumo-browser",
+    "lumo-app:browser",
     "lumo-app:camera",
     "lumo-app:maps",
     "lumo-app:music",
