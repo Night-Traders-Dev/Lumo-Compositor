@@ -48,21 +48,55 @@ The GPU (card0/renderD128) and display controller (card1) are separate devices:
 - Display controller only accepts LINEAR DMA-BUF imports
 - wlroots' multi-GPU format negotiation requires LINEAR in mgpu_formats
 
-### Current Status
+### Current Status (v0.0.72)
 
-GPU compositing is **not enabled** due to:
-1. wlroots format negotiation fails for the split GPU/display setup
-2. The display controller's `ky-drm` driver needs LINEAR modifiers in mgpu_formats
-3. Mesa GBM backend support for ky-drm is incomplete
+GPU compositing is **partially working** — the GLES2 renderer initializes
+successfully on the PowerVR GPU, but the output swapchain fails:
 
-### Enabling GPU Rendering
+**What works:**
+- `WLR_RENDER_DRM_DEVICE=/dev/dri/renderD128` correctly opens the GPU
+- `WLR_RENDERER=gles2` initializes OpenGL ES 3.2 on PowerVR BXE-2-32
+- EGL 1.5 with DMA-BUF import/export extensions
+- GBM buffer allocation on renderD128
+- DMA-BUF import into card1 (display controller)
 
-To enable GPU compositing when driver support improves:
+**What fails:**
+- `wlr_gbm_allocator_create()` fails on card1 (no GBM support on ky-drm)
+- The allocator fallback finds renderD128 and creates GBM there
+- But output swapchain format negotiation fails — the GPU's GBM formats
+  don't match the display controller's scanout formats
+- wlroots falls back to pixman
 
-1. Set `WLR_RENDER_DRM_DEVICE=/dev/dri/renderD128` in the session environment
-2. Ensure wlroots detects the GPU render node for GBM allocation
-3. Verify LINEAR modifier is available in format negotiation
-4. Test with `WLR_RENDERER=gles2` or `WLR_RENDERER=vulkan`
+**Root cause:** wlroots 0.18 doesn't recognize card0 (GPU) and card1 (display)
+as a multi-GPU pair because card0 has 0 CRTCs (fails `drmIsKMS()`). The
+multi-GPU copy-back path (`backend/drm/renderer.c`) only activates when
+both devices are registered as DRM backends with a parent-child relationship.
+
+### Enabling GPU Rendering (Requires wlroots Patches)
+
+Three patches are needed in `/home/kraken/wlroots-0.18/`:
+
+1. **`render/wlr_renderer.c`**: In `open_preferred_drm_fd()`, when the backend
+   DRM device has no render node, fall through to the arbitrary render node
+   search instead of using the backend's fd directly.
+
+2. **`backend/drm/drm.c`**: Skip `DRM_PRIME_CAP_EXPORT` check when the parent
+   GPU has a render node (pvrsrvkm reports import-only but export works via GBM).
+
+3. **`backend/backend.c`**: Modify `wlr_session_find_gpus()` to also enumerate
+   non-KMS DRM devices that have render nodes, registering them as parent GPUs
+   for KMS-only display controllers.
+
+### Quick Test (No Patches)
+
+```bash
+# Add to /etc/environment:
+WLR_RENDER_DRM_DEVICE=/dev/dri/renderD128
+WLR_RENDERER=gles2
+
+# Result: GLES2 renderer initializes, but output scanout fails
+# Falls back to pixman automatically
+```
 
 ### OpenCL Compute
 
