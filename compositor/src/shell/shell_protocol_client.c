@@ -625,9 +625,16 @@ static void lumo_shell_client_apply_state_frame(
             lumo_shell_client_redraw_unified(client);
         } else {
             lumo_shell_client_sync_surface_state(client, layout_changed);
-            /* flush + dispatch to receive layer surface configure before
-             * attempting redraw — needed for transitions that change
-             * surface size (show/hide launcher, sidebar) */
+            /* roundtrip to receive the layer surface configure response
+             * before attempting redraw — without this, the surface may
+             * not be configured at its new dimensions and the redraw
+             * silently fails */
+            if (client->display != NULL) {
+                wl_display_roundtrip(client->display);
+            }
+            (void)lumo_shell_client_redraw(client);
+            /* second redraw attempt after another dispatch in case the
+             * first one was too early */
             if (client->display != NULL) {
                 wl_display_flush(client->display);
                 wl_display_dispatch_pending(client->display);

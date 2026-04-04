@@ -463,6 +463,10 @@ static bool lumo_shell_draw_buffer(
     wl_surface_attach(client->surface, buffer->buffer, 0, 0);
     wl_surface_damage_buffer(client->surface, 0, 0, (int)width, (int)height);
     wl_surface_commit(client->surface);
+    /* flush immediately so GPU compositor picks up the buffer on the
+     * next frame — critical for panel/launcher visibility transitions */
+    if (client->display != NULL)
+        wl_display_flush(client->display);
 
     buffer->busy = true;
     client->buffer = buffer;
