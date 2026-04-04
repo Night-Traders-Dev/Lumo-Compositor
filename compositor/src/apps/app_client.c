@@ -1970,7 +1970,8 @@ static void lumo_app_touch_handle_up(
         } else if (btn >= 100) {
             int row = btn - 100;
             if (client->note_editing >= 0) {
-                /* in editing mode: tap quick link → fill URL */
+                /* in editing mode: tap quick link → fill URL bar
+                 * (user presses Enter/GO to actually navigate) */
                 static const char *quick_urls[] = {
                     "https://duckduckgo.com/",
                     "https://en.m.wikipedia.org/",
@@ -1981,16 +1982,15 @@ static void lumo_app_touch_handle_up(
                     snprintf(client->term_input, sizeof(client->term_input),
                         "%s", quick_urls[row]);
                     client->term_input_len = (int)strlen(client->term_input);
-                    lumo_app_browser_launch_url(client->term_input);
-                    client->note_editing = -1;
                     (void)lumo_app_client_redraw(client);
                 }
             } else if (row < client->note_count) {
-                /* home mode: tap bookmark → launch */
+                /* home mode: tap bookmark → fill URL bar and enter
+                 * editing mode (user presses Enter/GO to navigate) */
                 snprintf(client->term_input, sizeof(client->term_input),
                     "%s", client->notes[row]);
                 client->term_input_len = (int)strlen(client->term_input);
-                lumo_app_browser_launch_url(client->term_input);
+                client->note_editing = 0;
                 (void)lumo_app_client_redraw(client);
             }
         }
