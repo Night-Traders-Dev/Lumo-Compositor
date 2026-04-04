@@ -942,9 +942,12 @@ void lumo_input_touch_point_trigger_edge_action(
             wl_list_for_each(tl, &compositor->toplevels, link) {
                 if (tl->scene_tree->node.enabled) {
                     wlr_xdg_toplevel_send_close(tl->xdg_toplevel);
-                    tl->scene_tree->node.enabled = false;
+                    wlr_scene_node_set_enabled(
+                        &tl->scene_tree->node, false);
                     wlr_seat_keyboard_clear_focus(compositor->seat);
                     lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_HIDDEN);
+                    /* force scene redraw to clear stale surface */
+                    lumo_protocol_mark_layers_dirty(compositor);
                     wlr_log(WLR_INFO,
                         "input: touch %d back-closed app at %u",
                         point->touch_id, time_msec);
@@ -987,10 +990,12 @@ void lumo_input_touch_point_trigger_edge_action(
             struct lumo_toplevel *tl;
             wl_list_for_each(tl, &compositor->toplevels, link) {
                 wlr_xdg_toplevel_send_close(tl->xdg_toplevel);
-                tl->scene_tree->node.enabled = false;
+                wlr_scene_node_set_enabled(
+                    &tl->scene_tree->node, false);
             }
             wlr_seat_keyboard_clear_focus(compositor->seat);
             lumo_protocol_set_scrim_state(compositor, LUMO_SCRIM_HIDDEN);
+            lumo_protocol_mark_layers_dirty(compositor);
             wlr_log(WLR_INFO,
                 "input: touch %d bottom swipe → home at %u",
                 point->touch_id, time_msec);
