@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.74] - 2026-04-04
+
+### SHM Browser Restored
+
+- Native SHM browser (`app_browser.c`) restored — was accidentally replaced by "Coming Soon" stub during refactoring.
+- Browser tile renders the full native UI: toolbar, bookmarks, URL bar, search.
+- URL input triggers OSK, searches via DuckDuckGo, launches `lumo-webview` for page rendering.
+
+### Version
+
+- Bumped to 0.0.74.
+
 ## [0.0.73] - 2026-04-04
 
 ### GPU Compositing — Compositor CPU 92% → 0%
