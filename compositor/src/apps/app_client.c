@@ -37,6 +37,9 @@ struct lumo_app_buffer {
     void *data;
     int fd;
     size_t size;
+    uint32_t width;
+    uint32_t height;
+    bool busy;
     struct wl_buffer_listener release;
 };
 
@@ -54,6 +57,7 @@ struct lumo_app_client {
     struct xdg_surface *xdg_surface;
     struct xdg_toplevel *xdg_toplevel;
     struct lumo_app_buffer *buffer;
+    struct lumo_app_buffer *buffers[2];
     struct zwp_text_input_manager_v3 *text_input_manager;
     struct zwp_text_input_v3 *text_input;
     bool text_input_enabled;
@@ -713,34 +717,23 @@ static int lumo_app_create_shm_file(size_t size) {
     return fd;
 }
 
+static void lumo_app_buffer_destroy(struct lumo_app_buffer *buffer) {
+    if (buffer == NULL) return;
+    if (buffer->buffer != NULL) wl_buffer_destroy(buffer->buffer);
+    if (buffer->pool != NULL) wl_shm_pool_destroy(buffer->pool);
+    if (buffer->data != NULL) munmap(buffer->data, buffer->size);
+    if (buffer->fd >= 0) close(buffer->fd);
+    free(buffer);
+}
+
 static void lumo_app_buffer_release(
     void *data,
     struct wl_buffer *wl_buffer
 ) {
     struct lumo_app_buffer *buffer = data;
-
     (void)wl_buffer;
-    if (buffer == NULL) {
-        return;
-    }
-
-    if (buffer->client != NULL && buffer->client->buffer == buffer) {
-        buffer->client->buffer = NULL;
-    }
-    if (buffer->buffer != NULL) {
-        wl_buffer_destroy(buffer->buffer);
-    }
-    if (buffer->pool != NULL) {
-        wl_shm_pool_destroy(buffer->pool);
-    }
-    if (buffer->data != NULL) {
-        munmap(buffer->data, buffer->size);
-    }
-    if (buffer->fd >= 0) {
-        close(buffer->fd);
-    }
-
-    free(buffer);
+    if (buffer != NULL)
+        buffer->busy = false;
 }
 
 static bool lumo_app_client_close_contains(
@@ -770,70 +763,88 @@ static void lumo_app_client_set_close_active(
     (void)lumo_app_client_redraw(client);
 }
 
-static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
-    /* TODO: implement double-buffering to avoid per-frame allocation */
-    struct lumo_app_buffer *buffer;
-    size_t stride;
-    size_t size;
+/* double-buffered SHM allocation — reuses buffers instead of
+ * allocating per frame (eliminates mmap/munmap TLB flush overhead) */
+static struct lumo_app_buffer *lumo_app_get_free_buffer(
+    struct lumo_app_client *client
+) {
+    size_t stride, size;
     int fd;
 
-    if (client == NULL || client->shm == NULL || client->surface == NULL ||
-            client->width == 0 || client->height == 0) {
-        return false;
-    }
-
-    if (client->width > SIZE_MAX / 4u) return false;
+    if (client == NULL || client->shm == NULL) return NULL;
+    if (client->width > SIZE_MAX / 4u) return NULL;
     stride = (size_t)client->width * 4u;
     if (client->height > 0 && stride > SIZE_MAX / (size_t)client->height)
-        return false;
+        return NULL;
     size = stride * (size_t)client->height;
-    fd = lumo_app_create_shm_file(size);
-    if (fd < 0) {
-        fprintf(stderr, "lumo-app: failed to create shm file: %s\n",
-            strerror(errno));
-        return false;
+
+    /* try to reuse an existing buffer */
+    for (int i = 0; i < 2; i++) {
+        struct lumo_app_buffer *b = client->buffers[i];
+        if (b != NULL && !b->busy &&
+                b->width == client->width && b->height == client->height)
+            return b;
     }
 
-    buffer = calloc(1, sizeof(*buffer));
-    if (buffer == NULL) {
-        close(fd);
-        return false;
+    /* find a free slot and allocate a new buffer */
+    int slot = -1;
+    for (int i = 0; i < 2; i++) {
+        if (client->buffers[i] == NULL) { slot = i; break; }
+        if (!client->buffers[i]->busy) {
+            /* wrong size — destroy and reuse slot */
+            lumo_app_buffer_destroy(client->buffers[i]);
+            client->buffers[i] = NULL;
+            slot = i;
+            break;
+        }
     }
+    if (slot < 0) return NULL; /* both busy */
+
+    fd = lumo_app_create_shm_file(size);
+    if (fd < 0) return NULL;
+
+    struct lumo_app_buffer *buffer = calloc(1, sizeof(*buffer));
+    if (buffer == NULL) { close(fd); return NULL; }
 
     buffer->client = client;
     buffer->fd = fd;
     buffer->size = size;
+    buffer->width = client->width;
+    buffer->height = client->height;
     buffer->data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (buffer->data == MAP_FAILED) {
-        fprintf(stderr, "lumo-app: mmap failed: %s\n", strerror(errno));
-        close(fd);
-        free(buffer);
-        return false;
+        close(fd); free(buffer); return NULL;
     }
 
     buffer->pool = wl_shm_create_pool(client->shm, fd, (int)size);
     if (buffer->pool == NULL) {
-        fprintf(stderr, "lumo-app: failed to create shm pool\n");
-        munmap(buffer->data, size);
-        close(fd);
-        free(buffer);
-        return false;
+        munmap(buffer->data, size); close(fd); free(buffer); return NULL;
     }
 
     buffer->buffer = wl_shm_pool_create_buffer(buffer->pool, 0,
         (int)client->width, (int)client->height, (int)stride,
         WL_SHM_FORMAT_ARGB8888);
     if (buffer->buffer == NULL) {
-        fprintf(stderr, "lumo-app: failed to create shm buffer\n");
         wl_shm_pool_destroy(buffer->pool);
-        munmap(buffer->data, size);
-        close(fd);
-        free(buffer);
-        return false;
+        munmap(buffer->data, size); close(fd); free(buffer); return NULL;
     }
 
     buffer->release.release = lumo_app_buffer_release;
     wl_buffer_add_listener(buffer->buffer, &buffer->release, buffer);
+    client->buffers[slot] = buffer;
+    return buffer;
+}
+
+static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
+    struct lumo_app_buffer *buffer;
+
+    if (client == NULL || client->shm == NULL || client->surface == NULL ||
+            client->width == 0 || client->height == 0) {
+        return false;
+    }
+
+    buffer = lumo_app_get_free_buffer(client);
+    if (buffer == NULL || buffer->data == NULL) return false;
 
     {
         uint64_t sw_elapsed = client->stopwatch_accumulated_ms;
@@ -942,19 +953,27 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             sizeof(ctx.photo_thumbnail_heights));
         lumo_app_render(&ctx, buffer->data, client->width, client->height);
 
-        /* cache rendered app surface to NVMe for instant restore */
+        /* cache app surface to NVMe — throttled to once every 10 seconds
+         * to avoid I/O stalls on every frame redraw */
         {
-            char cache_path[256];
-            snprintf(cache_path, sizeof(cache_path),
-                "/data/lumo-cache/surfaces/%s.lumosurf",
-                lumo_app_id_name(client->app_id));
-            FILE *cfp = fopen(cache_path, "wb");
-            if (cfp != NULL) {
-                fwrite(&client->width, 4, 1, cfp);
-                fwrite(&client->height, 4, 1, cfp);
-                fwrite(buffer->data, 4,
-                    (size_t)client->width * client->height, cfp);
-                fclose(cfp);
+            static uint64_t last_cache_s = 0;
+            struct timespec cache_ts;
+            clock_gettime(CLOCK_MONOTONIC, &cache_ts);
+            uint64_t now_s = (uint64_t)cache_ts.tv_sec;
+            if (now_s >= last_cache_s + 10) {
+                last_cache_s = now_s;
+                char cache_path[256];
+                snprintf(cache_path, sizeof(cache_path),
+                    "/data/lumo-cache/surfaces/%s.lumosurf",
+                    lumo_app_id_name(client->app_id));
+                FILE *cfp = fopen(cache_path, "wb");
+                if (cfp != NULL) {
+                    fwrite(&client->width, 4, 1, cfp);
+                    fwrite(&client->height, 4, 1, cfp);
+                    fwrite(buffer->data, 4,
+                        (size_t)client->width * client->height, cfp);
+                    fclose(cfp);
+                }
             }
         }
     }
@@ -962,6 +981,7 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
     wl_surface_damage_buffer(client->surface, 0, 0, (int)client->width,
         (int)client->height);
     wl_surface_commit(client->surface);
+    buffer->busy = true;
     client->buffer = buffer;
     return true;
 }
@@ -2792,10 +2812,13 @@ static void lumo_app_client_destroy(struct lumo_app_client *client) {
         wl_seat_release(client->seat);
         client->seat = NULL;
     }
-    if (client->buffer != NULL) {
-        lumo_app_buffer_release(client->buffer, client->buffer->buffer);
-        client->buffer = NULL;
+    for (int i = 0; i < 2; i++) {
+        if (client->buffers[i] != NULL) {
+            lumo_app_buffer_destroy(client->buffers[i]);
+            client->buffers[i] = NULL;
+        }
     }
+    client->buffer = NULL;
     if (client->xdg_toplevel != NULL) {
         xdg_toplevel_destroy(client->xdg_toplevel);
         client->xdg_toplevel = NULL;
