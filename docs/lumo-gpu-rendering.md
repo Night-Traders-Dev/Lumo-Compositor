@@ -48,7 +48,18 @@ The GPU (card0/renderD128) and display controller (card1) are separate devices:
 - Display controller only accepts LINEAR DMA-BUF imports
 - wlroots' multi-GPU format negotiation requires LINEAR in mgpu_formats
 
-### Current Status (v0.0.72)
+### Current Status (v0.0.72) — GPU ACTIVE
+
+**GPU compositing is WORKING.** The PowerVR BXE-2-32 handles all surface
+compositing via GLES 3.2. Compositor CPU dropped from 92% to 0%.
+
+Four wlroots patches were required:
+1. `render/egl.c`: Fallback render format injection for PowerVR (reports 0 render formats despite supporting 20 DMA-BUF formats)
+2. `render/allocator/allocator.c`: renderD128 GBM fallback for display-only controllers
+3. `backend/drm/drm.c`: Skip PRIME/KMS checks for render-only GPUs
+4. `types/output/render.c`: LINEAR modifier fallback for split GPU/display format negotiation
+
+### Previous Status (v0.0.72)
 
 GPU compositing is **partially working** — the GLES2 renderer initializes
 successfully on the PowerVR GPU, but the output swapchain fails:
