@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "browser_url.h"
+#include "lumo/version.h"
 
 #define LUMO_BROWSER_TITLE "Lumo Browser"
 #define LUMO_MAX_TABS 8
@@ -365,7 +366,7 @@ static const char *start_page_html =
     "<a class='bm' href='https://en.m.wikipedia.org/'>Wikipedia</a>"
     "<a class='bm' href='https://github.com/'>GitHub</a>"
     "</div>"
-    "<p>Lumo Browser v0.0.61 | WebKit</p>"
+    "<p>Lumo Browser v" LUMO_VERSION_STRING " | WebKit</p>"
     "</body></html>";
 
 static int add_tab(LumoBrowser *b, const char *uri) {
