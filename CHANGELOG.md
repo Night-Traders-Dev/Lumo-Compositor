@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.78] - 2026-04-04
+
+### Touch Ripple Effect
+
+- Subtle pond-ripple animation on every touch.
+- Expanding translucent white ring (400ms, 20→100px radius).
+- Very subtle opacity (15% peak, fades to transparent).
+- Ring thickness decreases as it expands for natural feel.
+- Renders on background surface, visible on home screen.
+
+### PS4-Style Wave Animation
+
+- Wave speed reduced 3× to match PS4 XMB glacial drift.
+- Glow intensity increased 43% (0.35→0.50) for visual prominence.
+- Infinitely generated in real-time (no loop, no repeat ever).
+
+### GitHub App Improvements
+
+- README.md auto-fetched and rendered when opening a repo.
+- Markdown styling: headings (orange), code (green), quotes (dim), bullets.
+- File browser: directories, files with sizes, back navigation.
+- Syntax-highlighted content viewer: C, Python, JS, TS, shell, YAML.
+- Scroll support in all views. Async API fetching.
+
+### Professional App Icons
+
+- 14 programmatic icon sprites embedded in launcher.
+- Clean geometric designs: phone, terminal, browser, camera, maps, music, photos, videos, clock, notes, files, settings (gear), sysmon (bars), github (octocat).
+
+### Settings App Update
+
+- Dynamic renderer info (was hardcoded "PIXMAN SOFTWARE").
+- OS name from /etc/os-release (was hardcoded "UBUNTU 24.04").
+- GPU info, unified shell mode, 14 native apps count.
+
+### Fixes
+
+- Unified shell mode (fixes panel rendering race with GPU).
+- Stale app surface cleared on close (wlr_scene_node_set_enabled + mark_layers_dirty).
+- Toplevel scene node forced enabled on creation.
+- Sidebar animation: wave rendering pauses during transitions.
+
+### Version
+
+- Bumped to 0.0.78.
+
 ## [0.0.77] - 2026-04-04
 
 ### GitHub App

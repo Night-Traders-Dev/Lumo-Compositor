@@ -407,6 +407,12 @@ static void lumo_shell_touch_handle_down(
     /* record swipe start for launcher page navigation */
     if (client->mode == LUMO_SHELL_MODE_LAUNCHER)
         client->launcher_swipe_x = client->pointer_x;
+
+    /* trigger touch ripple */
+    client->ripple_x = client->pointer_x;
+    client->ripple_y = client->pointer_y;
+    client->ripple_start_msec = lumo_now_msec();
+    client->ripple_active = true;
 }
 
 static void lumo_shell_touch_handle_up(

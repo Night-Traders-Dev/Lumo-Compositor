@@ -169,6 +169,11 @@ struct lumo_shell_client {
     uint64_t sidebar_press_start_msec;
     bool sidebar_context_menu_visible;
     uint32_t sidebar_context_menu_index;
+
+    /* touch ripple effect */
+    double ripple_x, ripple_y;
+    uint64_t ripple_start_msec;
+    bool ripple_active;
 };
 
 /* ── theme (global, shared by all drawing functions) ──────────────── */
