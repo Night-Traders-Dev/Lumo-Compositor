@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.76] - 2026-04-04
+
+### Multi-Page App Drawer
+
+- App drawer supports multiple pages with swipe left/right navigation.
+- Page indicator dots at bottom of drawer.
+- Fixed tile buffer overflow (12 → 32) that prevented 13th+ app from appearing.
+- Grid position uses page-relative modulo for correct layout.
+
+### Documentation Audit
+
+- Updated all markdown files for v0.0.76 accuracy.
+- Fixed "pixman" → "GPU compositing" across README, architecture, theme engine docs.
+- Fixed "12 native apps" → "13 native apps" (SysMon added).
+- Removed all references to pre-rendered 366MB wave loop (now real-time).
+- Updated GPU rendering docs: compositor CPU 0%, boot ~15s, RAM ~80MB.
+
+### Version
+
+- Bumped to 0.0.76.
+
 ## [0.0.75] - 2026-04-04
 
 ### System Monitor App (SysMon)

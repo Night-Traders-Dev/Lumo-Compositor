@@ -48,7 +48,7 @@ The GPU (card0/renderD128) and display controller (card1) are separate devices:
 - Display controller only accepts LINEAR DMA-BUF imports
 - wlroots' multi-GPU format negotiation requires LINEAR in mgpu_formats
 
-### Current Status (v0.0.72) — GPU ACTIVE
+### Current Status (v0.0.75) — GPU ACTIVE
 
 **GPU compositing is WORKING.** The PowerVR BXE-2-32 handles all surface
 compositing via GLES 3.2. Compositor CPU dropped from 92% to 0%.
@@ -138,11 +138,11 @@ free -m
 | Component | Target | Current |
 | --------- | ------ | ------- |
 | Background shell CPU | < 5% | ~0% (pre-rendered) |
-| Compositor CPU | < 30% | ~20% |
-| Wave prerender | < 120s | ~80s |
-| Boot to desktop | < 45s | ~85s (incl. prerender) |
+| Compositor CPU | < 30% | ~0% (GPU) |
+| Wave render | real-time | real-time |
+| Boot to desktop | < 45s | ~15s |
 | Touch latency | < 16ms | ~20ms |
-| RAM (total shell) | < 500MB | ~400MB |
+| RAM (total shell) | < 500MB | ~80MB |
 
 ### Optimization Opportunities
 

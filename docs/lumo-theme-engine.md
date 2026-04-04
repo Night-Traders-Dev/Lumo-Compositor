@@ -69,15 +69,13 @@ From the base RGB, the engine derives:
 ## Animated Background (PS4 Flow Waves)
 
 The background renders 7 sine-based wave curves with asymmetric glow falloff,
-composited onto the time/weather gradient. The animation is pre-rendered at
-startup into a seamless loop stored in RAM:
+composited onto the time/weather gradient:
 
-- **Loop duration**: 5 minutes (1500 frames at 5fps)
+- **Rendering**: Real-time wave computation (no pre-rendered buffer)
 - **Resolution**: Half-res glow buffer (400×640 uint8), upscaled 2× for composite
-- **RAM usage**: ~366 MB
-- **Crossfade**: 3-second blend at loop boundary for seamless infinite playback
-- **CPU at runtime**: 0% — playback is just `memcpy` from pre-rendered buffer
-- **Boot splash**: Lumo icon + Ubuntu-style three-dot indicator shown during prerender (~80s)
+- **GPU compositing**: PowerVR BXE-2-32 handles final composite
+- **CPU**: ~15% for wave computation (8 threads at 15fps)
+- **Boot splash**: Lumo icon + Ubuntu-style three-dot indicator
 
 The gradient background smoothly interpolates between hour palettes based on
 the current minute, so there are no hard color jumps at hour boundaries.

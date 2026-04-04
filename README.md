@@ -10,7 +10,7 @@ leans toward:
 - screen rotation and coordinate mapping
 - native Wayland apps plus optional xWayland compatibility
 - compositor-owned state for launcher, OSK, sidebar, scrim, and focus handling
-- pre-rendered PS4 Flow wave animated background (60s seamless loop, 0% CPU)
+- real-time PS4 Flow wave animated background (GPU-composited) (60s seamless loop, 0% CPU)
 - sidebar multitasking bar with running app icons and AI-generated Lumo icon
 - mobile gesture navigation: bottom=home, right=back, left=sidebar
 
@@ -224,11 +224,11 @@ More detailed notes live in:
 
 ## Status
 
-The project is at v0.0.68 (Lumo OS) running on OrangePi RV2 hardware.
+The project is at v0.0.75 (Lumo OS) running on OrangePi RV2 hardware.
 
 Current capabilities:
 
-- full DRM compositor with pixman software rendering
+- full DRM compositor with GPU compositing (PowerVR BXE-2-32 GLES 3.2)
 - continuous theme engine with smoothstep time-of-day interpolation across 12 color stops, exponential-approach weather blending, Ubuntu/Sailfish/webOS palettes
 - animated procedural background with weather-aware hue shifts (fetches wttr.in every 5 min)
 - boot chime on shell startup

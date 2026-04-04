@@ -1,7 +1,7 @@
 # Lumo Compositor Architecture
 
 Lumo is a touch-first Wayland compositor and mobile shell built on
-wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
+wlroots 0.18 for the OrangePi RV2 (riscv64, GPU compositing via PowerVR BXE-2-32 GLES 3.2).
 
 ## System Overview
 
@@ -25,7 +25,7 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, pixman software rendering).
                      wlroots 0.18 (DRM + libinput + scene)
                                   |
     +-----------------------------+-----------------------------+
-    |  App Clients: lumo-app (12 native) | lumo-browser (SHM)  |
+    |  App Clients: lumo-app (13 native) | lumo-browser (SHM)  |
     +-------------------------------------------------------+
 ```
 
@@ -155,10 +155,8 @@ Priority-based touch dispatch:
 
 ### shell_background.c (~1050 lines)
 
-- Pre-rendered 5-minute PS4 Flow wave loop (1500 frames at 5fps, 366 MB)
-- 8-core thread pool for parallel wave computation
+- Real-time PS4 Flow wave rendering (no pre-rendered buffer)
 - Half-res glow buffer (400×640) with 2× upscale composite
-- Seamless 3-second crossfade at loop boundary
 - Boot splash: Lumo icon + Ubuntu-style three-dot loading indicator
 - Smooth gradient interpolation between hour palettes
 
