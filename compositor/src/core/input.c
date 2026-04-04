@@ -781,14 +781,22 @@ static void lumo_input_touch_down(
     if (edge_zone != LUMO_EDGE_NONE &&
             (point->hitbox == NULL ||
              point->hitbox->kind != LUMO_HITBOX_EDGE_GESTURE)) {
-        /* always capture edge zones — gestures must work regardless
-         * of whether an app is focused */
-        point->capture_edge = edge_zone;
-        lumo_input_touch_point_begin_capture(compositor, point, &target,
-            event->time_msec);
-        lumo_input_touch_debug_update(compositor, point,
-            LUMO_TOUCH_SAMPLE_DOWN, true, point->lx, point->ly);
-        return;
+        /* For top edge: only capture when no app is focused, so app
+         * UI at the top of the screen (browser URL bar, etc) receives
+         * touches. The shell-edge-top hitbox still triggers panels.
+         * For left/right/bottom edges: always capture for gestures. */
+        bool app_focused = !wl_list_empty(&compositor->toplevels) &&
+            target.surface != NULL;
+        if (app_focused && edge_zone == LUMO_EDGE_TOP) {
+            /* let touch fall through to the app */
+        } else {
+            point->capture_edge = edge_zone;
+            lumo_input_touch_point_begin_capture(compositor, point, &target,
+                event->time_msec);
+            lumo_input_touch_debug_update(compositor, point,
+                LUMO_TOUCH_SAMPLE_DOWN, true, point->lx, point->ly);
+            return;
+        }
     }
 
     /* --- hitbox checks (edges, gestures, OSK, launcher) --- */
