@@ -3083,14 +3083,17 @@ static void lumo_app_browser_launch_url(const char *url) {
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
+        /* GPU-accelerate GTK rendering via PowerVR GLES */
+        setenv("GSK_RENDERER", "gl", 1);
         /* set cache to tmpfs for speed */
         setenv("XDG_CACHE_HOME", "/tmp/lumo-webkit-cache", 1);
         /* try lumo-webview (WebKitGTK, full compat) */
         execlp("lumo-webview", "lumo-webview", resolved, (char *)NULL);
+        /* fallback to cairo renderer if GL fails */
+        setenv("GSK_RENDERER", "cairo", 1);
+        execlp("lumo-webview", "lumo-webview", resolved, (char *)NULL);
         /* try netsurf (lightweight, fast startup) */
         execlp("netsurf-gtk", "netsurf-gtk", resolved, (char *)NULL);
-        /* try epiphany */
-        execlp("epiphany", "epiphany", resolved, (char *)NULL);
         _exit(127);
     }
     if (pid > 0) {
