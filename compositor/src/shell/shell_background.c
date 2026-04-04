@@ -613,19 +613,12 @@ static void bg_parallel_fill(uint32_t *pixels, uint32_t width,
     if (half_w > LUMO_WAVE_MAX_W) half_w = LUMO_WAVE_MAX_W;
     if (half_h > LUMO_WAVE_MAX_H) half_h = LUMO_WAVE_MAX_H;
 
-    /* while prerendering, caller shows boot splash — never reaches here */
     if (!bg_pool.initialized) bg_pool_init();
     init_sine_lut();
+    (void)frame;
 
-    /* look up pre-rendered glow frame from the loop */
-    if (wave_loop_ready &&
-            half_w == wave_loop_half_w && half_h == wave_loop_half_h) {
-        uint32_t loop_frame = frame % WAVE_LOOP_FRAMES;
-        size_t frame_size = (size_t)half_w * half_h;
-        memcpy(wave_glow_buf, wave_loop_buf + loop_frame * frame_size,
-            frame_size);
-    } else {
-        /* fallback: real-time wave computation */
+    /* real-time wave computation on 8 threads (GPU handles compositing) */
+    {
         uint32_t stripe_h = half_h / LUMO_BG_THREADS;
         pthread_mutex_lock(&bg_pool.start_mutex);
         for (int i = 0; i < LUMO_BG_THREADS; i++) {
@@ -812,105 +805,9 @@ void lumo_draw_animated_bg(
     uint32_t wave_tb = base_b + 0x48 > 0xFF ? 0xFF : base_b + 0x48;
     float wave_t = (float)frame * 0.003f;
 
-    /* launch prerender thread on first call (non-blocking) */
-    if (!wave_loop_ready && !wave_loop_started) {
-        if (!bg_pool.initialized) bg_pool_init();
-        init_sine_lut();
-        uint32_t hw = width / 2, hh = height / 2;
-        if (hw > LUMO_WAVE_MAX_W) hw = LUMO_WAVE_MAX_W;
-        if (hh > LUMO_WAVE_MAX_H) hh = LUMO_WAVE_MAX_H;
-        prerender_args.half_w = hw;
-        prerender_args.half_h = hh;
-        wave_loop_started = true;
-        pthread_t prerender_tid;
-        pthread_create(&prerender_tid, NULL, wave_prerender_thread,
-            &prerender_args);
-        pthread_detach(prerender_tid);
-    }
-
-    /* show boot splash while wave loop is pre-rendering */
-    if (!wave_loop_ready) {
-        /* signal other shell processes to hide during boot */
-        static bool boot_flag_set = false;
-        if (!boot_flag_set) {
-            FILE *bf = fopen("/run/user/1001/lumo-boot-active", "w");
-            if (bf) { fputs("1", bf); fclose(bf); }
-            boot_flag_set = true;
-        }
-        /* fill gradient background */
-        for (uint32_t y = 0; y < height; y++) {
-            uint32_t rc = y < 2048 ? bg_row_cache[y] : bg_row_cache[2047];
-            lumo_fill_span(pixels + y * width, (int)width, rc);
-        }
-
-        /* center the Lumo icon */
-        int ix = ((int)width - LUMO_ICON_W) / 2;
-        int iy = ((int)height / 2) - LUMO_ICON_H - 10;
-        for (int sy = 0; sy < LUMO_ICON_H; sy++) {
-            int dy = iy + sy;
-            if (dy < 0 || dy >= (int)height) continue;
-            for (int sx = 0; sx < LUMO_ICON_W; sx++) {
-                int dx = ix + sx;
-                if (dx < 0 || dx >= (int)width) continue;
-                uint32_t src = lumo_icon_48x48[sy * LUMO_ICON_W + sx];
-                uint32_t sa = (src >> 24) & 0xFF;
-                if (sa == 0) continue;
-                pixels[dy * width + dx] = src;
-            }
-        }
-
-        /* "LUMO" text below icon */
-        {
-            const char *label = "LUMO";
-            int tw = lumo_text_width(label, 5);
-            lumo_draw_text(pixels, width, height,
-                ((int)width - tw) / 2, iy + LUMO_ICON_H + 16,
-                5, lumo_argb(0xFF, 0xE8, 0x76, 0x20), label);
-        }
-
-        /* Ubuntu-style three-dot loading indicator:
-         * three circles that light up orange one at a time */
-        {
-            int dot_r = 8;
-            int dot_gap = 28;
-            int dot_cy = (int)height * 3 / 4;
-            int dot_cx = (int)width / 2;
-            int active = (frame / 3) % 3;
-            uint32_t dim = lumo_argb(0x60, 0x50, 0x20, 0x40);
-            uint32_t lit = lumo_argb(0xFF, 0xE8, 0x76, 0x20);
-
-            for (int d = 0; d < 3; d++) {
-                int cx = dot_cx + (d - 1) * dot_gap;
-                struct lumo_rect dot = {
-                    cx - dot_r, dot_cy - dot_r,
-                    dot_r * 2, dot_r * 2
-                };
-                lumo_fill_rounded_rect(pixels, width, height, &dot,
-                    dot_r, d == active ? lit : dim);
-            }
-        }
-
-        /* version */
-        {
-            const char *ver = "v" LUMO_VERSION_STRING;
-            int tw = lumo_text_width(ver, 2);
-            lumo_draw_text(pixels, width, height,
-                ((int)width - tw) / 2, (int)height - 40,
-                2, lumo_argb(0x60, 0xC0, 0xC0, 0xC0), ver);
-        }
-        return;
-    }
-
-    /* remove boot flag once waves are ready */
-    {
-        static bool boot_flag_cleared = false;
-        if (!boot_flag_cleared) {
-            unlink("/run/user/1001/lumo-boot-active");
-            boot_flag_cleared = true;
-        }
-    }
-
-    /* multi-core parallel gradient fill + PS4 Flow waves */
+    /* real-time wave rendering — GPU handles compositing so CPU
+     * has plenty of headroom for the 8-thread wave computation.
+     * No prerender loop, no 366MB RAM buffer, instant start. */
     bg_parallel_fill(pixels, width, height, frame, bg_row_cache,
                      wave_tr, wave_tg, wave_tb, wave_t);
 }

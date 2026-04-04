@@ -412,7 +412,7 @@ int lumo_shell_client_animation_timeout(
     uint64_t now, end_time;
     if (client == NULL || !client->animation_active) {
         if (client != NULL && client->mode == LUMO_SHELL_MODE_BACKGROUND)
-            return 100; /* 10 FPS — pre-rendered wave loop, slow waves look fine */
+            return 66; /* 15 FPS — real-time waves, GPU handles compositing */
         if (client != NULL && client->mode == LUMO_SHELL_MODE_STATUS) {
             if (client->compositor_time_panel_visible) return 1000;
             return 30000;
@@ -1109,7 +1109,7 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
             bool bg_visible =
                 client->compositor_scrim_state == LUMO_SHELL_REMOTE_SCRIM_HIDDEN;
             bool any_anim = false;
-            timeout_ms = bg_visible ? 200 : 5000;
+            timeout_ms = bg_visible ? 66 : 5000;
             for (int i = 0; i < client->surface_count; i++) {
                 struct lumo_shell_surface_slot *slot = &client->slots[i];
                 if (slot->animation_active) {
