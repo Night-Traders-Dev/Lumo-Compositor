@@ -1159,6 +1159,67 @@ static void lumo_draw_status(
             (int)width - 42, bar_height / 2 - 8, cached_wifi_bars,
             accent_color, wifi_dim);
     }
+
+    /* battery indicator — reads from sysfs, cached every 60 seconds */
+    {
+        static int cached_battery_pct = -1; /* -1 = no battery */
+        static bool cached_battery_charging = false;
+        static uint64_t bat_last_read = 0;
+        uint64_t now_s = (uint64_t)now;
+        if (bat_last_read == 0 || now_s >= bat_last_read + 60) {
+            bat_last_read = now_s;
+            cached_battery_pct = -1;
+            /* scan power_supply entries for a battery */
+            const char *bat_paths[] = {
+                "/sys/class/power_supply/battery/capacity",
+                "/sys/class/power_supply/BAT0/capacity",
+                "/sys/class/power_supply/BAT1/capacity",
+                NULL
+            };
+            for (int i = 0; bat_paths[i] != NULL; i++) {
+                FILE *fp = fopen(bat_paths[i], "r");
+                if (fp != NULL) {
+                    int pct = 0;
+                    if (fscanf(fp, "%d", &pct) == 1 && pct >= 0 && pct <= 100)
+                        cached_battery_pct = pct;
+                    fclose(fp);
+                    break;
+                }
+            }
+            /* check charging status */
+            const char *stat_paths[] = {
+                "/sys/class/power_supply/battery/status",
+                "/sys/class/power_supply/BAT0/status",
+                "/sys/class/power_supply/BAT1/status",
+                NULL
+            };
+            for (int i = 0; stat_paths[i] != NULL; i++) {
+                FILE *fp = fopen(stat_paths[i], "r");
+                if (fp != NULL) {
+                    char st[32] = {0};
+                    if (fgets(st, sizeof(st), fp))
+                        cached_battery_charging =
+                            (strncmp(st, "Charging", 8) == 0);
+                    fclose(fp);
+                    break;
+                }
+            }
+        }
+        if (cached_battery_pct >= 0) {
+            char bat_buf[8];
+            snprintf(bat_buf, sizeof(bat_buf), "%s%d%%",
+                cached_battery_charging ? "+" : "", cached_battery_pct);
+            uint32_t bat_color = cached_battery_pct <= 15
+                ? lumo_argb(0xFF, 0xFF, 0x44, 0x44) /* red */
+                : cached_battery_pct <= 30
+                    ? lumo_argb(0xFF, 0xFF, 0xAA, 0x44) /* yellow */
+                    : text_color;
+            int tw = lumo_text_width(bat_buf, 2);
+            lumo_draw_text(pixels, width, height,
+                (int)width - 44 - tw - 8, bar_height / 2 - 7,
+                2, bat_color, bat_buf);
+        }
+    }
 }
 
 static void lumo_draw_sidebar(

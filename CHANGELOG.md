@@ -12,6 +12,13 @@ All notable changes to this project will be documented in this file.
 - **Medium**: Static path buffers replaced with stack-local in app launcher.
 - **Low**: Fixed BOKEH_COUNT mismatch (was 10, initializer had 18 entries).
 
+### Quality-of-Life Improvements
+
+- Battery indicator in status bar (reads sysfs, color-coded: red <15%, yellow <30%, green otherwise).
+- Phone, Camera, Maps apps now show branded "Coming Soon" placeholder instead of blank screens.
+- File manager UP button increased from 88x30 to 96x48 (meets 48dp touch target minimum).
+- Text file viewer shows truncation notice when file exceeds 4KB limit.
+
 ### Performance Fixes
 
 - Background poll timeout reduced from 33ms (30fps) to 200ms (5fps), matching pre-rendered wave playback rate. ~75% CPU reduction on home screen.

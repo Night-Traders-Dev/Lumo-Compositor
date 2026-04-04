@@ -30,8 +30,8 @@ int lumo_app_files_up_button_at(
     uint32_t width, uint32_t height, double x, double y
 ) {
     (void)height;
-    if (y >= 60.0 && y < 92.0 && x >= (double)width - 120.0 &&
-            x < (double)width - 28.0)
+    if (y >= 52.0 && y < 100.0 && x >= (double)width - 120.0 &&
+            x < (double)width - 24.0)
         return -2;
     return 0;
 }
@@ -200,7 +200,7 @@ void lumo_app_render_files(
     /* UP button */
     {
         int bx = (int)width - 120;
-        struct lumo_rect up_btn = { bx, 60, 88, 30 };
+        struct lumo_rect up_btn = { bx, 52, 96, 48 };
         lumo_app_fill_rounded_rect(pixels, width, height, &up_btn, 10,
             theme.card_bg);
         lumo_app_draw_outline(pixels, width, height, &up_btn, 1,
@@ -378,6 +378,13 @@ void lumo_app_render_files(
             line_num++;
             p = eol ? eol + 1 : p + strlen(p);
         }
+
+        /* truncation notice if content was cut */
+        if (strlen(ctx->text_view_content) >= 4095)
+            lumo_app_draw_text(pixels, width, height,
+                cx + 12, cy + ch - 34, 1,
+                lumo_app_argb(0xA0, 0xFF, 0xAA, 0x44),
+                "FILE TRUNCATED (SHOWING FIRST 4KB)");
 
         /* dismiss hint */
         lumo_app_draw_text(pixels, width, height,
