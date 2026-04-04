@@ -663,87 +663,108 @@ void lumo_app_render_github(
             theme.separator);
         y += 8;
 
-        /* README.md rendered at top when at repo root */
+        /* README.md rendered at top when at repo root — full content,
+         * no fixed height cap.  Scrolls with the file list below. */
         if (gh.current_path[0] == '\0' && gh.readme_loaded &&
                 gh.readme_content != NULL) {
-            /* README card */
-            int readme_card_h = 160;
-            if (y + readme_card_h > (int)height - 100)
-                readme_card_h = (int)height - y - 100;
-            if (readme_card_h > 40) {
-                struct lumo_rect readme_card = {pad, y, col_w, readme_card_h};
-                lumo_app_fill_rounded_rect(pixels, width, height,
-                    &readme_card, 8, theme.card_bg);
-                lumo_app_draw_outline(pixels, width, height,
-                    &readme_card, 1, theme.card_stroke);
+            /* README header label */
+            lumo_app_draw_text(pixels, width, height,
+                pad + 4, y, 1, theme.accent, "README.md");
+            y += 14;
+            lumo_app_fill_rect(pixels, width, height, pad, y, col_w, 1,
+                theme.separator);
+            y += 4;
 
-                /* README header */
-                lumo_app_draw_text(pixels, width, height,
-                    pad + 12, y + 6, 1, theme.accent, "README.md");
-                int ry = y + 20;
-                int max_ry = y + readme_card_h - 8;
+            /* render full markdown content (scrolled by scroll_offset) */
+            const char *p = gh.readme_content;
+            int line_idx = 0;
+            int scroll = gh.scroll_offset;
+            int max_y = (int)height - 50;
+            bool in_code_block = false;
 
-                /* render markdown content */
-                const char *p = gh.readme_content;
-                while (*p && ry < max_ry) {
-                    const char *eol = strchr(p, '\n');
-                    int len = eol ? (int)(eol - p) : (int)strlen(p);
-                    int max_chars = (col_w - 24) / 6;
-                    if (len > max_chars) len = max_chars;
+            while (*p && y < max_y) {
+                const char *eol = strchr(p, '\n');
+                int len = eol ? (int)(eol - p) : (int)strlen(p);
+                int max_chars = (col_w - 24) / 6;
+                if (len > max_chars) len = max_chars;
 
-                    char line_buf[256];
-                    if (len > (int)sizeof(line_buf) - 1)
-                        len = (int)sizeof(line_buf) - 1;
-                    memcpy(line_buf, p, (size_t)len);
-                    line_buf[len] = '\0';
+                char line_buf[512];
+                if (len > (int)sizeof(line_buf) - 1)
+                    len = (int)sizeof(line_buf) - 1;
+                memcpy(line_buf, p, (size_t)len);
+                line_buf[len] = '\0';
 
-                    /* markdown styling */
+                /* track fenced code blocks */
+                if (strncmp(line_buf, "```", 3) == 0) {
+                    in_code_block = !in_code_block;
+                    p = eol ? eol + 1 : p + strlen(p);
+                    line_idx++;
+                    if (line_idx > scroll) y += 4;
+                    continue;
+                }
+
+                if (line_idx >= scroll) {
                     uint32_t line_color = theme.text;
                     int scale = 1;
                     const char *display = line_buf;
+                    int x_indent = pad + 8;
 
-                    if (line_buf[0] == '#' && line_buf[1] == '#' &&
+                    if (in_code_block) {
+                        line_color = lumo_app_argb(0xFF, 0x66, 0xCC, 0x66);
+                    } else if (line_buf[0] == '#' && line_buf[1] == '#' &&
+                            line_buf[2] == '#' && line_buf[3] == '#') {
+                        display = line_buf + 4;
+                        while (*display == ' ') display++;
+                        line_color = theme.accent;
+                        scale = 1;
+                    } else if (line_buf[0] == '#' && line_buf[1] == '#' &&
                             line_buf[2] == '#') {
-                        /* ### h3 */
                         display = line_buf + 3;
                         while (*display == ' ') display++;
                         line_color = theme.accent;
                         scale = 1;
                     } else if (line_buf[0] == '#' && line_buf[1] == '#') {
-                        /* ## h2 */
                         display = line_buf + 2;
                         while (*display == ' ') display++;
                         line_color = theme.accent;
                         scale = 2;
                     } else if (line_buf[0] == '#') {
-                        /* # h1 */
                         display = line_buf + 1;
                         while (*display == ' ') display++;
                         line_color = theme.accent;
                         scale = 2;
-                    } else if (line_buf[0] == '-' || line_buf[0] == '*') {
-                        /* bullet list */
-                        line_color = theme.text;
-                    } else if (line_buf[0] == '`') {
-                        /* code block */
-                        line_color = lumo_app_argb(0xFF, 0x66, 0xCC, 0x66);
-                    } else if (line_buf[0] == '>') {
-                        /* blockquote */
+                    } else if ((line_buf[0] == '-' || line_buf[0] == '*') &&
+                            line_buf[1] == ' ') {
+                        /* bullet: indent and show dot */
+                        display = line_buf + 2;
+                        x_indent = pad + 16;
+                        lumo_app_fill_rect(pixels, width, height,
+                            pad + 10, y + 4, 3, 3, theme.text);
+                    } else if (line_buf[0] == '>' && line_buf[1] == ' ') {
+                        display = line_buf + 2;
                         line_color = theme.text_dim;
+                        /* blockquote bar */
+                        lumo_app_fill_rect(pixels, width, height,
+                            pad + 4, y, 2, 12, theme.accent);
+                        x_indent = pad + 16;
                     } else if (len == 0) {
-                        /* blank line */
                         p = eol ? eol + 1 : p + strlen(p);
-                        ry += 6;
+                        line_idx++;
+                        y += 6;
                         continue;
                     }
 
                     lumo_app_draw_text(pixels, width, height,
-                        pad + 12, ry, scale, line_color, display);
-                    ry += (scale > 1) ? 18 : 12;
-                    p = eol ? eol + 1 : p + strlen(p);
+                        x_indent, y, scale, line_color, display);
+                    y += (scale > 1) ? 18 : 12;
                 }
-                y += readme_card_h + 6;
+                line_idx++;
+                p = eol ? eol + 1 : p + strlen(p);
             }
+            y += 8;
+            lumo_app_fill_rect(pixels, width, height, pad, y, col_w, 1,
+                theme.separator);
+            y += 6;
         }
 
         /* file list */
@@ -816,85 +837,163 @@ void lumo_app_render_github(
 
         /* determine file extension for syntax highlighting */
         const char *ext = strrchr(gh.file_name, '.');
-
-        /* syntax highlighting colors */
-        uint32_t color_keyword = lumo_app_argb(0xFF, 0xCC, 0x77, 0xFF);
-        uint32_t color_string = lumo_app_argb(0xFF, 0x66, 0xCC, 0x66);
-        uint32_t color_comment = lumo_app_argb(0xFF, 0x66, 0x88, 0x88);
-        uint32_t color_number = lumo_app_argb(0xFF, 0xFF, 0xAA, 0x44);
-        uint32_t color_normal = theme.text;
-        uint32_t color_heading = theme.accent;
+        bool is_md = ext && (strcmp(ext, ".md") == 0 ||
+            strcmp(ext, ".MD") == 0 || strcmp(ext, ".markdown") == 0);
 
         int line_h = 14;
-        int max_y = (int)height - 10;
+        int max_y = (int)height - 20;
         int line_num = 0;
         int scroll = gh.content_scroll;
         const char *p = gh.file_content;
-        bool is_md = ext && (strcmp(ext, ".md") == 0);
 
-        while (*p && y < max_y) {
-            const char *eol = strchr(p, '\n');
-            int len = eol ? (int)(eol - p) : (int)strlen(p);
-            int max_chars = (col_w - 8) / 6;
-            if (len > max_chars) len = max_chars;
+        if (is_md) {
+            /* ── markdown rendered view (no line numbers) ─────── */
+            bool in_code_block = false;
+            while (*p && y < max_y) {
+                const char *eol = strchr(p, '\n');
+                int len = eol ? (int)(eol - p) : (int)strlen(p);
+                int max_chars = (col_w - 24) / 6;
+                if (len > max_chars) len = max_chars;
 
-            if (line_num >= scroll) {
                 char line_buf[512];
                 if (len > (int)sizeof(line_buf) - 1)
                     len = (int)sizeof(line_buf) - 1;
                 memcpy(line_buf, p, (size_t)len);
                 line_buf[len] = '\0';
 
-                /* choose color based on content */
-                uint32_t line_color = color_normal;
-
-                if (is_md && line_buf[0] == '#') {
-                    line_color = color_heading;
-                } else if (line_buf[0] == '/' && line_buf[1] == '/') {
-                    line_color = color_comment;
-                } else if (line_buf[0] == '#' && ext &&
-                        (strcmp(ext, ".py") == 0 ||
-                         strcmp(ext, ".sh") == 0 ||
-                         strcmp(ext, ".yml") == 0 ||
-                         strcmp(ext, ".yaml") == 0)) {
-                    line_color = color_comment;
-                } else if (strstr(line_buf, "/*") ||
-                        strstr(line_buf, "*/")) {
-                    line_color = color_comment;
-                } else {
-                    /* check for keywords at start of line */
-                    int start = 0;
-                    while (line_buf[start] == ' ' ||
-                            line_buf[start] == '\t') start++;
-                    if (start < len &&
-                            syntax_color_for_token(line_buf, start, ext) == 0)
-                        line_color = color_keyword;
-                    /* check for strings */
-                    else if (strchr(line_buf, '"') || strchr(line_buf, '\''))
-                        line_color = color_string;
-                    /* check for numbers at start */
-                    else if (start < len &&
-                            line_buf[start] >= '0' && line_buf[start] <= '9')
-                        line_color = color_number;
+                /* fenced code blocks */
+                if (strncmp(line_buf, "```", 3) == 0) {
+                    in_code_block = !in_code_block;
+                    p = eol ? eol + 1 : p + strlen(p);
+                    line_num++;
+                    if (line_num > scroll) y += 4;
+                    continue;
                 }
 
-                /* line number */
-                snprintf(buf, sizeof(buf), "%3d", line_num + 1);
-                lumo_app_draw_text(pixels, width, height,
-                    pad, y, 1,
-                    lumo_app_argb(0x60, 0x80, 0x80, 0x80), buf);
+                if (line_num >= scroll) {
+                    uint32_t line_color = theme.text;
+                    int scale = 1;
+                    const char *display = line_buf;
+                    int x_indent = pad + 4;
 
-                /* content */
-                lumo_app_draw_text(pixels, width, height,
-                    pad + 28, y, 1, line_color, line_buf);
-                y += line_h;
+                    if (in_code_block) {
+                        line_color = lumo_app_argb(0xFF, 0x66, 0xCC, 0x66);
+                    } else if (line_buf[0] == '#' && line_buf[1] == '#' &&
+                            line_buf[2] == '#' && line_buf[3] == '#') {
+                        display = line_buf + 4;
+                        while (*display == ' ') display++;
+                        line_color = theme.accent;
+                        scale = 1;
+                    } else if (line_buf[0] == '#' && line_buf[1] == '#' &&
+                            line_buf[2] == '#') {
+                        display = line_buf + 3;
+                        while (*display == ' ') display++;
+                        line_color = theme.accent;
+                        scale = 1;
+                    } else if (line_buf[0] == '#' && line_buf[1] == '#') {
+                        display = line_buf + 2;
+                        while (*display == ' ') display++;
+                        line_color = theme.accent;
+                        scale = 2;
+                    } else if (line_buf[0] == '#') {
+                        display = line_buf + 1;
+                        while (*display == ' ') display++;
+                        line_color = theme.accent;
+                        scale = 2;
+                    } else if ((line_buf[0] == '-' || line_buf[0] == '*') &&
+                            line_buf[1] == ' ') {
+                        display = line_buf + 2;
+                        x_indent = pad + 16;
+                        lumo_app_fill_rect(pixels, width, height,
+                            pad + 10, y + 4, 3, 3, theme.text);
+                    } else if (line_buf[0] == '>' && line_buf[1] == ' ') {
+                        display = line_buf + 2;
+                        line_color = theme.text_dim;
+                        lumo_app_fill_rect(pixels, width, height,
+                            pad + 4, y, 2, 12, theme.accent);
+                        x_indent = pad + 16;
+                    } else if (len == 0) {
+                        p = eol ? eol + 1 : p + strlen(p);
+                        line_num++;
+                        y += 6;
+                        continue;
+                    }
+
+                    lumo_app_draw_text(pixels, width, height,
+                        x_indent, y, scale, line_color, display);
+                    y += (scale > 1) ? 18 : 12;
+                }
+                line_num++;
+                p = eol ? eol + 1 : p + strlen(p);
             }
-            line_num++;
-            p = eol ? eol + 1 : p + strlen(p);
+        } else {
+            /* ── source code view with syntax highlighting ────── */
+            uint32_t color_keyword = lumo_app_argb(0xFF, 0xCC, 0x77, 0xFF);
+            uint32_t color_string = lumo_app_argb(0xFF, 0x66, 0xCC, 0x66);
+            uint32_t color_comment = lumo_app_argb(0xFF, 0x66, 0x88, 0x88);
+            uint32_t color_number = lumo_app_argb(0xFF, 0xFF, 0xAA, 0x44);
+            uint32_t color_normal = theme.text;
+
+            while (*p && y < max_y) {
+                const char *eol = strchr(p, '\n');
+                int len = eol ? (int)(eol - p) : (int)strlen(p);
+                int max_chars = (col_w - 36) / 6;
+                if (len > max_chars) len = max_chars;
+
+                if (line_num >= scroll) {
+                    char line_buf[512];
+                    if (len > (int)sizeof(line_buf) - 1)
+                        len = (int)sizeof(line_buf) - 1;
+                    memcpy(line_buf, p, (size_t)len);
+                    line_buf[len] = '\0';
+
+                    uint32_t line_color = color_normal;
+
+                    if (line_buf[0] == '/' && line_buf[1] == '/') {
+                        line_color = color_comment;
+                    } else if (line_buf[0] == '#' && ext &&
+                            (strcmp(ext, ".py") == 0 ||
+                             strcmp(ext, ".sh") == 0 ||
+                             strcmp(ext, ".yml") == 0 ||
+                             strcmp(ext, ".yaml") == 0)) {
+                        line_color = color_comment;
+                    } else if (strstr(line_buf, "/*") ||
+                            strstr(line_buf, "*/")) {
+                        line_color = color_comment;
+                    } else {
+                        int start = 0;
+                        while (line_buf[start] == ' ' ||
+                                line_buf[start] == '\t') start++;
+                        if (start < len &&
+                                syntax_color_for_token(line_buf, start,
+                                    ext) == 0)
+                            line_color = color_keyword;
+                        else if (strchr(line_buf, '"') ||
+                                strchr(line_buf, '\''))
+                            line_color = color_string;
+                        else if (start < len &&
+                                line_buf[start] >= '0' &&
+                                line_buf[start] <= '9')
+                            line_color = color_number;
+                    }
+
+                    snprintf(buf, sizeof(buf), "%3d", line_num + 1);
+                    lumo_app_draw_text(pixels, width, height,
+                        pad, y, 1,
+                        lumo_app_argb(0x60, 0x80, 0x80, 0x80), buf);
+
+                    lumo_app_draw_text(pixels, width, height,
+                        pad + 28, y, 1, line_color, line_buf);
+                    y += line_h;
+                }
+                line_num++;
+                p = eol ? eol + 1 : p + strlen(p);
+            }
         }
 
         /* scroll indicator */
-        snprintf(buf, sizeof(buf), "LINE %d  SIZE %zuB",
+        snprintf(buf, sizeof(buf), "%s  LINE %d  SIZE %zuB",
+            is_md ? "MARKDOWN" : "SOURCE",
             scroll + 1, gh.file_content_len);
         lumo_app_draw_text(pixels, width, height,
             pad, (int)height - 16, 1, theme.text_dim, buf);

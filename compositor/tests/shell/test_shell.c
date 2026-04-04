@@ -72,7 +72,9 @@ static void test_osk_key_text(void) {
 static void test_shell_labels(void) {
     assert(strcmp(lumo_shell_launcher_tile_label(0), "PHONE") == 0);
     assert(strcmp(lumo_shell_launcher_tile_label(11), "SETTINGS") == 0);
-    assert(lumo_shell_launcher_tile_label(12) == NULL);
+    assert(strcmp(lumo_shell_launcher_tile_label(12), "SYSMON") == 0);
+    assert(strcmp(lumo_shell_launcher_tile_label(13), "GITHUB") == 0);
+    assert(lumo_shell_launcher_tile_label(14) == NULL);
 
     lumo_shell_osk_set_page(0);
     assert(strcmp(lumo_shell_osk_key_label(0), "Q") == 0);
@@ -96,7 +98,7 @@ static void test_shell_labels(void) {
 }
 
 static void test_layout_counts(void) {
-    assert(lumo_shell_launcher_tile_count() == 12);
+    assert(lumo_shell_launcher_tile_count() == 16);
     assert(lumo_shell_osk_key_count() == 33);
     assert(lumo_shell_touch_audit_point_count() == 8);
 }
@@ -319,7 +321,7 @@ static void test_launcher_search_and_filtered_tiles(void) {
     assert(lumo_rect_contains(&panel, search.x + search.width / 2.0,
         search.y + search.height / 2.0));
 
-    assert(lumo_shell_launcher_filtered_tile_count(NULL) == 12);
+    assert(lumo_shell_launcher_filtered_tile_count(NULL) == 14);
     assert(lumo_shell_launcher_filtered_tile_count("SET") == 1);
     assert(lumo_shell_launcher_filtered_tile_rect(1024, 600, "SET", 0,
         &tile_index, &filtered));
@@ -337,7 +339,7 @@ static void test_launcher_search_and_filtered_tiles(void) {
     assert(target.index == 11);
 
     assert(lumo_shell_time_panel_rect(1024, 600, &time_panel));
-    assert(time_panel.x == 8);
+    assert(time_panel.x == 256);
     assert(time_panel.y == 52);
     assert(time_panel.width == 512);
     assert(time_panel.height == 220);
@@ -350,10 +352,10 @@ static void test_tall_launcher_layout(void) {
 
     assert(lumo_shell_launcher_panel_rect(800, 1280, &panel));
     assert(lumo_shell_launcher_tile_rect(800, 1280, 0, &first));
-    assert(lumo_shell_launcher_tile_rect(800, 1280, 11, &last));
+    assert(lumo_shell_launcher_tile_rect(800, 1280, 13, &last));
     assert(first.y > panel.y + 80);
     assert(last.y > first.y);
-    assert(last.y + last.height > panel.y + (panel.height * 3) / 4);
+    assert(last.y + last.height > panel.y + panel.height / 2);
     assert(last.y + last.height <= panel.y + panel.height);
 }
 

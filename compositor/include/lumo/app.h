@@ -7,6 +7,8 @@
 
 #include "lumo/shell.h"
 
+struct lumo_term;   /* forward declaration (lumo_term.h) */
+
 #define LUMO_APP_MEDIA_MAX_FILES 32
 
 enum lumo_app_id {
@@ -75,10 +77,9 @@ struct lumo_app_render_context {
     char notes[8][128];
     int note_count;
     int note_editing;
-    char term_lines[16][82];
-    int term_line_count;
-    char term_input[82];
+    char term_input[82];    /* shared: phone dialer, browser URL bar */
     int term_input_len;
+    const struct lumo_term *term;  /* VT100 cell grid (NULL if no PTY) */
     bool term_menu_open;
     double zoom_scale;
     /* media apps */

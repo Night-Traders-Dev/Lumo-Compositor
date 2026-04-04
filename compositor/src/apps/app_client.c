@@ -1,5 +1,6 @@
 #define _DEFAULT_SOURCE
 #include "lumo/app.h"
+#include "lumo/lumo_term.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -115,6 +116,7 @@ struct lumo_app_client {
     pid_t pty_pid;
     char pty_line_buf[256];
     int pty_line_len;
+    struct lumo_term term_state;
     char pending_commit[256];
     int pending_commit_len;
     char media_files[LUMO_APP_MEDIA_MAX_FILES][64];
@@ -552,23 +554,7 @@ static bool lumo_app_load_image(struct lumo_app_client *client)
         &client->photo_width, &client->photo_height);
 }
 
-static void lumo_app_term_add_line(struct lumo_app_client *client,
-    const char *line)
-{
-    if (client->term_line_count < 16) {
-        strncpy(client->term_lines[client->term_line_count], line,
-            sizeof(client->term_lines[0]) - 1);
-        client->term_lines[client->term_line_count]
-            [sizeof(client->term_lines[0]) - 1] = '\0';
-        client->term_line_count++;
-    } else {
-        memmove(client->term_lines[0], client->term_lines[1],
-            15 * sizeof(client->term_lines[0]));
-        strncpy(client->term_lines[15], line,
-            sizeof(client->term_lines[0]) - 1);
-        client->term_lines[15][sizeof(client->term_lines[0]) - 1] = '\0';
-    }
-}
+/* lumo_app_term_add_line removed — replaced by lumo_term_feed VT100 parser */
 
 static void lumo_app_term_write(struct lumo_app_client *client,
     const char *data, size_t len)
@@ -600,13 +586,11 @@ static bool lumo_app_pty_setup(struct lumo_app_client *client) {
 
     if (pid == 0) {
         shell = getenv("SHELL");
-        if (shell == NULL || shell[0] == '\0') shell = "/bin/sh";
-        setenv("TERM", "dumb", 1);
-        setenv("COLORTERM", "", 1);
-        unsetenv("LS_COLORS");
-        /* use /bin/sh for predictable behavior — fish/zsh don't
-         * accept --norc --noprofile and our dumb-terminal parser
-         * can't handle their escape sequences anyway */
+        if (shell == NULL || shell[0] == '\0') shell = "/bin/bash";
+        setenv("TERM", "xterm-256color", 1);
+        setenv("COLORTERM", "truecolor", 1);
+        execlp(shell, shell, (char *)NULL);
+        /* fallback to /bin/sh if user's shell fails */
         execlp("/bin/sh", "sh", (char *)NULL);
         _exit(127);
     }
@@ -617,75 +601,29 @@ static bool lumo_app_pty_setup(struct lumo_app_client *client) {
     client->pty_fd = master_fd;
     client->pty_pid = pid;
     client->pty_line_len = 0;
+    lumo_term_init(&client->term_state, 80, 24);
     return true;
 }
 
 static void lumo_app_pty_read(struct lumo_app_client *client) {
-    char buf[512];
+    char buf[4096];
     ssize_t n;
-    bool changed = false;
 
     if (client->pty_fd < 0) return;
 
     while ((n = read(client->pty_fd, buf, sizeof(buf))) > 0) {
-        for (ssize_t i = 0; i < n; i++) {
-            char ch = buf[i];
-            if (ch == '\x1b') {
-                /* skip ANSI escape sequences */
-                i++;
-                if (i < n && buf[i] == '[') {
-                    i++;
-                    while (i < n && !((buf[i] >= 'A' && buf[i] <= 'Z') ||
-                            (buf[i] >= 'a' && buf[i] <= 'z')))
-                        i++;
-                }
-                continue;
-            }
-            if (ch == '\r') {
-                /* ignore \r — the PTY sends \r\n for every line and
-                 * resetting pty_line_len here would wipe the output.
-                 * For a dumb terminal, \r is not needed. */
-                continue;
-            }
-            if (ch == '\n') {
-                client->pty_line_buf[client->pty_line_len] = '\0';
-                lumo_app_term_add_line(client, client->pty_line_buf);
-                client->pty_line_len = 0;
-                changed = true;
-                continue;
-            }
-            if (ch == '\b' || ch == 0x7f) {
-                if (client->pty_line_len > 0) client->pty_line_len--;
-                continue;
-            }
-            if (ch < 0x20 && ch != '\t') continue;
-            if (ch == '\t') {
-                int spaces = 8 - (client->pty_line_len % 8);
-                for (int s = 0; s < spaces &&
-                        client->pty_line_len < (int)sizeof(client->pty_line_buf) - 1; s++)
-                    client->pty_line_buf[client->pty_line_len++] = ' ';
-                continue;
-            }
-            /* Intentional truncation: characters beyond the line buffer
-             * capacity are silently dropped.  This is acceptable for a
-             * dumb terminal — long lines simply get clipped at display width. */
-            if (client->pty_line_len < (int)sizeof(client->pty_line_buf) - 1) {
-                client->pty_line_buf[client->pty_line_len++] = ch;
-            }
-        }
+        lumo_term_feed(&client->term_state, buf, (size_t)n);
     }
 
-    /* current incomplete line goes into term_input for display */
-    client->pty_line_buf[client->pty_line_len] = '\0';
-    strncpy(client->term_input, client->pty_line_buf,
-        sizeof(client->term_input) - 1);
-    client->term_input[sizeof(client->term_input) - 1] = '\0';
-    client->term_input_len = client->pty_line_len > 81 ? 81 :
-        client->pty_line_len;
-
-    if (changed || n > 0) {
-        (void)lumo_app_client_redraw(client);
+    /* drain any response bytes (DA, DSR) back to the PTY */
+    char resp[64];
+    int resp_len = lumo_term_drain_response(&client->term_state,
+        resp, sizeof(resp));
+    if (resp_len > 0) {
+        (void)write(client->pty_fd, resp, (size_t)resp_len);
     }
+
+    (void)lumo_app_client_redraw(client);
 }
 
 static void lumo_app_pty_cleanup(struct lumo_app_client *client) {
@@ -921,8 +859,8 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             .settings = client->settings,
             .note_count = client->note_count,
             .note_editing = client->note_editing,
-            .term_line_count = client->term_line_count,
             .term_input_len = client->term_input_len,
+            .term = (client->pty_fd >= 0) ? &client->term_state : NULL,
             .term_menu_open = client->term_menu_open,
             .zoom_scale = client->zoom_scale,
             .media_file_count = client->media_file_count,
@@ -941,7 +879,6 @@ static bool lumo_app_client_draw_buffer(struct lumo_app_client *client) {
             memcpy(ctx.text_view_content, client->text_view_content,
                 sizeof(ctx.text_view_content));
         memcpy(ctx.notes, client->notes, sizeof(ctx.notes));
-        memcpy(ctx.term_lines, client->term_lines, sizeof(ctx.term_lines));
         memcpy(ctx.term_input, client->term_input, sizeof(ctx.term_input));
         memcpy(ctx.media_files, client->media_files,
             sizeof(ctx.media_files));
@@ -1293,10 +1230,8 @@ static void lumo_app_touch_handle_up(
             int iy = menu_y + 46;
             if (mx >= menu_x && mx <= menu_x + menu_w) {
                 if (my >= iy && my < iy + item_h) {
-                    /* New — clear terminal */
-                    client->term_line_count = 0;
-                    client->term_input[0] = '\0';
-                    client->term_input_len = 0;
+                    /* New — reset terminal */
+                    lumo_term_reset(&client->term_state);
                     client->term_menu_open = false;
                     (void)lumo_app_client_redraw(client);
                     return;
@@ -2531,12 +2466,40 @@ static void lumo_app_keyboard_key(
 
     /* PTY mode: forward keystrokes to the shell */
     if (client->pty_fd >= 0) {
+        const char *prefix = client->term_state.app_cursor_keys
+            ? "\x1bO" : "\x1b[";
         if (key == 14) {
             lumo_app_term_write(client, "\x7f", 1); /* backspace */
         } else if (key == 28) {
-            lumo_app_term_write(client, "\n", 1); /* enter */
+            lumo_app_term_write(client, "\r", 1); /* enter (CR) */
         } else if (key == 57) {
             lumo_app_term_write(client, " ", 1); /* space */
+        } else if (key == 1) {
+            lumo_app_term_write(client, "\x1b", 1); /* escape */
+        } else if (key == 15) {
+            lumo_app_term_write(client, "\t", 1); /* tab */
+        } else if (key == 103) { /* up arrow */
+            char seq[4]; seq[0] = prefix[0]; seq[1] = prefix[1];
+            seq[2] = 'A'; lumo_app_term_write(client, seq, 3);
+        } else if (key == 108) { /* down arrow */
+            char seq[4]; seq[0] = prefix[0]; seq[1] = prefix[1];
+            seq[2] = 'B'; lumo_app_term_write(client, seq, 3);
+        } else if (key == 106) { /* right arrow */
+            char seq[4]; seq[0] = prefix[0]; seq[1] = prefix[1];
+            seq[2] = 'C'; lumo_app_term_write(client, seq, 3);
+        } else if (key == 105) { /* left arrow */
+            char seq[4]; seq[0] = prefix[0]; seq[1] = prefix[1];
+            seq[2] = 'D'; lumo_app_term_write(client, seq, 3);
+        } else if (key == 102) { /* home */
+            lumo_app_term_write(client, "\x1b[H", 3);
+        } else if (key == 107) { /* end */
+            lumo_app_term_write(client, "\x1b[F", 3);
+        } else if (key == 104) { /* page up */
+            lumo_app_term_write(client, "\x1b[5~", 4);
+        } else if (key == 109) { /* page down */
+            lumo_app_term_write(client, "\x1b[6~", 4);
+        } else if (key == 111) { /* delete */
+            lumo_app_term_write(client, "\x1b[3~", 4);
         } else if (key >= 2 && key <= 53) {
             static const char keymap[] =
                 "1234567890-="
@@ -2553,53 +2516,22 @@ static void lumo_app_keyboard_key(
             if (idx >= 0 && idx < (int)sizeof(keymap) - 1 &&
                     km[idx] != '\0') {
                 char ch = km[idx];
+                /* ctrl modifier: Ctrl+A=1, Ctrl+C=3, etc. */
+                if (client->shift_held && ch >= 'A' && ch <= 'Z') {
+                    /* shift is already handled above */
+                } else if (!client->shift_held && ch >= 'a' &&
+                        ch <= 'z') {
+                    /* check for ctrl (key 29/97 held) — we reuse
+                     * shift_held as ctrl for now via OSK ctrl toggle */
+                }
                 lumo_app_term_write(client, &ch, 1);
             }
         }
         return;
     }
 
-    /* fallback: no PTY, echo locally */
-    if (key == 14 && client->term_input_len > 0) {
-        client->term_input[--client->term_input_len] = '\0';
-        (void)lumo_app_client_redraw(client);
-    } else if (key == 28) {
-        if (client->term_line_count < 16) {
-            char prompt[96];
-            const char *user = getenv("USER");
-            snprintf(prompt, sizeof(prompt), "%s$ %s",
-                user ? user : "user", client->term_input);
-            strncpy(client->term_lines[client->term_line_count],
-                prompt, sizeof(client->term_lines[0]) - 1);
-            client->term_line_count++;
-        }
-        client->term_input[0] = '\0';
-        client->term_input_len = 0;
-        (void)lumo_app_client_redraw(client);
-    } else if (key >= 2 && key <= 53 && client->term_input_len < 78) {
-        static const char keymap[] =
-            "1234567890-="
-            "\0\0qwertyuiop[]\0"
-            "\0asdfghjkl;'\0\0"
-            "\0zxcvbnm,./";
-        static const char shiftmap[] =
-            "!@#$%^&*()_+"
-            "\0\0QWERTYUIOP{}\0"
-            "\0ASDFGHJKL:\"\0\0"
-            "\0ZXCVBNM<>?";
-        int idx = (int)key - 2;
-        const char *km = client->shift_held ? shiftmap : keymap;
-        if (idx >= 0 && idx < (int)sizeof(keymap) - 1 && km[idx] != '\0') {
-            char ch = km[idx];
-            client->term_input[client->term_input_len++] = ch;
-            client->term_input[client->term_input_len] = '\0';
-            (void)lumo_app_client_redraw(client);
-        }
-    } else if (key == 57 && client->term_input_len < 78) {
-        client->term_input[client->term_input_len++] = ' ';
-        client->term_input[client->term_input_len] = '\0';
-        (void)lumo_app_client_redraw(client);
-    }
+    /* fallback: no PTY — should not happen, terminal always has PTY */
+    (void)key;
 }
 
 static void lumo_app_keyboard_keymap(void *d, struct wl_keyboard *k,

@@ -786,7 +786,7 @@ static void test_shell_binary_resolution(void) {
 static void test_shell_mode_helpers(void) {
     size_t index = SIZE_MAX;
 
-    assert(lumo_shell_mode_count() == 5);
+    assert(lumo_shell_mode_count() == 6);
     assert(lumo_shell_mode_index(LUMO_SHELL_MODE_LAUNCHER, &index));
     assert(index == 0);
     assert(lumo_shell_mode_index(LUMO_SHELL_MODE_OSK, &index));
@@ -795,6 +795,10 @@ static void test_shell_mode_helpers(void) {
     assert(index == 2);
     assert(lumo_shell_mode_index(LUMO_SHELL_MODE_STATUS, &index));
     assert(index == 3);
+    assert(lumo_shell_mode_index(LUMO_SHELL_MODE_BACKGROUND, &index));
+    assert(index == 4);
+    assert(lumo_shell_mode_index(LUMO_SHELL_MODE_SIDEBAR, &index));
+    assert(index == 5);
     assert(!lumo_shell_mode_index((enum lumo_shell_mode)99, &index));
 }
 

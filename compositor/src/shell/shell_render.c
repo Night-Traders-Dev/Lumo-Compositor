@@ -48,6 +48,61 @@ static void lumo_draw_status(
     uint32_t *pixels, uint32_t width, uint32_t height,
     const struct lumo_shell_client *client);
 
+/* ── touch ripple overlay ─────────────────────────────────────────── */
+
+static void lumo_draw_ripple(
+    uint32_t *pixels, uint32_t width, uint32_t height,
+    struct lumo_shell_client *client
+) {
+    if (client == NULL || !client->ripple_active) return;
+    if (client->ripple_mode != client->mode) return;
+
+    uint64_t now = lumo_now_msec();
+    uint64_t elapsed = now - client->ripple_start_msec;
+    uint32_t duration = 400; /* ms */
+
+    if (elapsed >= duration) {
+        client->ripple_active = false;
+        return;
+    }
+
+    float t = (float)elapsed / (float)duration;
+    float radius = 20.0f + t * 80.0f;
+    float alpha = (1.0f - t) * 0.15f;
+    int cx = (int)client->ripple_x;
+    int cy = (int)client->ripple_y;
+    int r = (int)radius;
+    uint32_t a8 = (uint32_t)(alpha * 255.0f);
+
+    int thickness = 2 + (int)(3.0f * (1.0f - t));
+    for (int dy = -r - thickness; dy <= r + thickness; dy++) {
+        int py = cy + dy;
+        if (py < 0 || py >= (int)height) continue;
+        for (int dx = -r - thickness; dx <= r + thickness; dx++) {
+            int px = cx + dx;
+            if (px < 0 || px >= (int)width) continue;
+            int dist_sq = dx * dx + dy * dy;
+            int inner = (r - thickness) * (r - thickness);
+            int outer = (r + thickness) * (r + thickness);
+            if (dist_sq >= inner && dist_sq <= outer) {
+                uint32_t dst = pixels[py * width + px];
+                uint32_t dr = ((dst >> 16) & 0xFF);
+                uint32_t dg = ((dst >> 8) & 0xFF);
+                uint32_t db = (dst & 0xFF);
+                uint32_t inv = 255 - a8;
+                uint32_t or_ = (0xFF * a8 + dr * inv) / 255;
+                uint32_t og = (0xFF * a8 + dg * inv) / 255;
+                uint32_t ob = (0xFF * a8 + db * inv) / 255;
+                if (or_ > 255) or_ = 255;
+                if (og > 255) og = 255;
+                if (ob > 255) ob = 255;
+                pixels[py * width + px] = 0xFF000000 |
+                    (or_ << 16) | (og << 8) | ob;
+            }
+        }
+    }
+}
+
 /* ── animation helper (extern) ────────────────────────────────────── */
 
 double lumo_shell_client_animation_value(
@@ -1515,70 +1570,27 @@ void lumo_render_surface(
                     2, toast_text, client->toast_message);
             }
         }
+        lumo_draw_ripple(pixels, width, height, client);
         return;
     case LUMO_SHELL_MODE_OSK:
         lumo_draw_osk(pixels, width, height, client, active_target, visibility);
+        lumo_draw_ripple(pixels, width, height, client);
         return;
     case LUMO_SHELL_MODE_GESTURE:
         lumo_draw_gesture(pixels, width, height, client, active_target);
+        lumo_draw_ripple(pixels, width, height, client);
         return;
     case LUMO_SHELL_MODE_STATUS:
         lumo_draw_status(pixels, width, height, client);
+        lumo_draw_ripple(pixels, width, height, client);
         return;
     case LUMO_SHELL_MODE_BACKGROUND:
         lumo_draw_animated_bg(pixels, width, height, client->weather_code);
-        /* subtle touch ripple — expanding translucent ring */
-        if (client != NULL && client->ripple_active) {
-            uint64_t now = lumo_now_msec();
-            uint64_t elapsed = now - client->ripple_start_msec;
-            uint32_t duration = 400; /* ms */
-            if (elapsed < duration) {
-                float t = (float)elapsed / (float)duration;
-                float radius = 20.0f + t * 80.0f;
-                float alpha = (1.0f - t) * 0.15f; /* very subtle */
-                int cx = (int)client->ripple_x;
-                int cy = (int)client->ripple_y;
-                int r = (int)radius;
-                uint32_t a8 = (uint32_t)(alpha * 255.0f);
-                uint32_t ring_color = lumo_argb((uint8_t)a8,
-                    0xFF, 0xFF, 0xFF);
-
-                /* draw ring (outer circle minus inner circle) */
-                int thickness = 2 + (int)(3.0f * (1.0f - t));
-                for (int dy = -r - thickness; dy <= r + thickness; dy++) {
-                    int py = cy + dy;
-                    if (py < 0 || py >= (int)height) continue;
-                    for (int dx = -r - thickness; dx <= r + thickness; dx++) {
-                        int px = cx + dx;
-                        if (px < 0 || px >= (int)width) continue;
-                        int dist_sq = dx * dx + dy * dy;
-                        int inner = (r - thickness) * (r - thickness);
-                        int outer = (r + thickness) * (r + thickness);
-                        if (dist_sq >= inner && dist_sq <= outer) {
-                            /* alpha blend */
-                            uint32_t dst = pixels[py * width + px];
-                            uint32_t dr = ((dst >> 16) & 0xFF);
-                            uint32_t dg = ((dst >> 8) & 0xFF);
-                            uint32_t db = (dst & 0xFF);
-                            uint32_t inv = 255 - a8;
-                            uint32_t or_ = (0xFF * a8 + dr * inv) / 255;
-                            uint32_t og = (0xFF * a8 + dg * inv) / 255;
-                            uint32_t ob = (0xFF * a8 + db * inv) / 255;
-                            if (or_ > 255) or_ = 255;
-                            if (og > 255) og = 255;
-                            if (ob > 255) ob = 255;
-                            pixels[py * width + px] = 0xFF000000 |
-                                (or_ << 16) | (og << 8) | ob;
-                        }
-                    }
-                }
-            } else {
-                client->ripple_active = false;
-            }
-        }
+        lumo_draw_ripple(pixels, width, height, client);
         return;
     case LUMO_SHELL_MODE_SIDEBAR:
         lumo_draw_sidebar(pixels, width, height, client, active_target, visibility);
+        lumo_draw_ripple(pixels, width, height, client);
         return;
     default:
         break;

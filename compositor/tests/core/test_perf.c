@@ -11,6 +11,7 @@
 
 #include "lumo/shell.h"
 #include "lumo/app_render.h"
+#include "lumo/lumo_term.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -206,23 +207,27 @@ static void bench_app_rounded_rects(uint32_t *px, uint32_t w, uint32_t h) {
 }
 
 static void bench_app_terminal_frame(uint32_t *px, uint32_t w, uint32_t h) {
+    struct lumo_term term;
+    lumo_term_init(&term, 80, 24);
+    /* feed some sample output through the VT100 parser */
+    const char *sample =
+        "orangepi$ uname -a\r\n"
+        "Linux orangepirv2 6.1.15\r\n"
+        "orangepi$ ls\r\n"
+        "\x1b[1;34mDesktop\x1b[0m  \x1b[1;34mDocuments\x1b[0m  Downloads\r\n"
+        "orangepi$ pwd\r\n"
+        "/home/orangepi\r\n"
+        "orangepi$ whoami\r\n"
+        "orangepi\r\n"
+        "orangepi$ date\r\n"
+        "Sun Mar 30 12:00:00 UTC 2026\r\n"
+        "orangepi$ cat /etc/os";
+    lumo_term_feed(&term, sample, strlen(sample));
+
     struct lumo_app_render_context ctx = {
         .app_id = LUMO_APP_MESSAGES,
-        .term_line_count = 10,
-        .term_input_len = 20,
+        .term = &term,
     };
-    strncpy((char *)ctx.term_lines[0], "orangepi$ uname -a", 81);
-    strncpy((char *)ctx.term_lines[1], "Linux orangepirv2 6.1.15", 81);
-    strncpy((char *)ctx.term_lines[2], "orangepi$ ls", 81);
-    strncpy((char *)ctx.term_lines[3], "Desktop  Documents  Downloads", 81);
-    strncpy((char *)ctx.term_lines[4], "orangepi$ pwd", 81);
-    strncpy((char *)ctx.term_lines[5], "/home/orangepi", 81);
-    strncpy((char *)ctx.term_lines[6], "orangepi$ whoami", 81);
-    strncpy((char *)ctx.term_lines[7], "orangepi", 81);
-    strncpy((char *)ctx.term_lines[8], "orangepi$ date", 81);
-    strncpy((char *)ctx.term_lines[9], "Sun Mar 30 12:00:00 UTC 2026", 81);
-    strncpy((char *)ctx.term_input, "orangepi$ cat /etc/os", 81);
-    ctx.term_input_len = 21;
     lumo_app_render(&ctx, px, w, h);
 }
 

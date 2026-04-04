@@ -224,7 +224,7 @@ More detailed notes live in:
 
 ## Status
 
-The project is at v0.0.78 (Lumo OS) running on OrangePi RV2 hardware.
+The project is at v0.0.79 (Lumo OS) running on OrangePi RV2 hardware.
 
 Current capabilities:
 
@@ -242,7 +242,7 @@ Current capabilities:
 - on-screen keyboard (Lomiri style) with shift key, close button, QWERTY + symbols pages, virtual keyboard fallback
 - full uppercase/lowercase bitmap font rendering in both shell and app surfaces
 - functional Browser (custom WebKitGTK 6.0 + GTK4, tabbed browsing, Lumo-themed CSS, bookmarks, smart URL bar, DuckDuckGo search)
-- functional Terminal with real PTY shell (/bin/sh via forkpty), text wrapping, top-down layout, pinch-to-zoom font scaling (1-6x), blinking cursor, menu, exit closes app
+- functional Terminal with VT100/xterm-256color emulator (cell grid, ANSI CSI parser, 256-color SGR, cursor movement, scroll regions, alternate screen buffer), runs btop/vim/nano/top, pinch-to-zoom font scaling (1-6x), blinking block cursor, menu, exit closes app
 - functional Clock with 4 tabs (Clock, Alarm, Stopwatch, Timer), persistent settings
 - functional Files with directory browsing, scroll, navigation, file sizes
 - functional Settings with 8 categorized sub-pages
@@ -261,6 +261,9 @@ Current capabilities:
 - toast notifications (Android-style pills)
 - functional Clock with alarm sound (pw-play/aplay), timer countdown, visual alarm indicator
 - 7 test suites: compositor, shell, app, browser, screenshot, fuzz/stress, and perf
+- touch ripple effect on all shell surfaces (launcher, OSK, gesture, status, sidebar, background)
+- GitHub app with full README rendering, markdown file viewer, syntax highlighting
+- Maps app with compass, saved places, location info
 - multiple security audits: 40+ issues fixed across all subsystems
 
 Next milestones:

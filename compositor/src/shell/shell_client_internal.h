@@ -174,6 +174,7 @@ struct lumo_shell_client {
     double ripple_x, ripple_y;
     uint64_t ripple_start_msec;
     bool ripple_active;
+    enum lumo_shell_mode ripple_mode; /* surface that received the touch */
 };
 
 /* ── theme (global, shared by all drawing functions) ──────────────── */

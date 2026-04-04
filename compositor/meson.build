@@ -4,7 +4,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.78',
+  version: '0.0.79',
   default_options: [
     'c_std=c11',
     'warning_level=2',
@@ -209,7 +209,9 @@ app_sources = files(
   'src/apps/app_browser.c',
   'src/apps/app_sysmon.c',
   'src/apps/app_github.c',
+  'src/apps/app_maps.c',
   'src/apps/app_stubs.c',
+  'src/apps/lumo_term.c',
   'src/apps/app_client.c',
 ) + xdg_client_protocol_files + text_input_client_protocol_files
 
@@ -358,7 +360,9 @@ app_test_exe = executable(
     'src/apps/app_browser.c',
     'src/apps/app_sysmon.c',
     'src/apps/app_github.c',
+    'src/apps/app_maps.c',
     'src/apps/app_stubs.c',
+    'src/apps/lumo_term.c',
     'tests/apps/test_app.c',
   ),
   include_directories: lumo_inc,
@@ -396,7 +400,9 @@ fuzz_test_sources = files(
   'src/apps/app_browser.c',
     'src/apps/app_sysmon.c',
     'src/apps/app_github.c',
+  'src/apps/app_maps.c',
   'src/apps/app_stubs.c',
+  'src/apps/lumo_term.c',
   'tests/core/test_fuzz.c',
 ) + lumo_sources
 
@@ -427,7 +433,9 @@ perf_test_sources = files(
   'src/apps/app_browser.c',
     'src/apps/app_sysmon.c',
     'src/apps/app_github.c',
+  'src/apps/app_maps.c',
   'src/apps/app_stubs.c',
+  'src/apps/lumo_term.c',
   'tests/core/test_perf.c',
 )
 

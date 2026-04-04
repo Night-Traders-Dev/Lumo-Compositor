@@ -2,6 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.79] - 2026-04-04
+
+### VT100 Terminal Emulator
+
+- Replaced dumb terminal with full VT100/xterm-256color emulator.
+- Cell-based grid (80×24 default, up to 132×60) with per-cell attributes.
+- ANSI CSI parser: cursor movement (H, A-D, E-F, G), erase (J, K, X),
+  SGR colors (m with 16 + 256-color), insert/delete lines (L, M),
+  insert/delete chars (@, P), scroll (S, T), scroll regions (r).
+- Alternate screen buffer (?1049h/l) for btop, vim, nano, less.
+- Device attribute response (DA), cursor position report (DSR 6n).
+- Bold renders as bright color, dim halves intensity, inverse swaps fg/bg.
+- Block cursor with blink, cursor show/hide (?25h/l).
+- Application cursor keys (DECCKM) for arrow keys in vim/nano.
+- Keyboard: arrow keys, Tab, Escape, Home, End, PgUp, PgDn, Delete.
+- Runs user's $SHELL (bash default) with TERM=xterm-256color.
+- Cell renderer with 256-color palette, underline, and attribute support.
+- Pinch-to-zoom still works (1-6× font scale).
+
+### Touch Ripple Fix
+
+- Touch ripple now renders on ALL shell surfaces (launcher, OSK,
+  gesture, status bar, sidebar, background), not just the background.
+- Each ripple tracked by which surface received the touch event.
+- Ripple drawing extracted into shared helper function.
+
+### GitHub App Improvements
+
+- README now renders fully (no 160px height cap), scrolls with file list.
+- Fenced code blocks (```) rendered in green.
+- Bullet points rendered with dot indicators and indentation.
+- Blockquotes rendered with accent bar and dim text.
+- Tapping .md files shows rendered markdown (no line numbers), not raw source.
+- .markdown extension also recognized.
+
+### Maps App
+
+- Added real Maps app (was stub) with compass, saved places, location info.
+- Three tabs: compass rose with cardinal ticks, place list with editing, device info.
+
+### Test Fixes
+
+- Updated test assertions for 4×4 grid (was 3×4), 14 apps (was 12),
+  6 modes (was 5), centered time panel position.
+- Added Maps app to build (was missing from meson.build).
+
 ## [0.0.78] - 2026-04-04
 
 ### Touch Ripple Effect
@@ -18,7 +64,7 @@ All notable changes to this project will be documented in this file.
 - Glow intensity increased 43% (0.35→0.50) for visual prominence.
 - Infinitely generated in real-time (no loop, no repeat ever).
 
-### GitHub App Improvements
+### GitHub App Initial Release
 
 - README.md auto-fetched and rendered when opening a repo.
 - Markdown styling: headings (orange), code (green), quotes (dim), bullets.

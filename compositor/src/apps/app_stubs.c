@@ -64,13 +64,7 @@ void lumo_app_render_camera(
     draw_coming_soon(pixels, width, height, "CAMERA");
 }
 
-void lumo_app_render_maps(
-    const struct lumo_app_render_context *ctx,
-    uint32_t *pixels, uint32_t width, uint32_t height)
-{
-    (void)ctx;
-    draw_coming_soon(pixels, width, height, "MAPS");
-}
+/* maps render + button_at are in app_maps.c */
 
 /* browser_button_at is in app_browser.c */
 
@@ -90,10 +84,3 @@ int lumo_app_camera_button_at(
     return -1;
 }
 
-int lumo_app_maps_button_at(
-    uint32_t width, uint32_t height,
-    double x, double y, int tab)
-{
-    (void)width; (void)height; (void)x; (void)y; (void)tab;
-    return -1;
-}
