@@ -6,6 +6,7 @@
 
 #include "shell_render_internal.h"
 #include "lumo/lumo_icon.h"
+#include "lumo/app_icons.h"
 #include "lumo/version.h"
 
 #include <fcntl.h>
@@ -553,7 +554,36 @@ static void lumo_draw_launcher(
             icon_rect.height = inner;
         }
 
-        {
+        /* blit pre-rendered icon sprite if available */
+        if (tile_index < LUMO_APP_ICON_COUNT) {
+            const uint32_t *sprite = lumo_app_icons[tile_index];
+            int ix = icon_rect.x + (icon_rect.width - LUMO_APP_ICON_W) / 2;
+            int iy = icon_rect.y + (icon_rect.height - LUMO_APP_ICON_H) / 2;
+            for (int sy = 0; sy < LUMO_APP_ICON_H; sy++) {
+                int dy = iy + sy;
+                if (dy < 0 || dy >= (int)height) continue;
+                for (int sx = 0; sx < LUMO_APP_ICON_W; sx++) {
+                    int dx = ix + sx;
+                    if (dx < 0 || dx >= (int)width) continue;
+                    uint32_t src = sprite[sy * LUMO_APP_ICON_W + sx];
+                    uint32_t sa = (src >> 24) & 0xFF;
+                    if (sa < 16) continue;
+                    /* skip background color pixels (aubergine) */
+                    uint32_t sr = (src >> 16) & 0xFF;
+                    uint32_t sg = (src >> 8) & 0xFF;
+                    uint32_t sb = src & 0xFF;
+                    if (sr < 0x40 && sg < 0x10 && sb < 0x30) continue;
+                    pixels[dy * width + dx] = src;
+                }
+            }
+        } else {
+            /* fallback: filled rounded rect for unknown icons */
+            lumo_fill_rounded_rect(pixels, width, height, &icon_rect, 12,
+                accent);
+        }
+
+        /* legacy programmatic icons (kept as dead code reference) */
+        if (0) {
             int ix = icon_rect.x + 4;
             int iy = icon_rect.y + 4;
             int isz = 28;
@@ -663,7 +693,7 @@ static void lumo_draw_launcher(
                     accent);
                 break;
             }
-        }
+        } /* end dead code */
 
         label_rect.x = tile_rect.x;
         label_rect.y = cy + 56 + 8;
