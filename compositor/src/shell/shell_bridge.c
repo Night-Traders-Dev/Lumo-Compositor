@@ -799,8 +799,10 @@ static void lumo_shell_bridge_handle_request_frame(
                             char expected_id[64];
                             snprintf(expected_id, sizeof(expected_id),
                                 "lumo-%s", cmd_name);
-                            if (strcmp(aid, expected_id) == 0) {
-                                /* focus existing instance */
+                            if (strcmp(aid, expected_id) == 0 &&
+                                    tl->xdg_toplevel->base->surface != NULL &&
+                                    tl->xdg_toplevel->base->surface->resource != NULL) {
+                                /* focus existing live instance */
                                 tl->scene_tree->node.enabled = true;
                                 wlr_scene_node_raise_to_top(
                                     &tl->scene_tree->node);

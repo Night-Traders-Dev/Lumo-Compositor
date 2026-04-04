@@ -3290,9 +3290,14 @@ int main(int argc, char **argv) {
             client.app_id == LUMO_APP_SETTINGS ||
             client.app_id == LUMO_APP_NOTES ||
             client.app_id == LUMO_APP_MAPS ||
-            client.app_id == LUMO_APP_BROWSER || is_terminal;
-        int timeout_ms = client.app_id == LUMO_APP_CLOCK ? 1000 :
+            client.app_id == LUMO_APP_BROWSER ||
+            client.app_id == LUMO_APP_SYSMON ||
+            client.app_id == LUMO_APP_GITHUB || is_terminal;
+        int timeout_ms =
+            client.app_id == LUMO_APP_SYSMON ? 1000 :
+            client.app_id == LUMO_APP_CLOCK ? 1000 :
             client.app_id == LUMO_APP_SETTINGS ? 5000 :
+            client.app_id == LUMO_APP_GITHUB ? 2000 :
             (is_terminal || client.app_id == LUMO_APP_NOTES ||
              client.app_id == LUMO_APP_MAPS ||
              client.app_id == LUMO_APP_BROWSER) ? 500 : -1;
