@@ -124,6 +124,7 @@ struct lumo_app_client {
     int media_selected;
     bool media_playing;
     pid_t media_pid;
+    pid_t browser_pid;
     bool photo_viewing;
     uint32_t *photo_thumbnails[LUMO_APP_MEDIA_MAX_FILES];
     uint32_t photo_thumbnail_widths[LUMO_APP_MEDIA_MAX_FILES];
@@ -2998,9 +2999,9 @@ static void lumo_app_bookmarks_load(struct lumo_app_client *client) {
         /* defaults */
         snprintf(client->notes[0], sizeof(client->notes[0]),
             "https://duckduckgo.com/");
-        snprintf(client->notes[1], sizeof(client->notes[0]),
+        snprintf(client->notes[1], sizeof(client->notes[1]),
             "https://en.m.wikipedia.org/");
-        snprintf(client->notes[2], sizeof(client->notes[0]),
+        snprintf(client->notes[2], sizeof(client->notes[2]),
             "https://github.com/");
         client->note_count = 3;
         return;
@@ -3043,28 +3044,65 @@ static void lumo_app_browser_launch_url(const char *url) {
     } else if (strchr(url, '.') != NULL && strchr(url, ' ') == NULL) {
         snprintf(resolved, sizeof(resolved), "https://%s", url);
     } else {
+        /* URL-encode the search query to prevent injection */
+        char encoded[2048];
+        size_t j = 0;
+        static const unsigned char safe[256] = {
+            ['A']=1,['B']=1,['C']=1,['D']=1,['E']=1,['F']=1,['G']=1,
+            ['H']=1,['I']=1,['J']=1,['K']=1,['L']=1,['M']=1,['N']=1,
+            ['O']=1,['P']=1,['Q']=1,['R']=1,['S']=1,['T']=1,['U']=1,
+            ['V']=1,['W']=1,['X']=1,['Y']=1,['Z']=1,
+            ['a']=1,['b']=1,['c']=1,['d']=1,['e']=1,['f']=1,['g']=1,
+            ['h']=1,['i']=1,['j']=1,['k']=1,['l']=1,['m']=1,['n']=1,
+            ['o']=1,['p']=1,['q']=1,['r']=1,['s']=1,['t']=1,['u']=1,
+            ['v']=1,['w']=1,['x']=1,['y']=1,['z']=1,
+            ['0']=1,['1']=1,['2']=1,['3']=1,['4']=1,['5']=1,['6']=1,
+            ['7']=1,['8']=1,['9']=1,['-']=1,['_']=1,['.']=1,['~']=1,
+        };
+        for (size_t i = 0; url[i] && j + 3 < sizeof(encoded); i++) {
+            unsigned char c = (unsigned char)url[i];
+            if (safe[c]) {
+                encoded[j++] = (char)c;
+            } else if (c == ' ') {
+                encoded[j++] = '+';
+            } else {
+                snprintf(encoded + j, sizeof(encoded) - j,
+                    "%%%02X", c);
+                j += 3;
+            }
+        }
+        encoded[j] = '\0';
         snprintf(resolved, sizeof(resolved),
-            "https://duckduckgo.com/?q=%s", url);
+            "https://duckduckgo.com/?q=%s", encoded);
     }
 
-    /* spawn webview or lightweight browser */
+    /* try writing URL file for pre-warmed webview first (no fork needed) */
+    FILE *fp = fopen("/tmp/lumo-webview-url", "w");
+    if (fp) {
+        fprintf(fp, "%s\n", resolved);
+        fclose(fp);
+        fprintf(stderr, "lumo-app: sent URL to warm webview: %s\n", resolved);
+        return;
+    }
+
+    /* fallback: spawn webview subprocess */
+    static pid_t browser_pid;
+    /* reap previous browser if it exited */
+    if (browser_pid > 0)
+        waitpid(browser_pid, NULL, WNOHANG);
+
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
-        /* GPU-accelerate GTK rendering via PowerVR GLES */
         setenv("GSK_RENDERER", "gl", 1);
-        /* set cache to tmpfs for speed */
         setenv("XDG_CACHE_HOME", "/tmp/lumo-webkit-cache", 1);
-        /* try lumo-webview (WebKitGTK, full compat) */
         execlp("lumo-webview", "lumo-webview", resolved, (char *)NULL);
-        /* fallback to cairo renderer if GL fails */
         setenv("GSK_RENDERER", "cairo", 1);
         execlp("lumo-webview", "lumo-webview", resolved, (char *)NULL);
-        /* try netsurf (lightweight, fast startup) */
-        execlp("netsurf-gtk", "netsurf-gtk", resolved, (char *)NULL);
         _exit(127);
     }
     if (pid > 0) {
+        browser_pid = pid;
         fprintf(stderr, "lumo-app: launched browser for %s (pid=%d)\n",
             resolved, (int)pid);
     }

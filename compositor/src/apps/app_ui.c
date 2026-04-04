@@ -399,13 +399,7 @@ void lumo_app_draw_background(
     struct lumo_app_theme theme;
     struct lumo_rect full = {0, 0, (int)width, (int)height};
     lumo_app_theme_get(&theme);
-    /* Overflow guard: width and height are validated against a sane maximum
-     * before the memset so that (size_t)width * height * 4 cannot wrap on
-     * any supported platform (max 16384*16384*4 = 1 GiB, well within
-     * size_t range on a 32-bit or 64-bit target). */
-    if (width > 0 && height > 0 && width <= 16384 && height <= 16384) {
-        memset(pixels, 0, (size_t)width * height * 4);
-    }
+    /* fill_gradient writes every pixel — skip separate memset */
     lumo_app_fill_gradient(pixels, width, height, &full,
         theme.bg, theme.header_bg);
 }

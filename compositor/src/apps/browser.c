@@ -128,36 +128,65 @@ static void on_tab_clicked(GtkButton *btn, gpointer data) {
 }
 
 static void update_tab_bar(LumoBrowser *b) {
-    /* remove only the dynamic tab buttons (named "lumo-tab-*") */
+    /* count existing dynamic tab buttons */
+    int existing = 0;
     GtkWidget *child = gtk_widget_get_first_child(GTK_WIDGET(b->tab_bar));
     while (child) {
-        GtkWidget *next = gtk_widget_get_next_sibling(child);
         if (child != GTK_WIDGET(b->new_tab_btn) &&
-                child != GTK_WIDGET(b->close_tab_btn)) {
-            gtk_box_remove(b->tab_bar, child);
-        }
-        child = next;
+                child != GTK_WIDGET(b->close_tab_btn))
+            existing++;
+        child = gtk_widget_get_next_sibling(child);
     }
 
-    for (int i = b->tab_count - 1; i >= 0; i--) {
-        char label[48];
-        const char *title = b->tabs[i].title[0] ? b->tabs[i].title : "New Tab";
-        snprintf(label, sizeof(label), "%.18s", title);
-
-        GtkWidget *btn = gtk_button_new_with_label(label);
-        gtk_widget_set_hexpand(btn, TRUE);
-
-        if (i == b->active_tab) {
-            gtk_widget_add_css_class(btn, "tab-active");
-        } else {
-            gtk_widget_add_css_class(btn, "tab-inactive");
+    /* if tab count changed, do a full rebuild (rare: only on add/close) */
+    if (existing != b->tab_count) {
+        child = gtk_widget_get_first_child(GTK_WIDGET(b->tab_bar));
+        while (child) {
+            GtkWidget *next = gtk_widget_get_next_sibling(child);
+            if (child != GTK_WIDGET(b->new_tab_btn) &&
+                    child != GTK_WIDGET(b->close_tab_btn))
+                gtk_box_remove(b->tab_bar, child);
+            child = next;
         }
+        for (int i = b->tab_count - 1; i >= 0; i--) {
+            char label[48];
+            const char *title = b->tabs[i].title[0]
+                ? b->tabs[i].title : "New Tab";
+            snprintf(label, sizeof(label), "%.18s", title);
+            GtkWidget *btn = gtk_button_new_with_label(label);
+            gtk_widget_set_hexpand(btn, TRUE);
+            g_object_set_data(G_OBJECT(btn), "tab-index",
+                GINT_TO_POINTER(i));
+            g_signal_connect(btn, "clicked",
+                G_CALLBACK(on_tab_clicked), b);
+            gtk_box_insert_child_after(b->tab_bar, btn, NULL);
+        }
+    }
 
-        g_object_set_data(G_OBJECT(btn), "tab-index", GINT_TO_POINTER(i));
-        g_signal_connect(btn, "clicked", G_CALLBACK(on_tab_clicked), b);
-
-        /* insert before the + and X buttons */
-        gtk_box_insert_child_after(b->tab_bar, btn, NULL);
+    /* update labels and active/inactive CSS (fast path for tab switches) */
+    child = gtk_widget_get_first_child(GTK_WIDGET(b->tab_bar));
+    while (child) {
+        if (child != GTK_WIDGET(b->new_tab_btn) &&
+                child != GTK_WIDGET(b->close_tab_btn) &&
+                GTK_IS_BUTTON(child)) {
+            int idx = GPOINTER_TO_INT(
+                g_object_get_data(G_OBJECT(child), "tab-index"));
+            if (idx >= 0 && idx < b->tab_count) {
+                char label[48];
+                const char *title = b->tabs[idx].title[0]
+                    ? b->tabs[idx].title : "New Tab";
+                snprintf(label, sizeof(label), "%.18s", title);
+                gtk_button_set_label(GTK_BUTTON(child), label);
+                if (idx == b->active_tab) {
+                    gtk_widget_add_css_class(child, "tab-active");
+                    gtk_widget_remove_css_class(child, "tab-inactive");
+                } else {
+                    gtk_widget_add_css_class(child, "tab-inactive");
+                    gtk_widget_remove_css_class(child, "tab-active");
+                }
+            }
+        }
+        child = gtk_widget_get_next_sibling(child);
     }
 }
 
@@ -185,8 +214,10 @@ static WebKitWebView *create_web_view(void) {
     settings = webkit_web_view_get_settings(wv);
     webkit_settings_set_enable_javascript(settings, TRUE);
     webkit_settings_set_enable_smooth_scrolling(settings, FALSE);
+    /* GPU: use hardware acceleration when available (PowerVR BXE-2-32).
+     * Falls back to software rendering automatically if GPU fails. */
     webkit_settings_set_hardware_acceleration_policy(settings,
-        WEBKIT_HARDWARE_ACCELERATION_POLICY_NEVER);
+        WEBKIT_HARDWARE_ACCELERATION_POLICY_ALWAYS);
     webkit_settings_set_enable_media(settings, FALSE);
     webkit_settings_set_enable_webaudio(settings, FALSE);
     webkit_settings_set_enable_media_stream(settings, FALSE);
@@ -469,11 +500,17 @@ static void on_close_tab(GtkButton *btn, gpointer data) {
     }
     int idx = b->active_tab;
 
-    /* remove the web view from stack */
+    /* remove and destroy the web view from stack */
     char stack_name[16];
     snprintf(stack_name, sizeof(stack_name), "tab%d", idx);
     GtkWidget *child = gtk_stack_get_child_by_name(b->view_stack, stack_name);
-    if (child) gtk_stack_remove(b->view_stack, child);
+    if (child) {
+        /* disconnect signals before removal to prevent use-after-free */
+        if (b->tabs[idx].web_view)
+            g_signal_handlers_disconnect_by_data(b->tabs[idx].web_view, b);
+        gtk_stack_remove(b->view_stack, child);
+    }
+    b->tabs[idx].web_view = NULL;
 
     /* shift tabs down */
     for (int i = idx; i < b->tab_count - 1; i++)
