@@ -114,5 +114,41 @@ void lumo_app_render_stub(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels, uint32_t width, uint32_t height
 );
+void lumo_app_render_calculator(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
+void lumo_app_render_calendar(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
+void lumo_app_render_weather(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
+void lumo_app_render_contacts(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
+void lumo_app_render_recorder(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
+void lumo_app_render_tasks(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
+void lumo_app_render_downloads(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
+void lumo_app_render_package(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
+void lumo_app_render_syslog(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
 
 #endif

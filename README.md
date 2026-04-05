@@ -224,7 +224,7 @@ More detailed notes live in:
 
 ## Status
 
-The project is at v0.0.79 (Lumo OS) running on OrangePi RV2 hardware.
+The project is at v0.0.80 (Lumo OS) running on OrangePi RV2 hardware.
 
 Current capabilities:
 
@@ -261,6 +261,15 @@ Current capabilities:
 - toast notifications (Android-style pills)
 - functional Clock with alarm sound (pw-play/aplay), timer countdown, visual alarm indicator
 - 7 test suites: compositor, shell, app, browser, screenshot, fuzz/stress, and perf
+- functional Calculator with standard operations, wide zero, operator buttons
+- functional Calendar with month grid, day highlight, prev/next navigation
+- functional Weather with temperature, condition, humidity, wind, UV cards
+- functional Contacts with avatar initials, add/edit/delete, shared data
+- functional Recorder with waveform visualization, record/play/delete
+- functional Tasks with checklist, toggle done, add/delete
+- functional Downloads viewer (~/Downloads with file type icons)
+- functional Package Manager (dpkg query, installed list with versions/sizes)
+- functional System Log viewer (journalctl, color-coded severity, scroll)
 - touch ripple effect on all shell surfaces (launcher, OSK, gesture, status, sidebar, background)
 - GitHub app with full README rendering, markdown file viewer, syntax highlighting
 - Maps app with compass, saved places, location info

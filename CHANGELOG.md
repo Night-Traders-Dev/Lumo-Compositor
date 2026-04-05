@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.80] - 2026-04-04
+
+### Nine New Stock Apps
+
+- **Calculator**: Standard calculator with +, -, ×, ÷, =, C, backspace, negate.
+  Grid layout with wide zero button, accent-colored operator column.
+- **Calendar**: Month view with day grid, today highlight, prev/next navigation.
+  Day-of-week headers, handles month/year rollover.
+- **Weather**: Large temperature display, condition, humidity/wind/feels-like/UV cards.
+  Sources data from wttr.in via environment variables.
+- **Contacts**: Standalone contact list with avatar initials, add/edit/delete.
+  Shared data store with Phone app, OSK input for editing.
+- **Recorder**: Audio recorder UI with record/play/delete buttons, elapsed timer,
+  animated waveform visualization during recording.
+- **Tasks**: Checklist app with [x]/[ ] toggle, add/delete, editing cursor.
+  Persists to ~/.lumo-tasks.
+- **Downloads**: ~/Downloads browser with color-coded file type icons (PDF=red,
+  ZIP=orange, DEB=green, images=blue), scrollable list.
+- **Packages**: dpkg package list with name, version, installed size.
+  Cached scan, shows installed count.
+- **System Log**: journalctl viewer with color-coded severity (red=error,
+  orange=warning, dim=debug), scroll position indicator.
+
+### App Count
+
+- Total native apps: 23 (was 14). Multi-page app drawer now spans 2 pages.
+
 ## [0.0.79] - 2026-04-04
 
 ### VT100 Terminal Emulator

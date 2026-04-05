@@ -22,7 +22,7 @@ static bool lumo_test_any_nonzero(
 static void test_app_catalog(void) {
     enum lumo_app_id app_id = LUMO_APP_PHONE;
 
-    assert(lumo_app_count() == 14);
+    assert(lumo_app_count() == 23);
     assert(strcmp(lumo_app_id_name(LUMO_APP_PHONE), "phone") == 0);
     assert(strcmp(lumo_app_title(LUMO_APP_MESSAGES), "Messages") == 0);
     assert(strcmp(lumo_app_subtitle(LUMO_APP_BROWSER),

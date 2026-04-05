@@ -74,7 +74,9 @@ static void test_shell_labels(void) {
     assert(strcmp(lumo_shell_launcher_tile_label(11), "SETTINGS") == 0);
     assert(strcmp(lumo_shell_launcher_tile_label(12), "SYSMON") == 0);
     assert(strcmp(lumo_shell_launcher_tile_label(13), "GITHUB") == 0);
-    assert(lumo_shell_launcher_tile_label(14) == NULL);
+    assert(strcmp(lumo_shell_launcher_tile_label(14), "CALCULATOR") == 0);
+    assert(strcmp(lumo_shell_launcher_tile_label(22), "SYSLOG") == 0);
+    assert(lumo_shell_launcher_tile_label(23) == NULL);
 
     lumo_shell_osk_set_page(0);
     assert(strcmp(lumo_shell_osk_key_label(0), "Q") == 0);
@@ -321,7 +323,7 @@ static void test_launcher_search_and_filtered_tiles(void) {
     assert(lumo_rect_contains(&panel, search.x + search.width / 2.0,
         search.y + search.height / 2.0));
 
-    assert(lumo_shell_launcher_filtered_tile_count(NULL) == 14);
+    assert(lumo_shell_launcher_filtered_tile_count(NULL) == 16);
     assert(lumo_shell_launcher_filtered_tile_count("SET") == 1);
     assert(lumo_shell_launcher_filtered_tile_rect(1024, 600, "SET", 0,
         &tile_index, &filtered));

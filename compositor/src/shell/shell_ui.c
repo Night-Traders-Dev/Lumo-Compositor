@@ -22,6 +22,15 @@ static const char *const lumo_shell_launcher_labels[] = {
     "SETTINGS",
     "SYSMON",
     "GITHUB",
+    "CALCULATOR",
+    "CALENDAR",
+    "WEATHER",
+    "CONTACTS",
+    "RECORDER",
+    "TASKS",
+    "DOWNLOADS",
+    "PACKAGES",
+    "SYSLOG",
 };
 static const char *const lumo_shell_launcher_commands[] = {
     "lumo-app:phone",
@@ -38,6 +47,15 @@ static const char *const lumo_shell_launcher_commands[] = {
     "lumo-app:settings",
     "lumo-app:sysmon",
     "lumo-app:github",
+    "lumo-app:calculator",
+    "lumo-app:calendar",
+    "lumo-app:weather",
+    "lumo-app:contacts",
+    "lumo-app:recorder",
+    "lumo-app:tasks",
+    "lumo-app:downloads",
+    "lumo-app:package",
+    "lumo-app:syslog",
 };
 static const char *const lumo_shell_touch_audit_names[] = {
     "top-left",

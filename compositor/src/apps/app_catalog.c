@@ -39,6 +39,24 @@ static const struct lumo_app_definition lumo_apps[] = {
         0xFF44CC88u},
     {LUMO_APP_GITHUB, "github", "GitHub", "Repositories, issues, and profile",
         0xFF6E5494u},
+    {LUMO_APP_CALCULATOR, "calculator", "Calculator", "Quick math at your fingertips",
+        0xFFFF8844u},
+    {LUMO_APP_CALENDAR, "calendar", "Calendar", "Dates, events, and reminders",
+        0xFF44AAFFu},
+    {LUMO_APP_WEATHER, "weather", "Weather", "Forecast and conditions",
+        0xFF66CCFFu},
+    {LUMO_APP_CONTACTS, "contacts", "Contacts", "People and numbers",
+        0xFF44CC88u},
+    {LUMO_APP_RECORDER, "recorder", "Recorder", "Voice memos and audio",
+        0xFFFF5566u},
+    {LUMO_APP_TASKS, "tasks", "Tasks", "To-do lists and reminders",
+        0xFFAADD44u},
+    {LUMO_APP_DOWNLOADS, "downloads", "Downloads", "Saved files and transfers",
+        0xFF7799FFu},
+    {LUMO_APP_PACKAGE, "package", "Packages", "Installed software and updates",
+        0xFFBB77FFu},
+    {LUMO_APP_SYSLOG, "syslog", "System Log", "Journal entries and diagnostics",
+        0xFF88AABBu},
 };
 
 size_t lumo_app_count(void) {
@@ -112,6 +130,8 @@ bool lumo_app_wants_osk(enum lumo_app_id app_id, int note_editing) {
     case LUMO_APP_NOTES:
     case LUMO_APP_MAPS:
     case LUMO_APP_BROWSER:
+    case LUMO_APP_CONTACTS:
+    case LUMO_APP_TASKS:
         return note_editing >= 0;
     case LUMO_APP_PHONE:
     case LUMO_APP_CAMERA:

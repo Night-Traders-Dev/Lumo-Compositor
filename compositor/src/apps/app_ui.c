@@ -542,6 +542,24 @@ void lumo_app_render(
         lumo_app_render_camera(ctx, pixels, width, height); return;
     case LUMO_APP_MAPS:
         lumo_app_render_maps(ctx, pixels, width, height); return;
+    case LUMO_APP_CALCULATOR:
+        lumo_app_render_calculator(ctx, pixels, width, height); return;
+    case LUMO_APP_CALENDAR:
+        lumo_app_render_calendar(ctx, pixels, width, height); return;
+    case LUMO_APP_WEATHER:
+        lumo_app_render_weather(ctx, pixels, width, height); return;
+    case LUMO_APP_CONTACTS:
+        lumo_app_render_contacts(ctx, pixels, width, height); return;
+    case LUMO_APP_RECORDER:
+        lumo_app_render_recorder(ctx, pixels, width, height); return;
+    case LUMO_APP_TASKS:
+        lumo_app_render_tasks(ctx, pixels, width, height); return;
+    case LUMO_APP_DOWNLOADS:
+        lumo_app_render_downloads(ctx, pixels, width, height); return;
+    case LUMO_APP_PACKAGE:
+        lumo_app_render_package(ctx, pixels, width, height); return;
+    case LUMO_APP_SYSLOG:
+        lumo_app_render_syslog(ctx, pixels, width, height); return;
     default:
         lumo_app_render_stub(ctx, pixels, width, height); return;
     }
