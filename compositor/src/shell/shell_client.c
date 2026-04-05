@@ -1180,13 +1180,15 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
         }
         if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) break;
         if (client->unified) {
-            /* check if any slot has active animation */
-            for (int i = 0; i < client->surface_count; i++) {
-                if (client->slots[i].animation_active) {
-                    lumo_shell_client_redraw_unified(client);
-                    break;
-                }
+            /* check if any slot has active animation or page snap */
+            bool need_redraw = client->launcher_snap_active ||
+                client->launcher_swiping;
+            for (int i = 0; i < client->surface_count && !need_redraw; i++) {
+                if (client->slots[i].animation_active)
+                    need_redraw = true;
             }
+            if (need_redraw)
+                lumo_shell_client_redraw_unified(client);
         } else if (client->animation_active) {
             lumo_shell_client_tick_animation(client);
             (void)lumo_shell_client_redraw(client);
