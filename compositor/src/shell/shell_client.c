@@ -1127,7 +1127,7 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
                 client->running_app_count == 0 &&
                 !client->compositor_launcher_visible;
             bool any_anim = false;
-            timeout_ms = bg_visible ? 100 : 5000; /* 10fps for waves */
+            timeout_ms = bg_visible ? 200 : 5000; /* 5fps for waves */
 
             /* launcher page swipe/snap animation needs 16ms frames */
             if (client->launcher_snap_active || client->launcher_swiping) {
