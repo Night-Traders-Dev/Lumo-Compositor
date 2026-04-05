@@ -604,6 +604,8 @@ static void lumo_protocol_teardown_toplevel(struct lumo_toplevel *toplevel) {
     }
 
     compositor = toplevel->compositor;
+    wl_list_remove(&toplevel->map.link);
+    wl_list_remove(&toplevel->unmap.link);
     wl_list_remove(&toplevel->request_maximize.link);
     wl_list_remove(&toplevel->request_fullscreen.link);
     wl_list_remove(&toplevel->request_minimize.link);
@@ -847,6 +849,46 @@ static void lumo_protocol_layer_surface_commit(
     layer_surface->commit_snapshot_valid = true;
 }
 
+static void lumo_protocol_toplevel_map(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_toplevel *toplevel =
+        wl_container_of(listener, toplevel, map);
+    (void)data;
+
+    /* raise to top and give keyboard focus when surface maps */
+    wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
+    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
+
+    struct wlr_surface *surface = toplevel->xdg_surface->surface;
+    if (toplevel->compositor->seat != NULL && surface != NULL) {
+        struct wlr_keyboard *kbd =
+            wlr_seat_get_keyboard(toplevel->compositor->seat);
+        if (kbd != NULL) {
+            wlr_seat_keyboard_notify_enter(toplevel->compositor->seat,
+                surface, kbd->keycodes, kbd->num_keycodes,
+                &kbd->modifiers);
+        }
+    }
+
+    wlr_log(WLR_INFO, "protocol: toplevel mapped, raised and focused");
+    lumo_protocol_mark_layers_dirty(toplevel->compositor);
+}
+
+static void lumo_protocol_toplevel_unmap(
+    struct wl_listener *listener,
+    void *data
+) {
+    struct lumo_toplevel *toplevel =
+        wl_container_of(listener, toplevel, unmap);
+    (void)data;
+
+    wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
+    wlr_log(WLR_INFO, "protocol: toplevel unmapped");
+    lumo_protocol_mark_layers_dirty(toplevel->compositor);
+}
+
 static void lumo_protocol_new_toplevel(
     struct wl_listener *listener,
     void *data
@@ -884,7 +926,6 @@ static void lumo_protocol_new_toplevel(
 
     toplevel->scene_tree->node.data = toplevel;
     wlr_scene_node_set_enabled(&toplevel->scene_tree->node, true);
-    wlr_scene_node_raise_to_top(&toplevel->scene_tree->node);
 
     toplevel->request_maximize.notify = lumo_protocol_toplevel_request_maximize;
     wl_signal_add(&xdg_toplevel->events.request_maximize,
@@ -912,6 +953,11 @@ static void lumo_protocol_new_toplevel(
     wl_signal_add(&xdg_toplevel->events.set_app_id, &toplevel->set_app_id);
     toplevel->destroy.notify = lumo_protocol_toplevel_destroy;
     wl_signal_add(&xdg_toplevel->events.destroy, &toplevel->destroy);
+
+    toplevel->map.notify = lumo_protocol_toplevel_map;
+    wl_signal_add(&xdg_toplevel->base->surface->events.map, &toplevel->map);
+    toplevel->unmap.notify = lumo_protocol_toplevel_unmap;
+    wl_signal_add(&xdg_toplevel->base->surface->events.unmap, &toplevel->unmap);
 
     wl_list_insert(&compositor->toplevels, &toplevel->link);
     lumo_protocol_toplevel_schedule_configure(toplevel);
