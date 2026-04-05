@@ -597,8 +597,67 @@ static const char *lumo_shell_bridge_commit_osk_text(
                 char lower_ch = (ch >= 'A' && ch <= 'Z')
                     ? ch + ('a' - 'A') : ch;
                 bool need_shift = ch >= 'A' && ch <= 'Z';
+                /* terminal escape sequences — send as multiple key events */
+                if (text[0] == '\x1b' && text[1] == '[') {
+                    /* CSI sequences: arrow keys, pgup/pgdn, home, etc. */
+                    uint32_t kcodes[4] = {0};
+                    int kcount = 0;
+                    if (strcmp(text, "\x1b[A") == 0)
+                        kcodes[kcount++] = 103; /* KEY_UP */
+                    else if (strcmp(text, "\x1b[B") == 0)
+                        kcodes[kcount++] = 108; /* KEY_DOWN */
+                    else if (strcmp(text, "\x1b[D") == 0)
+                        kcodes[kcount++] = 105; /* KEY_LEFT */
+                    else if (strcmp(text, "\x1b[C") == 0)
+                        kcodes[kcount++] = 106; /* KEY_RIGHT */
+                    else if (strcmp(text, "\x1b[5~") == 0)
+                        kcodes[kcount++] = 104; /* KEY_PAGEUP */
+                    else if (strcmp(text, "\x1b[6~") == 0)
+                        kcodes[kcount++] = 109; /* KEY_PAGEDOWN */
+                    else if (strcmp(text, "\x1b[H") == 0)
+                        kcodes[kcount++] = 102; /* KEY_HOME */
+                    if (kcount > 0) {
+                        for (int ki = 0; ki < kcount; ki++) {
+                            wlr_seat_keyboard_notify_key(compositor->seat,
+                                0, kcodes[ki],
+                                WL_KEYBOARD_KEY_STATE_PRESSED);
+                            wlr_seat_keyboard_notify_key(compositor->seat,
+                                1, kcodes[ki],
+                                WL_KEYBOARD_KEY_STATE_RELEASED);
+                        }
+                        return NULL;
+                    }
+                }
+                /* single control characters */
                 if (ch == '\b') {
                     keycode = 14; /* KEY_BACKSPACE */
+                } else if (ch == '\t') {
+                    keycode = 15; /* KEY_TAB */
+                } else if (ch == '\x1b') {
+                    keycode = 1;  /* KEY_ESC */
+                } else if (ch >= '\x01' && ch <= '\x1a' && ch != '\t' &&
+                        ch != '\n' && ch != '\x1b') {
+                    /* Ctrl+letter: Ctrl+A=\x01..Ctrl+Z=\x1a
+                     * Map to letter key with ctrl modifier.
+                     * For now, send as the raw key for the letter;
+                     * the terminal handler reads it as ctrl+letter. */
+                    keycode = 0;
+                    /* Direct ctrl sequences: send the ctrl char via
+                     * text-input commit since the keyboard path can't
+                     * easily synthesize ctrl modifier state. */
+                    if (text_input == NULL) {
+                        /* terminal: route through text-input fallback
+                         * — the app_client will forward to the PTY */
+                        struct wlr_text_input_v3 *ti_retry =
+                            lumo_shell_bridge_focused_text_input(compositor);
+                        if (ti_retry) {
+                            char ctrl_buf[2] = {ch, '\0'};
+                            wlr_text_input_v3_send_commit_string(
+                                ti_retry, ctrl_buf);
+                            wlr_text_input_v3_send_done(ti_retry);
+                            return NULL;
+                        }
+                    }
                 } else {
                     for (size_t i = 0; i < sizeof(map)/sizeof(map[0]); i++) {
                         if (map[i].ch == lower_ch || map[i].ch == ch) {
@@ -608,6 +667,25 @@ static const char *lumo_shell_bridge_commit_osk_text(
                         }
                     }
                 }
+
+                /* also handle chars not in the basic map */
+                if (keycode == 0 && ch > 0x20) {
+                    /* try mapping through the extended char table */
+                    static const struct { char ch; uint32_t code; bool shift; } ext_map[] = {
+                        {'|',43,true}, {'~',41,true}, {'`',41,false},
+                        {'_',12,true}, {'\\',43,false}, {'[',26,false},
+                        {']',27,false}, {'{',26,true}, {'}',27,true},
+                        {'"',40,true}, {'<',51,true}, {'>',52,true},
+                    };
+                    for (size_t i = 0; i < sizeof(ext_map)/sizeof(ext_map[0]); i++) {
+                        if (ext_map[i].ch == ch) {
+                            keycode = ext_map[i].code;
+                            if (ext_map[i].shift) need_shift = true;
+                            break;
+                        }
+                    }
+                }
+
                 if (keycode > 0) {
                     if (need_shift) {
                         wlr_seat_keyboard_notify_key(compositor->seat,

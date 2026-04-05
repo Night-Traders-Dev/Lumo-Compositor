@@ -81,13 +81,17 @@ static void test_shell_labels(void) {
     lumo_shell_osk_set_page(0);
     assert(strcmp(lumo_shell_osk_key_label(0), "Q") == 0);
     assert(strcmp(lumo_shell_osk_key_label(19), "<-") == 0);
-    assert(strcmp(lumo_shell_osk_key_label(28), "123") == 0);
+    assert(strcmp(lumo_shell_osk_key_label(28), "123>") == 0);
     assert(strcmp(lumo_shell_osk_key_label(30), "SPACE") == 0);
     assert(strcmp(lumo_shell_osk_key_label(31), "ENTER") == 0);
     assert(strcmp(lumo_shell_osk_key_label(32), "v") == 0);
     assert(lumo_shell_osk_key_label(33) == NULL);
     lumo_shell_osk_set_page(1);
     assert(strcmp(lumo_shell_osk_key_label(0), "1") == 0);
+    assert(strcmp(lumo_shell_osk_key_label(28), "TERM") == 0);
+    lumo_shell_osk_set_page(2);
+    assert(strcmp(lumo_shell_osk_key_label(0), "ESC") == 0);
+    assert(strcmp(lumo_shell_osk_key_label(10), "C-C") == 0);
     assert(strcmp(lumo_shell_osk_key_label(28), "ABC") == 0);
     lumo_shell_osk_set_page(0);
 
