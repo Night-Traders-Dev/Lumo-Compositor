@@ -3108,16 +3108,7 @@ static void lumo_app_browser_launch_url(const char *url) {
             "https://duckduckgo.com/?q=%s", encoded);
     }
 
-    /* try writing URL file for pre-warmed webview first (no fork needed) */
-    FILE *fp = fopen("/tmp/lumo-webview-url", "w");
-    if (fp) {
-        fprintf(fp, "%s\n", resolved);
-        fclose(fp);
-        fprintf(stderr, "lumo-app: sent URL to warm webview: %s\n", resolved);
-        return;
-    }
-
-    /* fallback: spawn webview subprocess */
+    /* spawn webview subprocess with the URL */
     static pid_t browser_pid;
     /* reap previous browser if it exited */
     if (browser_pid > 0)
@@ -3126,9 +3117,17 @@ static void lumo_app_browser_launch_url(const char *url) {
     pid_t pid = fork();
     if (pid == 0) {
         setsid();
+        /* ensure WAYLAND_DISPLAY is set for the compositor socket */
+        const char *wl = getenv("WAYLAND_DISPLAY");
+        if (wl == NULL || wl[0] == '\0')
+            setenv("WAYLAND_DISPLAY", "lumo-shell", 1);
         setenv("GSK_RENDERER", "gl", 1);
-        setenv("XDG_CACHE_HOME", "/tmp/lumo-webkit-cache", 1);
+        if (access("/data/lumo-cache/webkit", W_OK) == 0)
+            setenv("XDG_CACHE_HOME", "/data/lumo-cache/webkit", 1);
+        else
+            setenv("XDG_CACHE_HOME", "/tmp/lumo-webkit-cache", 1);
         execlp("lumo-webview", "lumo-webview", resolved, (char *)NULL);
+        /* fallback to cairo renderer if GL fails */
         setenv("GSK_RENDERER", "cairo", 1);
         execlp("lumo-webview", "lumo-webview", resolved, (char *)NULL);
         _exit(127);

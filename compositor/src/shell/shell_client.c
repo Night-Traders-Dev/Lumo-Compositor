@@ -1118,8 +1118,12 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
             /* unified: background only needs 5 FPS (200ms) since waves
              * are pre-rendered at WAVE_LOOP_FPS=5.  Use 33ms only
              * during active animations. When app covers bg, sleep 5s. */
+            /* background is visible only when no app covers it and
+             * no modal scrim is active */
             bool bg_visible =
-                client->compositor_scrim_state == LUMO_SHELL_REMOTE_SCRIM_HIDDEN;
+                client->compositor_scrim_state == LUMO_SHELL_REMOTE_SCRIM_HIDDEN &&
+                client->running_app_count == 0 &&
+                !client->compositor_launcher_visible;
             bool any_anim = false;
             timeout_ms = bg_visible ? 33 : 5000;
 
