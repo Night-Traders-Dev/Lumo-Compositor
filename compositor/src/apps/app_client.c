@@ -3297,14 +3297,25 @@ int main(int argc, char **argv) {
             client.app_id == LUMO_APP_MAPS ||
             client.app_id == LUMO_APP_BROWSER ||
             client.app_id == LUMO_APP_SYSMON ||
-            client.app_id == LUMO_APP_GITHUB || is_terminal;
+            client.app_id == LUMO_APP_GITHUB ||
+            client.app_id == LUMO_APP_WEATHER ||
+            client.app_id == LUMO_APP_RECORDER ||
+            client.app_id == LUMO_APP_CALENDAR ||
+            client.app_id == LUMO_APP_CONTACTS ||
+            client.app_id == LUMO_APP_TASKS ||
+            is_terminal;
         int timeout_ms =
             client.app_id == LUMO_APP_SYSMON ? 1000 :
             client.app_id == LUMO_APP_CLOCK ? 1000 :
             client.app_id == LUMO_APP_SETTINGS ? 5000 :
             client.app_id == LUMO_APP_GITHUB ? 2000 :
+            client.app_id == LUMO_APP_WEATHER ? 2000 :
+            client.app_id == LUMO_APP_RECORDER ? 100 :
             (is_terminal || client.app_id == LUMO_APP_NOTES ||
              client.app_id == LUMO_APP_MAPS ||
+             client.app_id == LUMO_APP_CALENDAR ||
+             client.app_id == LUMO_APP_CONTACTS ||
+             client.app_id == LUMO_APP_TASKS ||
              client.app_id == LUMO_APP_BROWSER) ? 500 : -1;
 
         while (client.running) {
