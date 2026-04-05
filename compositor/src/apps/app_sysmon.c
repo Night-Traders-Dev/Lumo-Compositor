@@ -157,121 +157,122 @@ void lumo_app_render_sysmon(
         theme.separator);
     y += 8;
 
-    /* ── GPU ─────────────────────────────────────────────────── */
+    /* ── GPU — PowerVR BXE-2-32 (K1 SoC) ──────────────────── */
     {
         int gpu_util_pct = 0;
-        char gpu_3d[16] = "--";
-        char gpu_freq_str[16] = "--";
-        unsigned long gpu_mem = 0;
+        int gpu_3d_pct = 0;
+        double gpu_freq_mhz = 0.0;
+        double gpu_temp_c = 0.0;
+        unsigned long cma_total_kb = 0, cma_free_kb = 0;
 
-        /* read GPU utilization + 3D load from pvr status
-         * format: "GPU Utilisation: 24%" and "           3D:  24%" */
+        /* 1. GPU utilization + 3D load from pvr/status */
         FILE *fp = fopen("/sys/kernel/debug/pvr/status", "r");
         if (fp) {
             char line[256];
             while (fgets(line, sizeof(line), fp)) {
                 int val = 0;
                 if (strstr(line, "GPU Utilisation") != NULL) {
-                    if (sscanf(strstr(line, ":") + 1, " %d", &val) == 1)
+                    char *c = strchr(line, ':');
+                    if (c && sscanf(c + 1, " %d", &val) == 1)
                         gpu_util_pct = val;
                 } else if (strstr(line, "3D:") != NULL &&
                         strstr(line, "DM") == NULL) {
-                    /* match "           3D:  24%" but not "DM Utilisation" */
-                    char *colon = strstr(line, "3D:");
-                    if (colon && sscanf(colon + 3, " %d", &val) == 1)
-                        snprintf(gpu_3d, sizeof(gpu_3d), "%d%%", val);
+                    char *c = strstr(line, "3D:");
+                    if (c && sscanf(c + 3, " %d", &val) == 1)
+                        gpu_3d_pct = val;
                 }
             }
             fclose(fp);
         }
 
-        /* read GPU frequency from clk_summary */
+        /* 2. GPU frequency from clk_summary (cac00000.imggpu) */
         fp = fopen("/sys/kernel/debug/clk/clk_summary", "r");
         if (fp) {
             char line[256];
             while (fgets(line, sizeof(line), fp)) {
                 if (strstr(line, "cac00000.imggpu") != NULL) {
-                    /* extract large number (frequency in Hz) */
-                    unsigned long freq_hz = 0;
                     char *p = line;
                     while (*p) {
                         if (*p >= '0' && *p <= '9') {
                             unsigned long n = strtoul(p, &p, 10);
-                            if (n > 1000000) { freq_hz = n; break; }
-                        } else {
-                            p++;
-                        }
+                            if (n > 1000000) {
+                                gpu_freq_mhz = (double)n / 1000000.0;
+                                break;
+                            }
+                        } else { p++; }
                     }
-                    if (freq_hz > 0)
-                        snprintf(gpu_freq_str, sizeof(gpu_freq_str),
-                            "%.0f MHz", (double)freq_hz / 1000000.0);
                     break;
                 }
             }
             fclose(fp);
         }
 
-        /* read GPU memory from driver_stats */
-        fp = fopen("/sys/kernel/debug/pvr/driver_stats", "r");
+        /* 3. Temperature from thermal_zone0 */
+        fp = fopen("/sys/class/thermal/thermal_zone0/temp", "r");
+        if (fp) {
+            int raw = 0;
+            if (fscanf(fp, "%d", &raw) == 1)
+                gpu_temp_c = (double)raw / 1000.0;
+            fclose(fp);
+        }
+
+        /* 4. VRAM (CMA) from /proc/meminfo */
+        fp = fopen("/proc/meminfo", "r");
         if (fp) {
             char line[128];
             while (fgets(line, sizeof(line), fp)) {
-                unsigned long val = 0;
-                if (sscanf(line, "MemoryUsageAllocGPUMemUMA %lu", &val) == 1)
-                    gpu_mem = val;
+                sscanf(line, "CmaTotal: %lu", &cma_total_kb);
+                sscanf(line, "CmaFree: %lu", &cma_free_kb);
             }
             fclose(fp);
         }
+
+        /* ── render GPU section ─────────────────────────────── */
 
         snprintf(buf, sizeof(buf), "GPU  %d%%", gpu_util_pct);
         lumo_app_draw_text(pixels, width, height, pad, y, 3,
             theme.text, buf);
         y += 26;
 
-        /* utilization bar */
+        /* total load bar */
         draw_bar(pixels, width, height, pad, y, col_w, 18,
             gpu_util_pct, pct_color(gpu_util_pct),
             theme.card_bg, theme.card_stroke);
         y += 24;
 
-        /* GPU details: name + freq on one line */
-        snprintf(buf, sizeof(buf), "BXE-2-32  %s", gpu_freq_str);
+        /* name + frequency */
+        snprintf(buf, sizeof(buf), "BXE-2-32  %.1f MHz", gpu_freq_mhz);
         lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
             theme.accent, buf);
         y += 20;
 
-        /* 3D load + PVR memory on one line */
-        snprintf(buf, sizeof(buf), "3D: %s  PVR: %.1fMB",
-            gpu_3d, (double)gpu_mem / (1024.0 * 1024.0));
+        /* temperature */
+        snprintf(buf, sizeof(buf), "TEMP %.1fC", gpu_temp_c);
         lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
-            theme.text_dim, buf);
+            gpu_temp_c > 70.0
+                ? lumo_app_argb(0xFF, 0xFF, 0x44, 0x44)
+                : theme.text_dim,
+            buf);
+
+        /* 3D engine on same line, right side */
+        snprintf(buf, sizeof(buf), "3D: %d%%", gpu_3d_pct);
+        lumo_app_draw_text(pixels, width, height,
+            (int)width / 2 + 20, y, 2, theme.text_dim, buf);
         y += 20;
 
-        /* CMA (GPU VRAM) from /proc/meminfo */
-        {
-            unsigned long cma_total = 0, cma_free = 0;
-            FILE *mi = fopen("/proc/meminfo", "r");
-            if (mi) {
-                char mline[128];
-                while (fgets(mline, sizeof(mline), mi)) {
-                    sscanf(mline, "CmaTotal: %lu", &cma_total);
-                    sscanf(mline, "CmaFree: %lu", &cma_free);
-                }
-                fclose(mi);
-            }
-            if (cma_total > 0) {
-                unsigned long cma_used = cma_total - cma_free;
-                int cma_pct = (int)(100 * cma_used / cma_total);
-                snprintf(buf, sizeof(buf), "VRAM %lu/%luMB  %d%%",
-                    cma_used / 1024, cma_total / 1024, cma_pct);
-                lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
-                    theme.text_dim, buf);
-                y += 18;
-                draw_bar(pixels, width, height, pad, y, col_w, 14,
-                    cma_pct, pct_color(cma_pct),
-                    theme.card_bg, theme.card_stroke);
-                y += 20;
-            }
+        /* VRAM (CMA) bar */
+        if (cma_total_kb > 0) {
+            unsigned long cma_used_kb = cma_total_kb - cma_free_kb;
+            int cma_pct = (int)(100 * cma_used_kb / cma_total_kb);
+            snprintf(buf, sizeof(buf), "VRAM %lu/%luMB  %d%%",
+                cma_used_kb / 1024, cma_total_kb / 1024, cma_pct);
+            lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
+                theme.text_dim, buf);
+            y += 18;
+            draw_bar(pixels, width, height, pad, y, col_w, 14,
+                cma_pct, pct_color(cma_pct),
+                theme.card_bg, theme.card_stroke);
+            y += 20;
         }
 
         /* renderer */
@@ -369,18 +370,4 @@ void lumo_app_render_sysmon(
         y += 20;
     }
 
-    /* ── Temperature ─────────────────────────────────────────── */
-    if (y + 30 < (int)height) {
-        FILE *fp = fopen("/sys/class/thermal/thermal_zone0/temp", "r");
-        if (fp) {
-            int temp = 0;
-            if (fscanf(fp, "%d", &temp) == 1) {
-                snprintf(buf, sizeof(buf), "CPU TEMP  %.1fC", temp / 1000.0);
-                lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
-                    temp > 70000 ? lumo_app_argb(0xFF, 0xFF, 0x44, 0x44)
-                                 : theme.text, buf);
-            }
-            fclose(fp);
-        }
-    }
 }
