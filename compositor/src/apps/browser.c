@@ -197,15 +197,23 @@ static WebKitWebView *create_web_view(void) {
     WebKitSettings *settings;
     WebKitNetworkSession *session;
 
-    /* share a single network session across all tabs and limit
-     * to one web process for faster startup on riscv64 */
+    /* share a single network session across all tabs */
     session = webkit_network_session_get_default();
     {
         WebKitWebsiteDataManager *dm =
             webkit_network_session_get_website_data_manager(session);
         if (dm != NULL) {
-            /* persistent cookies + cache for faster repeat visits */
-            (void)dm;
+            webkit_website_data_manager_set_favicons_enabled(dm, TRUE);
+        }
+        /* enable persistent cookies for login sessions */
+        WebKitCookieManager *cookies =
+            webkit_network_session_get_cookie_manager(session);
+        if (cookies) {
+            webkit_cookie_manager_set_persistent_storage(cookies,
+                "/tmp/lumo-browser-cookies.db",
+                WEBKIT_COOKIE_PERSISTENT_STORAGE_SQLITE);
+            webkit_cookie_manager_set_accept_policy(cookies,
+                WEBKIT_COOKIE_POLICY_ACCEPT_NO_THIRD_PARTY);
         }
     }
     wv = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW,
@@ -213,18 +221,17 @@ static WebKitWebView *create_web_view(void) {
 
     settings = webkit_web_view_get_settings(wv);
     webkit_settings_set_enable_javascript(settings, TRUE);
-    webkit_settings_set_enable_smooth_scrolling(settings, FALSE);
-    /* GPU: use hardware acceleration when available (PowerVR BXE-2-32).
-     * Falls back to software rendering automatically if GPU fails. */
+    webkit_settings_set_enable_smooth_scrolling(settings, TRUE);
     webkit_settings_set_hardware_acceleration_policy(settings,
         WEBKIT_HARDWARE_ACCELERATION_POLICY_ALWAYS);
-    webkit_settings_set_enable_media(settings, FALSE);
-    webkit_settings_set_enable_webaudio(settings, FALSE);
+    webkit_settings_set_enable_media(settings, TRUE);
+    webkit_settings_set_enable_webaudio(settings, TRUE);
     webkit_settings_set_enable_media_stream(settings, FALSE);
-    webkit_settings_set_enable_webgl(settings, FALSE);
+    webkit_settings_set_enable_webgl(settings, TRUE);
 
-    /* reduce memory: limit web process count */
-    webkit_web_view_set_is_muted(wv, TRUE);
+    /* performance: enable back-forward cache for instant navigation */
+    webkit_settings_set_enable_back_forward_navigation_gestures(settings,
+        TRUE);
 
     webkit_settings_set_user_agent(settings,
         "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
@@ -797,16 +804,17 @@ int main(int argc, char **argv) {
     LumoBrowser browser = {0};
     int status;
 
-    /* reduce WebKit memory and process overhead on riscv64 */
-    setenv("WEBKIT_DISABLE_COMPOSITING_MODE", "1", 0);
-    setenv("WEBKIT_DISABLE_DMABUF_RENDERER", "1", 0);
-    /* limit to one web process to reduce fork/exec overhead on slow CPU */
-    setenv("WEBKIT_PROCESS_COUNT_LIMIT", "1", 0);
-    /* force Cairo renderer — skip EGL/GL/Vulkan probing which always
-     * fails on riscv64 and wastes ~20s during startup */
-    setenv("GSK_RENDERER", "cairo", 0);
-    /* disable portal timeout (another 30s stall) */
+    /* GPU: use PowerVR BXE-2-32 for WebKit + GTK rendering */
+    setenv("GSK_RENDERER", "gl", 0);
+    /* limit web processes for memory (riscv64 has limited RAM) */
+    setenv("WEBKIT_PROCESS_COUNT_LIMIT", "2", 0);
+    /* disable portal timeout stall */
     setenv("GTK_USE_PORTAL", "0", 0);
+    /* persistent cache on NVMe if available */
+    if (access("/data/lumo-cache/webkit", W_OK) == 0)
+        setenv("XDG_CACHE_HOME", "/data/lumo-cache/webkit", 0);
+    else
+        setenv("XDG_CACHE_HOME", "/tmp/lumo-webkit-cache", 0);
 
     app = gtk_application_new("com.lumo.browser",
         G_APPLICATION_DEFAULT_FLAGS);
