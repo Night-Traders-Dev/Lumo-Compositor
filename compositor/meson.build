@@ -4,7 +4,7 @@
 project(
   'lumo-compositor',
   'c',
-  version: '0.0.80',
+  version: '0.0.81',
   default_options: [
     'c_std=c11',
     'warning_level=2',

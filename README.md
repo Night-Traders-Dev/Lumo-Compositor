@@ -224,7 +224,7 @@ More detailed notes live in:
 
 ## Status
 
-The project is at v0.0.80 (Lumo OS) running on OrangePi RV2 hardware.
+The project is at v0.0.81 (Lumo OS) running on OrangePi RV2 hardware.
 
 Current capabilities:
 
@@ -239,7 +239,7 @@ Current capabilities:
 - notification panel with ring buffer (8 max), accent-colored dots, reverse-chronological display
 - quick settings panel with WiFi, display, volume/brightness sliders, session info, reload/rotate
 - time/date panel with large clock, date, weather (temperature, condition, humidity, wind)
-- on-screen keyboard (Lomiri style) with shift key, close button, QWERTY + symbols pages, virtual keyboard fallback
+- on-screen keyboard (Lomiri style) with shift key, close button, QWERTY + symbols + terminal pages (ESC, TAB, Ctrl+C/D/Z/L, arrows, PgUp/Dn, pipes), virtual keyboard fallback
 - full uppercase/lowercase bitmap font rendering in both shell and app surfaces
 - functional Browser (custom WebKitGTK 6.0 + GTK4, tabbed browsing, Lumo-themed CSS, bookmarks, smart URL bar, DuckDuckGo search)
 - functional Terminal with VT100/xterm-256color emulator (cell grid, ANSI CSI parser, 256-color SGR, cursor movement, scroll regions, alternate screen buffer), runs btop/vim/nano/top, pinch-to-zoom font scaling (1-6x), blinking block cursor, menu, exit closes app

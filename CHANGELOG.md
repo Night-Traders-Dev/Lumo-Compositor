@@ -2,6 +2,74 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.81] - 2026-04-04
+
+### Terminal OSK Page
+
+- Third OSK page with terminal-specific keys: ESC, TAB, |, ~, `, _, \, =, [, ].
+- Ctrl combos: C-C (SIGINT), C-D (EOF), C-Z (SIGTSTP), C-L (clear).
+- Arrow keys (UP/DN/LT/RT), PgUp, PgDn, Home via virtual keycodes.
+- Extended char map: {, }, ", <, > with proper shift keycodes.
+- Page cycle: ABC → 123 → TERM → ABC.
+
+### First-Boot Setup Wizard
+
+- 5-step GUI wizard: Welcome, User/Password, WiFi, Timezone, Complete.
+- Creates user with sudo, configures GDM auto-login, sets timezone.
+- WiFi scanning via nmcli with password entry for secured networks.
+- 15 timezone presets from Hawaii to Sydney.
+- Runs only once (checks /etc/lumo-setup-complete).
+
+### WiFi Management
+
+- Settings network page lists available WiFi networks with signal/security.
+- Tap to connect, auto-rescan every 30 seconds.
+- Connected network highlighted with accent color badge.
+
+### Browser Performance Fixes
+
+- GPU hardware acceleration enabled (was explicitly NEVER).
+- 500ms polling replaced with GFileMonitor inotify in webview.
+- Tab close memory leak fixed (signal disconnect + WebView cleanup).
+- URL search queries now percent-encoded (security fix).
+- Redundant 4MB memset removed from app background drawing.
+- Tab bar uses incremental updates (only rebuilds on add/close).
+- Browser PID tracking with waitpid reaping.
+- Prefers warm webview URL file over fork+exec.
+
+### Smooth App Drawer
+
+- Live horizontal swipe tracking during drag (15px dead zone).
+- Ease-out cubic snap animation (250ms) on release.
+- Both current and adjacent page render simultaneously during swipe.
+- Rubber-band effect at first/last page boundaries.
+- Page 2 tile tap fix (was opening page 1 apps).
+
+### Weather App
+
+- Fetches live data from wttr.in/41101 via libcurl in background thread.
+- Shows temperature (F), condition, humidity, wind, feels-like, UV.
+- Updates every 5 minutes, shows zip code in header.
+
+### SysMon Readability
+
+- All text bumped from 6px to 12px for 7" touchscreen readability.
+- Condensed layout: swap+uptime and load+procs on shared lines.
+
+### OS Image Build
+
+- tools/build-image.sh creates distributable Lumo OS image.
+- Strips GNOME/snap/docker/samba/cups from official OrangePi image.
+- Installs pre-built Lumo binaries and source code.
+- First-boot service creates user and configures session.
+- OS branded as "Lumo OS" in /etc/os-release.
+
+### OS Debloat
+
+- Disabled 25+ unnecessary services (snapd, docker, samba, cups, avahi, etc.).
+- Removed snap packages (freed 1.1GB from /snap).
+- Boot time reduced from 70s to 62s.
+
 ## [0.0.80] - 2026-04-04
 
 ### Nine New Stock Apps
