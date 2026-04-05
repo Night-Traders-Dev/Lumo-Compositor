@@ -2052,6 +2052,22 @@ static void lumo_app_touch_handle_up(
                 if (fp) { fprintf(fp, "%s\n", val); fclose(fp); }
                 (void)lumo_app_client_redraw(client);
             }
+
+            /* WiFi network tap on network subpage (row 0) */
+            if (client->selected_row == 0 && toggle < 0 && action < 0) {
+                /* network list starts at y ~ 240 (after header+info+toggle+label) */
+                int net_y = (int)client->touch_down_y;
+                int list_start = 240;  /* approx y where network rows begin */
+                if (net_y >= list_start) {
+                    int net_idx = (net_y - list_start) / 44;
+                    extern void lumo_settings_wifi_connect(
+                        int network_index, const char *password);
+                    if (net_idx >= 0 && net_idx < 16) {
+                        lumo_settings_wifi_connect(net_idx, NULL);
+                        (void)lumo_app_client_redraw(client);
+                    }
+                }
+            }
         } else {
             int row = lumo_app_settings_row_at(client->width, client->height,
                 client->touch_down_x, client->touch_down_y);

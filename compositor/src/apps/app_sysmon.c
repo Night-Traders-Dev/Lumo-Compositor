@@ -91,9 +91,9 @@ static void draw_bar(uint32_t *pixels, uint32_t width, uint32_t height,
 }
 
 static uint32_t pct_color(int pct) {
-    if (pct > 80) return lumo_app_argb(0xFF, 0xFF, 0x44, 0x44); /* red */
-    if (pct > 50) return lumo_app_argb(0xFF, 0xFF, 0xAA, 0x44); /* yellow */
-    return lumo_app_argb(0xFF, 0x44, 0xCC, 0x44); /* green */
+    if (pct > 80) return lumo_app_argb(0xFF, 0xFF, 0x44, 0x44);
+    if (pct > 50) return lumo_app_argb(0xFF, 0xFF, 0xAA, 0x44);
+    return lumo_app_argb(0xFF, 0x44, 0xCC, 0x44);
 }
 
 /* ── render ──────────────────────────────────────────────────────── */
@@ -106,26 +106,21 @@ void lumo_app_render_sysmon(
     struct lumo_app_theme theme;
     lumo_app_theme_get(&theme);
 
-    struct lumo_rect full = {0, 0, (int)width, (int)height};
-    memset(pixels, 0, (size_t)width * height * 4);
-    lumo_app_fill_gradient(pixels, width, height, &full,
-        theme.header_bg, theme.bg);
+    lumo_app_draw_background(pixels, width, height);
 
-    int y = 16;
-    int pad = 20;
+    int y = 12;
+    int pad = 16;
     int col_w = (int)width - pad * 2;
     char buf[128];
 
     /* header */
-    lumo_app_draw_text(pixels, width, height, pad, y, 2,
-        theme.text_dim, "SYSTEM MONITOR");
-    y += 20;
-    lumo_app_draw_text(pixels, width, height, pad, y, 4,
-        theme.accent, "LUMO SYSMON");
-    y += 36;
-    lumo_app_fill_rect(pixels, width, height, pad, y, col_w, 1,
+    lumo_app_fill_rect(pixels, width, height, 0, 0, (int)width, 44,
+        theme.header_bg);
+    lumo_app_draw_text(pixels, width, height, pad, 12, 3,
+        theme.accent, "SYSTEM MONITOR");
+    lumo_app_fill_rect(pixels, width, height, pad, 44, col_w, 1,
         theme.separator);
-    y += 12;
+    y = 52;
 
     /* ── CPU ─────────────────────────────────────────────────── */
     read_cpu_stats();
@@ -133,62 +128,58 @@ void lumo_app_render_sysmon(
     snprintf(buf, sizeof(buf), "CPU  %d%%", cpu_total_pct);
     lumo_app_draw_text(pixels, width, height, pad, y, 3,
         theme.text, buf);
-    y += 24;
+    y += 28;
 
     /* total bar */
-    draw_bar(pixels, width, height, pad, y, col_w, 16,
+    draw_bar(pixels, width, height, pad, y, col_w, 18,
         cpu_total_pct, pct_color(cpu_total_pct),
         theme.card_bg, theme.card_stroke);
-    y += 22;
+    y += 24;
 
     /* per-core mini bars (two rows of 4) */
-    int bar_w = (col_w - 3 * 6) / 4;
-    if (bar_w < 30) bar_w = 30;
+    int bar_w = (col_w - 3 * 8) / 4;
+    if (bar_w < 40) bar_w = 40;
     for (int i = 0; i < 8; i++) {
         int row = i / 4;
         int col = i % 4;
-        int bx = pad + col * (bar_w + 6);
-        int by = y + row * 18;
-        draw_bar(pixels, width, height, bx, by, bar_w, 14,
+        int bx = pad + col * (bar_w + 8);
+        int by = y + row * 24;
+        draw_bar(pixels, width, height, bx, by, bar_w, 18,
             cpu_pcts[i], pct_color(cpu_pcts[i]),
             theme.card_bg, theme.card_stroke);
         snprintf(buf, sizeof(buf), "%d:%d%%", i, cpu_pcts[i]);
         lumo_app_draw_text(pixels, width, height,
-            bx + 4, by + 2, 1, theme.text_dim, buf);
+            bx + 4, by + 3, 2, theme.text, buf);
     }
-    y += 42;
+    y += 54;
 
-    y += 8;
     lumo_app_fill_rect(pixels, width, height, pad, y, col_w, 1,
         theme.separator);
-    y += 12;
+    y += 8;
 
     /* ── GPU ─────────────────────────────────────────────────── */
     lumo_app_draw_text(pixels, width, height, pad, y, 3,
         theme.text, "GPU");
-    y += 24;
+    y += 26;
 
     {
-        const char *gpu_name = "PowerVR BXE-2-32";
-        const char *gpu_api = "GLES 3.2 / Vulkan 1.3";
         lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
-            theme.accent, gpu_name);
-        y += 18;
-        lumo_app_draw_text(pixels, width, height, pad + 8, y, 1,
-            theme.text_dim, gpu_api);
-        y += 14;
+            theme.accent, "PowerVR BXE-2-32");
+        y += 20;
+        lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
+            theme.text_dim, "GLES 3.2 / Vulkan 1.3");
+        y += 20;
 
-        /* renderer + GPU status */
         const char *renderer = getenv("WLR_RENDERER");
         snprintf(buf, sizeof(buf), "RENDERER: %s",
             renderer ? renderer : "pixman");
-        lumo_app_draw_text(pixels, width, height, pad + 8, y, 1,
+        lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
             renderer && strcmp(renderer, "gles2") == 0
                 ? theme.accent : theme.text_dim,
             buf);
-        y += 14;
+        y += 20;
 
-        /* GPU memory from PVR driver stats */
+        /* GPU memory */
         FILE *fp = fopen("/sys/kernel/debug/pvr/driver_stats", "r");
         if (fp) {
             char line[128];
@@ -201,35 +192,15 @@ void lumo_app_render_sysmon(
             fclose(fp);
             snprintf(buf, sizeof(buf), "GPU MEM: %.1f MB",
                 (double)gpu_mem / (1024.0 * 1024.0));
-            lumo_app_draw_text(pixels, width, height, pad + 8, y, 1,
+            lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
                 theme.text_dim, buf);
-            y += 14;
-        }
-
-        /* GPU firmware status */
-        fp = fopen("/sys/kernel/debug/pvr/status", "r");
-        if (fp) {
-            char line[128];
-            while (fgets(line, sizeof(line), fp)) {
-                if (strncmp(line, "Firmware Status:", 16) == 0) {
-                    char *nl = strchr(line, '\n');
-                    if (nl) *nl = '\0';
-                    lumo_app_draw_text(pixels, width, height, pad + 8, y, 1,
-                        strstr(line, "OK") ? theme.text_dim
-                            : lumo_app_argb(0xFF, 0xFF, 0x44, 0x44),
-                        line);
-                    y += 14;
-                    break;
-                }
-            }
-            fclose(fp);
+            y += 20;
         }
     }
 
-    y += 4;
     lumo_app_fill_rect(pixels, width, height, pad, y, col_w, 1,
         theme.separator);
-    y += 12;
+    y += 8;
 
     /* ── RAM ─────────────────────────────────────────────────── */
     {
@@ -241,61 +212,55 @@ void lumo_app_render_sysmon(
                  si.mem_unit) / (1024*1024);
             int pct = total_mb > 0 ? (int)(100 * used_mb / total_mb) : 0;
 
-            snprintf(buf, sizeof(buf), "RAM  %lu / %lu MB  (%d%%)",
+            snprintf(buf, sizeof(buf), "RAM  %lu/%luMB  %d%%",
                 used_mb, total_mb, pct);
             lumo_app_draw_text(pixels, width, height, pad, y, 3,
                 theme.text, buf);
+            y += 28;
+
+            draw_bar(pixels, width, height, pad, y, col_w, 18,
+                pct, pct_color(pct), theme.card_bg, theme.card_stroke);
             y += 24;
 
-            draw_bar(pixels, width, height, pad, y, col_w, 16,
-                pct, pct_color(pct), theme.card_bg, theme.card_stroke);
-            y += 22;
-
-            /* swap */
+            /* swap + uptime on same line */
             unsigned long swap_total = (si.totalswap * si.mem_unit) / (1024*1024);
             unsigned long swap_used = swap_total -
                 (si.freeswap * si.mem_unit) / (1024*1024);
-            snprintf(buf, sizeof(buf), "SWAP  %lu / %lu MB",
-                swap_used, swap_total);
-            lumo_app_draw_text(pixels, width, height, pad + 8, y, 1,
+            snprintf(buf, sizeof(buf), "SWAP %lu/%luMB", swap_used, swap_total);
+            lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
                 theme.text_dim, buf);
-            y += 16;
 
-            /* uptime */
             long up = si.uptime;
             int days = (int)(up / 86400);
             int hours = (int)((up % 86400) / 3600);
             int mins = (int)((up % 3600) / 60);
-            snprintf(buf, sizeof(buf), "UPTIME  %dd %dh %dm",
-                days, hours, mins);
-            lumo_app_draw_text(pixels, width, height, pad + 8, y, 1,
-                theme.text_dim, buf);
-            y += 16;
+            snprintf(buf, sizeof(buf), "UP %dd%dh%dm", days, hours, mins);
+            lumo_app_draw_text(pixels, width, height,
+                (int)width / 2 + 20, y, 2, theme.text_dim, buf);
+            y += 20;
 
-            /* load average */
-            snprintf(buf, sizeof(buf), "LOAD  %.2f %.2f %.2f",
-                si.loads[0] / 65536.0, si.loads[1] / 65536.0,
-                si.loads[2] / 65536.0);
-            lumo_app_draw_text(pixels, width, height, pad + 8, y, 1,
+            /* load + procs on same line */
+            snprintf(buf, sizeof(buf), "LOAD %.1f %.1f  PROCS %d",
+                si.loads[0] / 65536.0, si.loads[1] / 65536.0, si.procs);
+            lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
                 theme.text_dim, buf);
-            y += 16;
+            y += 20;
         }
     }
 
-    y += 4;
     lumo_app_fill_rect(pixels, width, height, pad, y, col_w, 1,
         theme.separator);
-    y += 12;
+    y += 8;
 
-    /* ── Filesystem ──────────────────────────────────────────── */
+    /* ── Storage ─────────────────────────────────────────────── */
     lumo_app_draw_text(pixels, width, height, pad, y, 3,
         theme.text, "STORAGE");
-    y += 24;
+    y += 26;
 
     static const char *mounts[] = {"/", "/data", "/tmp", NULL};
     static const char *names[] = {"ROOT", "DATA", "TMP"};
 
-    for (int i = 0; mounts[i] != NULL && y + 24 < (int)height; i++) {
+    for (int i = 0; mounts[i] != NULL && y + 36 < (int)height; i++) {
         struct statvfs st;
         if (statvfs(mounts[i], &st) != 0) continue;
 
@@ -306,43 +271,27 @@ void lumo_app_render_sysmon(
         unsigned long used_mb = total_mb > free_mb ? total_mb - free_mb : 0;
         int pct = total_mb > 0 ? (int)(100 * used_mb / total_mb) : 0;
 
-        snprintf(buf, sizeof(buf), "%-5s %lu / %lu MB  %d%%",
+        snprintf(buf, sizeof(buf), "%-5s %lu/%luMB  %d%%",
             names[i], used_mb, total_mb, pct);
-        lumo_app_draw_text(pixels, width, height, pad + 8, y, 1,
+        lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
             theme.text_dim, buf);
-        y += 14;
-
-        draw_bar(pixels, width, height, pad, y, col_w, 12,
-            pct, pct_color(pct), theme.card_bg, theme.card_stroke);
         y += 18;
+
+        draw_bar(pixels, width, height, pad, y, col_w, 14,
+            pct, pct_color(pct), theme.card_bg, theme.card_stroke);
+        y += 20;
     }
 
-    /* ── Processes ────────────────────────────────────────────── */
-    if (y + 40 < (int)height) {
-        y += 4;
-        lumo_app_fill_rect(pixels, width, height, pad, y, col_w, 1,
-            theme.separator);
-        y += 12;
-
-        struct sysinfo si;
-        if (sysinfo(&si) == 0) {
-            snprintf(buf, sizeof(buf), "PROCESSES  %d", si.procs);
-            lumo_app_draw_text(pixels, width, height, pad, y, 2,
-                theme.text, buf);
-            y += 20;
-        }
-
-        /* temperature if available */
+    /* ── Temperature ─────────────────────────────────────────── */
+    if (y + 30 < (int)height) {
         FILE *fp = fopen("/sys/class/thermal/thermal_zone0/temp", "r");
         if (fp) {
             int temp = 0;
             if (fscanf(fp, "%d", &temp) == 1) {
-                snprintf(buf, sizeof(buf), "CPU TEMP  %.1f C",
-                    temp / 1000.0);
-                lumo_app_draw_text(pixels, width, height, pad + 8, y, 1,
+                snprintf(buf, sizeof(buf), "CPU TEMP  %.1fC", temp / 1000.0);
+                lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
                     temp > 70000 ? lumo_app_argb(0xFF, 0xFF, 0x44, 0x44)
-                                 : theme.text_dim,
-                    buf);
+                                 : theme.text, buf);
             }
             fclose(fp);
         }

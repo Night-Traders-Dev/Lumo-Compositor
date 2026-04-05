@@ -6,6 +6,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <time.h>
 #include <unistd.h>
 
 /* ── layout constants ─────────────────────────────────────────────── */
@@ -343,6 +344,90 @@ int lumo_app_settings_action_at(
 
 /* ── subpage renderers ────────────────────────────────────────────── */
 
+/* ── WiFi scan cache ──────────────────────────────────────────────── */
+
+#define WIFI_MAX_NETWORKS 16
+
+struct wifi_network {
+    char ssid[64];
+    char signal[8];
+    char security[16];
+    bool connected;
+};
+
+static struct wifi_network wifi_networks[WIFI_MAX_NETWORKS];
+static int wifi_network_count = -1;  /* -1 = not scanned */
+static time_t wifi_last_scan;
+
+static void wifi_scan(void) {
+    wifi_network_count = 0;
+    /* nmcli -t -f ACTIVE,SSID,SIGNAL,SECURITY dev wifi list */
+    FILE *fp = popen(
+        "nmcli -t -f ACTIVE,SSID,SIGNAL,SECURITY dev wifi list 2>/dev/null"
+        " | head -16", "r");
+    if (!fp) return;
+    char line[256];
+    while (fgets(line, sizeof(line), fp) &&
+            wifi_network_count < WIFI_MAX_NETWORKS) {
+        char *nl = strchr(line, '\n');
+        if (nl) *nl = '\0';
+        /* format: yes:MySSID:85:WPA2 or no:OtherNet:42:WPA1 */
+        struct wifi_network *n = &wifi_networks[wifi_network_count];
+        char active[8] = "";
+        char *p = line;
+        /* parse ACTIVE */
+        char *sep = strchr(p, ':');
+        if (!sep) continue;
+        *sep = '\0';
+        snprintf(active, sizeof(active), "%s", p);
+        p = sep + 1;
+        /* parse SSID */
+        sep = strchr(p, ':');
+        if (!sep) continue;
+        *sep = '\0';
+        if (p[0] == '\0') { p = sep + 1; continue; } /* skip empty SSID */
+        snprintf(n->ssid, sizeof(n->ssid), "%s", p);
+        p = sep + 1;
+        /* parse SIGNAL */
+        sep = strchr(p, ':');
+        if (!sep) continue;
+        *sep = '\0';
+        snprintf(n->signal, sizeof(n->signal), "%s", p);
+        p = sep + 1;
+        /* parse SECURITY */
+        snprintf(n->security, sizeof(n->security), "%s", p);
+        n->connected = (strcmp(active, "yes") == 0);
+        wifi_network_count++;
+    }
+    pclose(fp);
+    wifi_last_scan = time(NULL);
+}
+
+/* Connect to a WiFi network (called from touch handler) */
+void lumo_settings_wifi_connect(int network_index, const char *password) {
+    if (network_index < 0 || network_index >= wifi_network_count) return;
+    char cmd[512];
+    if (password && password[0]) {
+        snprintf(cmd, sizeof(cmd),
+            "nmcli dev wifi connect '%s' password '%s' 2>&1",
+            wifi_networks[network_index].ssid, password);
+    } else {
+        snprintf(cmd, sizeof(cmd),
+            "nmcli dev wifi connect '%s' 2>&1",
+            wifi_networks[network_index].ssid);
+    }
+    FILE *fp = popen(cmd, "r");
+    if (fp) {
+        char out[256];
+        if (fgets(out, sizeof(out), fp)) {
+            (void)out; /* could show result as toast */
+        }
+        pclose(fp);
+    }
+    /* rescan after connect attempt */
+    wifi_network_count = -1;
+}
+
 static void render_network(
     const struct lumo_app_render_context *ctx,
     uint32_t *px, uint32_t w, uint32_t h
@@ -356,11 +441,57 @@ static void render_network(
 
     draw_info(px, w, h, y, "STATUS", status); y += 28;
     draw_info(px, w, h, y, "SSID", ssid); y += 28;
-    draw_info(px, w, h, y, "INTERFACE", iface); y += 28;
+    draw_info(px, w, h, y, "IP ADDRESS", ip); y += 28;
     draw_toggle(px, w, h, y, "WI-FI ENABLED",
-        ctx->settings.wifi_enabled); y += 34;
-    draw_info(px, w, h, y, "SIGNAL", sig); y += 28;
-    draw_info(px, w, h, y, "IP ADDRESS", ip);
+        ctx->settings.wifi_enabled); y += 38;
+
+    /* scan for available networks (every 30s) */
+    time_t now = time(NULL);
+    if (wifi_network_count < 0 || now - wifi_last_scan > 30)
+        wifi_scan();
+
+    lumo_app_draw_text(px, w, h, PAD + 8, y, 2, th.accent,
+        "AVAILABLE NETWORKS");
+    y += 22;
+    lumo_app_fill_rect(px, w, h, PAD + 8, y, (int)w - PAD * 2 - 16, 1,
+        th.separator);
+    y += 6;
+
+    if (wifi_network_count == 0) {
+        lumo_app_draw_text(px, w, h, PAD + 16, y, 2,
+            th.text_dim, "NO NETWORKS FOUND");
+        return;
+    }
+
+    int scroll = ctx != NULL ? ctx->scroll_offset : 0;
+    for (int i = scroll; i < wifi_network_count && y + 44 < (int)h; i++) {
+        struct wifi_network *n = &wifi_networks[i];
+        struct lumo_rect row = {PAD + 4, y, (int)w - PAD * 2 - 8, 38};
+        lumo_app_fill_rounded_rect(px, w, h, &row, 8,
+            n->connected ? th.accent : th.card_bg);
+        lumo_app_draw_outline(px, w, h, &row, 1, th.card_stroke);
+
+        /* SSID */
+        lumo_app_draw_text(px, w, h, PAD + 16, y + 4, 2,
+            n->connected ? th.bg : th.text, n->ssid);
+
+        /* signal + security */
+        char detail[48];
+        snprintf(detail, sizeof(detail), "%s%%  %s",
+            n->signal, n->security);
+        lumo_app_draw_text(px, w, h, PAD + 16, y + 22, 2,
+            n->connected ? th.bg : th.text_dim, detail);
+
+        /* connected badge */
+        if (n->connected) {
+            int bw = 12 * 9; /* "CONNECTED" width */
+            lumo_app_draw_text(px, w, h,
+                (int)w - PAD - bw - 8, y + 12, 2,
+                th.bg, "CONNECTED");
+        }
+
+        y += 44;
+    }
 }
 
 static void draw_slider(
