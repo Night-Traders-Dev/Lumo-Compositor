@@ -224,7 +224,7 @@ More detailed notes live in:
 
 ## Status
 
-The project is at v0.0.81 (Lumo OS) running on OrangePi RV2 hardware.
+The project is at v0.0.82 (Lumo OS) running on OrangePi RV2 hardware.
 
 Current capabilities:
 
@@ -243,6 +243,7 @@ Current capabilities:
 - full uppercase/lowercase bitmap font rendering in both shell and app surfaces
 - functional Browser (custom WebKitGTK 6.0 + GTK4, tabbed browsing, Lumo-themed CSS, bookmarks, smart URL bar, DuckDuckGo search)
 - functional Terminal with VT100/xterm-256color emulator (cell grid, ANSI CSI parser, 256-color SGR, cursor movement, scroll regions, alternate screen buffer), runs btop/vim/nano/top, pinch-to-zoom font scaling (1-6x), blinking block cursor, menu, exit closes app
+- functional Browser with WebKitGTK 6.0, tabbed browsing, URL bar with auto-https, bookmarks, GPU page compositing, persistent cookies
 - functional Clock with 4 tabs (Clock, Alarm, Stopwatch, Timer), persistent settings
 - functional Files with directory browsing, scroll, navigation, file sizes
 - functional Settings with 8 categorized sub-pages
@@ -273,6 +274,10 @@ Current capabilities:
 - touch ripple effect on all shell surfaces (launcher, OSK, gesture, status, sidebar, background)
 - GitHub app with full README rendering, markdown file viewer, syntax highlighting
 - Maps app with compass, saved places, location info
+- GPU-accelerated wave background via GLES2 fragment shader on PowerVR (CPU 252% → 49%)
+- first-boot setup wizard (user, WiFi, timezone) with GUI
+- WiFi management in Settings (scan, connect, password entry)
+- OS image builder (tools/build-image.sh) for distributable Lumo OS
 - multiple security audits: 40+ issues fixed across all subsystems
 
 Next milestones:

@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.82] - 2026-04-04
+
+### GPU Wave Background
+
+- PS4 Flow waves now rendered via GLES2 fragment shader on PowerVR BXE-2-32.
+- 7 sine wave layers computed entirely on GPU shader cores.
+- CPU usage dropped from 252% to 49% (remaining is glReadPixels readback).
+- Automatic fallback to CPU 8-thread path if GPU init fails.
+- Background waves throttle to 5s sleep when apps cover the homescreen.
+
+### Browser Fix
+
+- Added xdg-toplevel map/unmap handlers — windows now raise and focus on map.
+- Fixed browser/webview not appearing (was raised before content committed).
+- Switched GTK4 apps to cairo renderer (GL triggers protocol error 71).
+- WebKit still uses GPU internally for page compositing.
+- Fixed 12s portal timeout on all GTK app launches (GTK_USE_PORTAL=0).
+
+### App Drawer Animation Fix
+
+- Launcher surface now marked for render during swipe and snap animations.
+- Poll timeout set to 16ms during active swiping (was only set for snap).
+- Smooth 60fps page transitions now work reliably.
+
 ## [0.0.81] - 2026-04-04
 
 ### Terminal OSK Page
