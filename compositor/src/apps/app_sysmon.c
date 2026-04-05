@@ -240,12 +240,39 @@ void lumo_app_render_sysmon(
             theme.accent, buf);
         y += 20;
 
-        /* 3D load + memory on one line */
-        snprintf(buf, sizeof(buf), "3D: %s  MEM: %.1fMB",
+        /* 3D load + PVR memory on one line */
+        snprintf(buf, sizeof(buf), "3D: %s  PVR: %.1fMB",
             gpu_3d, (double)gpu_mem / (1024.0 * 1024.0));
         lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
             theme.text_dim, buf);
         y += 20;
+
+        /* CMA (GPU VRAM) from /proc/meminfo */
+        {
+            unsigned long cma_total = 0, cma_free = 0;
+            FILE *mi = fopen("/proc/meminfo", "r");
+            if (mi) {
+                char mline[128];
+                while (fgets(mline, sizeof(mline), mi)) {
+                    sscanf(mline, "CmaTotal: %lu", &cma_total);
+                    sscanf(mline, "CmaFree: %lu", &cma_free);
+                }
+                fclose(mi);
+            }
+            if (cma_total > 0) {
+                unsigned long cma_used = cma_total - cma_free;
+                int cma_pct = (int)(100 * cma_used / cma_total);
+                snprintf(buf, sizeof(buf), "VRAM %lu/%luMB  %d%%",
+                    cma_used / 1024, cma_total / 1024, cma_pct);
+                lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
+                    theme.text_dim, buf);
+                y += 18;
+                draw_bar(pixels, width, height, pad, y, col_w, 14,
+                    cma_pct, pct_color(cma_pct),
+                    theme.card_bg, theme.card_stroke);
+                y += 20;
+            }
+        }
 
         /* renderer */
         const char *renderer = getenv("WLR_RENDERER");
