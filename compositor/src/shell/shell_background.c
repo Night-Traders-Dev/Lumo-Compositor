@@ -807,9 +807,28 @@ void lumo_draw_animated_bg(
      * 0.001 at 30fps = 0.03/sec (matches PS4 dynamic theme speed) */
     float wave_t = (float)frame * 0.001f;
 
-    /* real-time wave rendering — GPU handles compositing so CPU
-     * has plenty of headroom for the 8-thread wave computation.
-     * No prerender loop, no 366MB RAM buffer, instant start. */
+#if LUMO_HAVE_GPU_WAVES
+    /* try GPU-accelerated wave rendering first */
+    {
+        extern bool lumo_wave_gpu_available(void);
+        extern bool lumo_wave_gpu_render(uint32_t *pixels,
+            uint32_t width, uint32_t height, float time_sec,
+            uint32_t base_argb, uint32_t wave_argb);
+
+        uint32_t base_argb = 0xFF000000 |
+            (base_r << 16) | (base_g << 8) | base_b;
+        uint32_t wave_argb = 0xFF000000 |
+            (wave_tr << 16) | (wave_tg << 8) | wave_tb;
+
+        if (lumo_wave_gpu_available() &&
+                lumo_wave_gpu_render(pixels, width, height, wave_t,
+                    base_argb, wave_argb)) {
+            return; /* GPU rendered — skip CPU path */
+        }
+    }
+#endif
+
+    /* CPU fallback: 8-thread parallel wave computation */
     bg_parallel_fill(pixels, width, height, frame, bg_row_cache,
                      wave_tr, wave_tg, wave_tb, wave_t);
 }

@@ -182,6 +182,17 @@ lumo_sources = files(
   'src/core/lumo_cache.c',
 ) + protocol_headers
 
+egl_dep = dependency('egl', required: false)
+glesv2_dep = dependency('glesv2', required: false)
+
+shell_wave_gpu_sources = []
+shell_wave_gpu_deps = []
+if egl_dep.found() and glesv2_dep.found()
+  shell_wave_gpu_sources = files('src/shell/shell_wave_gpu.c')
+  shell_wave_gpu_deps = [egl_dep, glesv2_dep]
+  add_project_arguments('-DLUMO_HAVE_GPU_WAVES=1', language: 'c')
+endif
+
 shell_sources = files(
   'src/shell/shell_osk.c',
   'src/shell/shell_ui.c',
@@ -193,7 +204,7 @@ shell_sources = files(
   'src/shell/shell_protocol_client.c',
   'src/shell/shell_client.c',
   'src/protocol/shell_protocol.c',
-) + shell_protocol_files + xdg_client_protocol_files
+) + shell_wave_gpu_sources + shell_protocol_files + xdg_client_protocol_files
 
 app_sources = files(
   'src/apps/app_catalog.c',
@@ -255,7 +266,7 @@ executable(
   'lumo-shell',
   shell_sources,
   include_directories: lumo_inc,
-  dependencies: shell_deps,
+  dependencies: shell_deps + shell_wave_gpu_deps,
   install: true,
 )
 
