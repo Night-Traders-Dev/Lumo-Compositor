@@ -150,5 +150,16 @@ void lumo_app_render_syslog(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels, uint32_t width, uint32_t height
 );
+void lumo_app_render_setup(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
+
+/* setup wizard API */
+void lumo_setup_handle_tap(double x, double y);
+void lumo_setup_handle_key(char ch);
+bool lumo_setup_needs_run(void);
+bool lumo_setup_is_complete(void);
+void lumo_setup_wifi_scan(void);
 
 #endif

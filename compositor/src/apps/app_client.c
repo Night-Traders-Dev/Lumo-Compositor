@@ -1,5 +1,6 @@
 #define _DEFAULT_SOURCE
 #include "lumo/app.h"
+#include "lumo/app_render.h"
 #include "lumo/lumo_term.h"
 
 #include <dirent.h>
@@ -2077,6 +2078,15 @@ static void lumo_app_touch_handle_up(
             }
         }
     }
+
+    /* Setup wizard touch handling */
+    if (client->app_id == LUMO_APP_SETUP) {
+        lumo_setup_handle_tap(client->touch_down_x, client->touch_down_y);
+        if (lumo_setup_is_complete()) {
+            client->running = false;
+        }
+        (void)lumo_app_client_redraw(client);
+    }
 }
 
 static void lumo_app_touch_handle_motion(
@@ -2365,6 +2375,12 @@ static void lumo_app_text_input_done(void *data,
                     client->term_input[client->term_input_len++] = ch;
                     client->term_input[client->term_input_len] = '\0';
                 }
+            }
+            (void)lumo_app_client_redraw(client);
+        } else if (client->app_id == LUMO_APP_SETUP) {
+            /* forward OSK text to setup wizard */
+            for (int i = 0; i < client->pending_commit_len; i++) {
+                lumo_setup_handle_key(client->pending_commit[i]);
             }
             (void)lumo_app_client_redraw(client);
         } else if (client->app_id == LUMO_APP_NOTES ||

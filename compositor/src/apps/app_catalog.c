@@ -57,6 +57,8 @@ static const struct lumo_app_definition lumo_apps[] = {
         0xFFBB77FFu},
     {LUMO_APP_SYSLOG, "syslog", "System Log", "Journal entries and diagnostics",
         0xFF88AABBu},
+    {LUMO_APP_SETUP, "setup", "Setup Wizard", "First-boot configuration",
+        0xFFFF8844u},
 };
 
 size_t lumo_app_count(void) {
@@ -126,6 +128,7 @@ uint32_t lumo_app_accent_argb(enum lumo_app_id app_id) {
 bool lumo_app_wants_osk(enum lumo_app_id app_id, int note_editing) {
     switch (app_id) {
     case LUMO_APP_MESSAGES:
+    case LUMO_APP_SETUP:
         return true;
     case LUMO_APP_NOTES:
     case LUMO_APP_MAPS:

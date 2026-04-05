@@ -35,6 +35,7 @@ enum lumo_app_id {
     LUMO_APP_DOWNLOADS,
     LUMO_APP_PACKAGE,
     LUMO_APP_SYSLOG,
+    LUMO_APP_SETUP,     /* first-boot wizard (not in launcher) */
 };
 
 size_t lumo_app_count(void);

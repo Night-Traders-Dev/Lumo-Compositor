@@ -221,6 +221,7 @@ app_sources = files(
   'src/apps/app_syslog.c',
   'src/apps/app_stubs.c',
   'src/apps/lumo_term.c',
+  'src/tools/lumo_setup.c',
   'src/apps/app_client.c',
 ) + xdg_client_protocol_files + text_input_client_protocol_files
 
@@ -383,6 +384,7 @@ app_test_exe = executable(
     'src/apps/app_syslog.c',
     'src/apps/app_stubs.c',
     'src/apps/lumo_term.c',
+    'src/tools/lumo_setup.c',
     'tests/apps/test_app.c',
   ),
   include_directories: lumo_inc,
@@ -432,6 +434,7 @@ fuzz_test_sources = files(
   'src/apps/app_syslog.c',
   'src/apps/app_stubs.c',
   'src/apps/lumo_term.c',
+  'src/tools/lumo_setup.c',
   'tests/core/test_fuzz.c',
 ) + lumo_sources
 
@@ -474,6 +477,7 @@ perf_test_sources = files(
   'src/apps/app_syslog.c',
   'src/apps/app_stubs.c',
   'src/apps/lumo_term.c',
+  'src/tools/lumo_setup.c',
   'tests/core/test_perf.c',
 )
 
