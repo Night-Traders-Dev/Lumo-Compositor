@@ -1179,6 +1179,9 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
                 close(client->state_fd);
                 client->state_fd = -1;
             }
+            /* state changed — redraw all surfaces immediately */
+            if (client->unified)
+                lumo_shell_client_redraw_unified(client);
         }
 
         if (fds[0].revents & POLLIN) {
