@@ -335,7 +335,7 @@ static void test_launcher_search_and_filtered_tiles(void) {
         &tile_index, &filtered));
 
     assert(lumo_shell_target_for_mode_with_query(LUMO_SHELL_MODE_LAUNCHER,
-        1024, 600, "SET", filtered.x + filtered.width / 2.0,
+        1024, 600, "SET", 0, filtered.x + filtered.width / 2.0,
         filtered.y + filtered.height / 2.0, &target));
     assert(target.kind == LUMO_SHELL_TARGET_LAUNCHER_TILE);
     assert(target.index == 11);

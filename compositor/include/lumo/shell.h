@@ -271,6 +271,7 @@ bool lumo_shell_target_for_mode_with_query(
     uint32_t output_width,
     uint32_t output_height,
     const char *launcher_query,
+    int launcher_page,
     double x,
     double y,
     struct lumo_shell_target *target

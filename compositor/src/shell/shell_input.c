@@ -62,6 +62,7 @@ void lumo_shell_client_note_target(
             client->mode == LUMO_SHELL_MODE_LAUNCHER
                 ? client->toast_message
                 : NULL,
+            client->launcher_page,
             x, y, &target)) {
         fprintf(stderr, "lumo-shell: note_target %s %s idx=%u at %.0f,%.0f "
             "in %ux%u\n",
@@ -579,18 +580,31 @@ static void lumo_shell_touch_handle_up(
     if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
             client->compositor_launcher_visible) {
         double dx = client->pointer_x - client->launcher_swipe_x;
-        if (dx < -60.0) {
+        uint32_t total_tiles = (uint32_t)lumo_shell_launcher_filtered_tile_count(
+            client->search_active ? client->search_query : NULL);
+        uint32_t per_page = (uint32_t)lumo_shell_launcher_tile_count();
+        int max_page = (int)((total_tiles + per_page - 1) / per_page) - 1;
+        if (max_page < 0) max_page = 0;
+
+        if (dx < -40.0) {
             /* swipe left → next page */
-            client->launcher_page++;
+            if (client->launcher_page < max_page)
+                client->launcher_page++;
             lumo_shell_client_clear_active_target(client);
-            (void)lumo_shell_client_redraw(client);
+            if (client->unified)
+                lumo_shell_client_redraw_unified(client);
+            else
+                (void)lumo_shell_client_redraw(client);
             return;
-        } else if (dx > 60.0) {
+        } else if (dx > 40.0) {
             /* swipe right → previous page */
             if (client->launcher_page > 0)
                 client->launcher_page--;
             lumo_shell_client_clear_active_target(client);
-            (void)lumo_shell_client_redraw(client);
+            if (client->unified)
+                lumo_shell_client_redraw_unified(client);
+            else
+                (void)lumo_shell_client_redraw(client);
             return;
         }
     }

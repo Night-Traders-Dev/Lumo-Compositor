@@ -859,6 +859,7 @@ bool lumo_shell_target_for_mode_with_query(
     uint32_t output_width,
     uint32_t output_height,
     const char *launcher_query,
+    int launcher_page,
     double x,
     double y,
     struct lumo_shell_target *target
@@ -885,18 +886,32 @@ bool lumo_shell_target_for_mode_with_query(
 
         count = (uint32_t)lumo_shell_launcher_filtered_tile_count(
             launcher_query);
-        for (uint32_t i = 0; i < count; i++) {
-            uint32_t tile_index = 0;
+        {
+            /* only hit-test tiles on the current page */
+            uint32_t per_page = lumo_shell_launcher_columns *
+                lumo_shell_launcher_rows;
+            int page = launcher_page;
+            int total_pages = (int)((count + per_page - 1) / per_page);
+            if (page < 0) page = 0;
+            if (page >= total_pages) page = total_pages - 1;
+            uint32_t page_start = (uint32_t)page * per_page;
+            uint32_t page_end = page_start + per_page;
+            if (page_end > count) page_end = count;
 
-            if (!lumo_shell_launcher_filtered_tile_rect(output_width,
-                    output_height, launcher_query, i, &tile_index, &rect)) {
-                continue;
-            }
-            if (lumo_rect_contains(&rect, x, y)) {
-                target->kind = LUMO_SHELL_TARGET_LAUNCHER_TILE;
-                target->index = tile_index;
-                target->rect = rect;
-                return true;
+            for (uint32_t i = page_start; i < page_end; i++) {
+                uint32_t tile_index = 0;
+
+                if (!lumo_shell_launcher_filtered_tile_rect(output_width,
+                        output_height, launcher_query, i,
+                        &tile_index, &rect)) {
+                    continue;
+                }
+                if (lumo_rect_contains(&rect, x, y)) {
+                    target->kind = LUMO_SHELL_TARGET_LAUNCHER_TILE;
+                    target->index = tile_index;
+                    target->rect = rect;
+                    return true;
+                }
             }
         }
         return false;
@@ -967,7 +982,7 @@ bool lumo_shell_target_for_mode(
     struct lumo_shell_target *target
 ) {
     return lumo_shell_target_for_mode_with_query(mode, output_width,
-        output_height, NULL, x, y, target);
+        output_height, NULL, 0, x, y, target);
 }
 
 bool lumo_shell_surface_local_coords(
