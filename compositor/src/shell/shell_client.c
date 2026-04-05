@@ -725,11 +725,13 @@ void lumo_shell_client_redraw_unified(struct lumo_shell_client *client) {
                     needs_render = true;
             } else if (client->mode == LUMO_SHELL_MODE_STATUS) {
                 needs_render = true;
-            } else if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
-                    client->compositor_time_panel_visible) {
-                /* redraw launcher when time panel is open so
-                 * the clock updates in real time */
-                needs_render = true;
+            } else if (client->mode == LUMO_SHELL_MODE_LAUNCHER) {
+                /* redraw launcher during page swipe/snap animation
+                 * and when time panel is open */
+                if (client->launcher_swiping ||
+                        client->launcher_snap_active ||
+                        client->compositor_time_panel_visible)
+                    needs_render = true;
             }
 
             /* render only if something changed */
@@ -1127,8 +1129,8 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
             bool any_anim = false;
             timeout_ms = bg_visible ? 33 : 5000;
 
-            /* launcher page snap animation needs 16ms frames */
-            if (client->launcher_snap_active) {
+            /* launcher page swipe/snap animation needs 16ms frames */
+            if (client->launcher_snap_active || client->launcher_swiping) {
                 timeout_ms = 16;
                 any_anim = true;
             }
