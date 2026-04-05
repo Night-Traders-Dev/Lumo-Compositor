@@ -164,36 +164,22 @@ void lumo_app_render_sysmon(
         char gpu_freq_str[16] = "--";
         unsigned long gpu_mem = 0;
 
-        /* read GPU utilization + 3D load from pvr status */
+        /* read GPU utilization + 3D load from pvr status
+         * format: "GPU Utilisation: 24%" and "           3D:  24%" */
         FILE *fp = fopen("/sys/kernel/debug/pvr/status", "r");
         if (fp) {
             char line[256];
             while (fgets(line, sizeof(line), fp)) {
                 int val = 0;
                 if (strstr(line, "GPU Utilisation") != NULL) {
-                    char *pct = strstr(line, ":");
-                    if (pct) {
-                        pct++;
-                        while (*pct == ' ') pct++;
-                        if (sscanf(pct, "%d", &val) == 1)
-                            gpu_util_pct = val;
-                    }
-                } else if (strstr(line, "3D:") != NULL) {
-                    char *pct = strstr(line, "3D:");
-                    if (pct) {
-                        pct += 3;
-                        while (*pct == ' ') pct++;
-                        char *end = strchr(pct, '%');
-                        if (!end) end = strchr(pct, '\n');
-                        if (end) {
-                            int len = (int)(end - pct);
-                            if (len > 0 && len < 15) {
-                                memcpy(gpu_3d, pct, (size_t)len);
-                                gpu_3d[len] = '%';
-                                gpu_3d[len + 1] = '\0';
-                            }
-                        }
-                    }
+                    if (sscanf(strstr(line, ":") + 1, " %d", &val) == 1)
+                        gpu_util_pct = val;
+                } else if (strstr(line, "3D:") != NULL &&
+                        strstr(line, "DM") == NULL) {
+                    /* match "           3D:  24%" but not "DM Utilisation" */
+                    char *colon = strstr(line, "3D:");
+                    if (colon && sscanf(colon + 3, " %d", &val) == 1)
+                        snprintf(gpu_3d, sizeof(gpu_3d), "%d%%", val);
                 }
             }
             fclose(fp);
