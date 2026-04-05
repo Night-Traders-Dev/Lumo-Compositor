@@ -323,7 +323,7 @@ static void test_launcher_search_and_filtered_tiles(void) {
     assert(lumo_rect_contains(&panel, search.x + search.width / 2.0,
         search.y + search.height / 2.0));
 
-    assert(lumo_shell_launcher_filtered_tile_count(NULL) == 16);
+    assert(lumo_shell_launcher_filtered_tile_count(NULL) == 23);
     assert(lumo_shell_launcher_filtered_tile_count("SET") == 1);
     assert(lumo_shell_launcher_filtered_tile_rect(1024, 600, "SET", 0,
         &tile_index, &filtered));

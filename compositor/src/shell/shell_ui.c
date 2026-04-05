@@ -292,7 +292,10 @@ static size_t lumo_shell_launcher_collect_filtered_tiles(
 ) {
     size_t count = 0;
 
-    for (uint32_t i = 0; i < lumo_shell_launcher_tile_count(); i++) {
+    /* iterate over ALL labels (not just grid size) for multi-page support */
+    uint32_t total_labels = (uint32_t)(sizeof(lumo_shell_launcher_labels) /
+        sizeof(lumo_shell_launcher_labels[0]));
+    for (uint32_t i = 0; i < total_labels; i++) {
         if (!lumo_shell_launcher_query_matches(
                 lumo_shell_launcher_tile_label(i), query)) {
             continue;
