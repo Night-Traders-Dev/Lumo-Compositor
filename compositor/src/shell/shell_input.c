@@ -623,8 +623,35 @@ static void lumo_shell_touch_handle_up(
 
     if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
             !client->compositor_launcher_visible &&
-            (client->compositor_quick_settings_visible ||
-                client->compositor_time_panel_visible)) {
+            client->compositor_time_panel_visible) {
+        /* check if tapped on weather section of time panel */
+        struct lumo_rect tp;
+        if (lumo_shell_time_panel_rect(client->configured_width,
+                client->configured_height, &tp)) {
+            double tx = client->pointer_x;
+            double ty = client->pointer_y;
+            /* weather data is in lower half of panel */
+            if (tx >= tp.x && tx < tp.x + tp.width &&
+                    ty >= tp.y + tp.height / 2 &&
+                    ty < tp.y + tp.height) {
+                /* open Weather app */
+                struct lumo_shell_protocol_frame frame;
+                if (lumo_shell_protocol_frame_init(&frame,
+                        LUMO_SHELL_PROTOCOL_FRAME_REQUEST,
+                        "activate_target",
+                        client->next_request_id++)) {
+                    lumo_shell_protocol_frame_add_string(&frame,
+                        "command", "lumo-app:weather");
+                    (void)lumo_shell_client_send_frame(client, &frame);
+                }
+                lumo_shell_client_clear_active_target(client);
+                return;
+            }
+        }
+        lumo_shell_client_clear_active_target(client);
+    } else if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
+            !client->compositor_launcher_visible &&
+            client->compositor_quick_settings_visible) {
         lumo_shell_client_clear_active_target(client);
     } else {
         lumo_shell_client_activate_target(client);
