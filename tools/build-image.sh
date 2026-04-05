@@ -18,7 +18,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 REAL_HOME="/home/kraken"
 SRC_IMG="$REAL_HOME/Orangepirv2_1.0.0_ubuntu_noble_desktop_gnome_linux6.6.63.img"
-OUT_IMG="$REAL_HOME/LumoOS_0.0.80_orangepi-rv2_ubuntu-noble_riscv64.img"
+OUT_IMG="$REAL_HOME/LumoOS_0.0.82_orangepi-rv2_ubuntu-noble_riscv64.img"
 MOUNT_DIR="/tmp/lumo-image-rootfs"
 
 # colors
@@ -315,10 +315,10 @@ chroot "$MOUNT_DIR" systemctl enable lumo-first-boot.service 2>/dev/null || true
 log "Setting Lumo OS branding..."
 
 cat > "$MOUNT_DIR/etc/os-release" << 'OSRELEASE'
-PRETTY_NAME="Lumo OS 0.0.80 (Noble)"
+PRETTY_NAME="Lumo OS 0.0.82 (Noble)"
 NAME="Lumo OS"
-VERSION_ID="0.0.80"
-VERSION="0.0.80 (Noble)"
+VERSION_ID="0.0.82"
+VERSION="0.0.82 (Noble)"
 VERSION_CODENAME=noble
 ID=lumo
 ID_LIKE=ubuntu
