@@ -958,6 +958,8 @@ static void lumo_protocol_new_toplevel(
     wl_signal_add(&xdg_toplevel->base->surface->events.map, &toplevel->map);
     toplevel->unmap.notify = lumo_protocol_toplevel_unmap;
     wl_signal_add(&xdg_toplevel->base->surface->events.unmap, &toplevel->unmap);
+    wlr_log(WLR_INFO, "protocol: connected map/unmap for toplevel (surface mapped=%d)",
+        xdg_toplevel->base->surface->mapped);
 
     wl_list_insert(&compositor->toplevels, &toplevel->link);
     lumo_protocol_toplevel_schedule_configure(toplevel);

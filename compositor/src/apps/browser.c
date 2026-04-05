@@ -804,8 +804,10 @@ int main(int argc, char **argv) {
     LumoBrowser browser = {0};
     int status;
 
-    /* GPU: use PowerVR BXE-2-32 for WebKit + GTK rendering */
-    setenv("GSK_RENDERER", "gl", 0);
+    /* cairo renderer for GTK4 — GL triggers Wayland protocol errors
+     * with the current compositor xdg-shell implementation.
+     * WebKit still uses GPU internally for page compositing. */
+    setenv("GSK_RENDERER", "cairo", 0);
     /* limit web processes for memory (riscv64 has limited RAM) */
     setenv("WEBKIT_PROCESS_COUNT_LIMIT", "2", 0);
     /* disable portal timeout stall */
