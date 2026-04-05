@@ -1127,7 +1127,7 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
                 client->running_app_count == 0 &&
                 !client->compositor_launcher_visible;
             bool any_anim = false;
-            timeout_ms = bg_visible ? 33 : 5000;
+            timeout_ms = bg_visible ? 100 : 5000; /* 10fps for waves */
 
             /* launcher page swipe/snap animation needs 16ms frames */
             if (client->launcher_snap_active || client->launcher_swiping) {
@@ -1179,7 +1179,7 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
                 close(client->state_fd);
                 client->state_fd = -1;
             }
-            /* state changed — redraw all surfaces immediately */
+            /* state changed — redraw immediately for visibility changes */
             if (client->unified)
                 lumo_shell_client_redraw_unified(client);
         }
