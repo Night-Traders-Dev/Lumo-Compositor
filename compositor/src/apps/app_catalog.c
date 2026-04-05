@@ -57,6 +57,8 @@ static const struct lumo_app_definition lumo_apps[] = {
         0xFFBB77FFu},
     {LUMO_APP_SYSLOG, "syslog", "System Log", "Journal entries and diagnostics",
         0xFF88AABBu},
+    {LUMO_APP_PDF, "pdf", "PDF Reader", "View documents and ebooks",
+        0xFFDD4444u},
     {LUMO_APP_SETUP, "setup", "Setup Wizard", "First-boot configuration",
         0xFFFF8844u},
 };

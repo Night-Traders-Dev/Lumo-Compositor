@@ -560,6 +560,8 @@ void lumo_app_render(
         lumo_app_render_package(ctx, pixels, width, height); return;
     case LUMO_APP_SYSLOG:
         lumo_app_render_syslog(ctx, pixels, width, height); return;
+    case LUMO_APP_PDF:
+        lumo_app_render_pdf(ctx, pixels, width, height); return;
     case LUMO_APP_SETUP:
         lumo_app_render_setup(ctx, pixels, width, height); return;
     default:

@@ -1647,6 +1647,17 @@ static void lumo_app_touch_handle_up(
                                     }
                                     opened = true;
                                 }
+                                /* PDF files → native PDF reader */
+                                else if (strcasecmp(ext, ".pdf") == 0) {
+                                    pid_t pid = fork();
+                                    if (pid == 0) {
+                                        setenv("LUMO_PDF_FILE", full_path, 1);
+                                        execlp("lumo-app", "lumo-app",
+                                            "--app", "pdf", (char *)NULL);
+                                        _exit(1);
+                                    }
+                                    opened = true;
+                                }
                             }
 
                             if (!opened) {
@@ -2076,6 +2087,26 @@ static void lumo_app_touch_handle_up(
                 client->selected_row = row;
                 (void)lumo_app_client_redraw(client);
             }
+        }
+    }
+
+    /* PDF reader touch handling */
+    if (client->app_id == LUMO_APP_PDF && client->width > 0 &&
+            client->height > 0) {
+        if (client->scroll_active) {
+            /* scroll finished — apply vertical scroll */
+            double dy = client->touch_down_y -
+                wl_fixed_to_double(wl_fixed_from_double(client->pointer_y));
+            lumo_app_pdf_scroll(dy > 0 ? 1 : -1);
+            client->scroll_active = false;
+            (void)lumo_app_client_redraw(client);
+            return;
+        }
+        int btn = lumo_app_pdf_button_at(client->width, client->height,
+            client->touch_down_x, client->touch_down_y);
+        if (btn >= 0) {
+            lumo_app_pdf_handle_tap(btn);
+            (void)lumo_app_client_redraw(client);
         }
     }
 
@@ -3222,6 +3253,11 @@ int main(int argc, char **argv) {
         client.browse_path[sizeof(client.browse_path) - 1] = '\0';
     }
 
+    if (client.app_id == LUMO_APP_PDF) {
+        const char *pdf_path = getenv("LUMO_PDF_FILE");
+        if (pdf_path && pdf_path[0])
+            lumo_pdf_open(pdf_path);
+    }
     if (client.app_id == LUMO_APP_NOTES) {
         lumo_app_notes_load(&client);
     }
@@ -3337,6 +3373,7 @@ int main(int argc, char **argv) {
             client.app_id == LUMO_APP_CALENDAR ||
             client.app_id == LUMO_APP_CONTACTS ||
             client.app_id == LUMO_APP_TASKS ||
+            client.app_id == LUMO_APP_PDF ||
             is_terminal;
         int timeout_ms =
             client.app_id == LUMO_APP_SYSMON ? 1000 :

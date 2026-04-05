@@ -150,6 +150,17 @@ void lumo_app_render_syslog(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels, uint32_t width, uint32_t height
 );
+void lumo_app_render_pdf(
+    const struct lumo_app_render_context *ctx,
+    uint32_t *pixels, uint32_t width, uint32_t height
+);
+int lumo_app_pdf_button_at(uint32_t width, uint32_t height,
+    double x, double y);
+void lumo_app_pdf_handle_tap(int btn);
+void lumo_app_pdf_scroll(int direction);
+void lumo_pdf_open(const char *path);
+bool lumo_app_pdf_is_loaded(void);
+
 void lumo_app_render_setup(
     const struct lumo_app_render_context *ctx,
     uint32_t *pixels, uint32_t width, uint32_t height

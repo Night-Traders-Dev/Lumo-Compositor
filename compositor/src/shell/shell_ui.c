@@ -31,6 +31,7 @@ static const char *const lumo_shell_launcher_labels[] = {
     "DOWNLOADS",
     "PACKAGES",
     "SYSLOG",
+    "PDF READER",
 };
 static const char *const lumo_shell_launcher_commands[] = {
     "lumo-app:phone",
@@ -56,6 +57,7 @@ static const char *const lumo_shell_launcher_commands[] = {
     "lumo-app:downloads",
     "lumo-app:package",
     "lumo-app:syslog",
+    "lumo-app:pdf",
 };
 static const char *const lumo_shell_touch_audit_names[] = {
     "top-left",

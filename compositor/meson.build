@@ -230,6 +230,7 @@ app_sources = files(
   'src/apps/app_downloads.c',
   'src/apps/app_package.c',
   'src/apps/app_syslog.c',
+  'src/apps/app_pdf.c',
   'src/apps/app_stubs.c',
   'src/apps/lumo_term.c',
   'src/tools/lumo_setup.c',
@@ -273,12 +274,14 @@ executable(
 libpng = dependency('libpng', required: true)
 libjpeg = meson.get_compiler('c').find_library('jpeg', required: true)
 libcurl = dependency('libcurl', required: true)
+poppler_glib = dependency('poppler-glib', required: true)
+cairo_dep = dependency('cairo', required: true)
 
 executable(
   'lumo-app',
   app_sources,
   include_directories: lumo_inc,
-  dependencies: app_deps + [libutil, libpng, libjpeg, libcurl, libm],
+  dependencies: app_deps + [libutil, libpng, libjpeg, libcurl, poppler_glib, cairo_dep, libm],
   install: true,
 )
 
@@ -393,13 +396,14 @@ app_test_exe = executable(
     'src/apps/app_downloads.c',
     'src/apps/app_package.c',
     'src/apps/app_syslog.c',
+    'src/apps/app_pdf.c',
     'src/apps/app_stubs.c',
     'src/apps/lumo_term.c',
     'src/tools/lumo_setup.c',
     'tests/apps/test_app.c',
   ),
   include_directories: lumo_inc,
-  dependencies: [libcurl, libm],
+  dependencies: [libcurl, poppler_glib, cairo_dep, libm],
   install: false,
 )
 
@@ -443,6 +447,7 @@ fuzz_test_sources = files(
   'src/apps/app_downloads.c',
   'src/apps/app_package.c',
   'src/apps/app_syslog.c',
+  'src/apps/app_pdf.c',
   'src/apps/app_stubs.c',
   'src/apps/lumo_term.c',
   'src/tools/lumo_setup.c',
@@ -453,7 +458,7 @@ fuzz_test_exe = executable(
   'lumo-fuzz-tests',
   fuzz_test_sources,
   include_directories: lumo_inc,
-  dependencies: lumo_deps + [libcurl, libm],
+  dependencies: lumo_deps + [libcurl, poppler_glib, cairo_dep, libm],
   install: false,
 )
 
@@ -486,6 +491,7 @@ perf_test_sources = files(
   'src/apps/app_downloads.c',
   'src/apps/app_package.c',
   'src/apps/app_syslog.c',
+  'src/apps/app_pdf.c',
   'src/apps/app_stubs.c',
   'src/apps/lumo_term.c',
   'src/tools/lumo_setup.c',
@@ -496,7 +502,7 @@ perf_test_exe = executable(
   'lumo-perf-tests',
   perf_test_sources,
   include_directories: lumo_inc,
-  dependencies: [libcurl, libm],
+  dependencies: [libcurl, poppler_glib, cairo_dep, libm],
   install: false,
 )
 
