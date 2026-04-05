@@ -150,6 +150,11 @@ struct lumo_shell_client {
     double launcher_swipe_x;     /* touch-down x for page swipe */
     double launcher_swipe_offset; /* live horizontal offset during drag */
     bool launcher_swiping;       /* true while dragging between pages */
+    bool launcher_snap_active;   /* true during snap-back animation */
+    double launcher_snap_from;   /* starting offset for snap animation */
+    double launcher_snap_to;     /* target offset (0 or ±width) */
+    uint64_t launcher_snap_start; /* animation start timestamp */
+    int launcher_snap_page;      /* page to switch to after snap completes */
     char weather_condition[32];
     char weather_humidity[16];
     char weather_wind[24];

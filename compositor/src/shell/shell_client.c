@@ -1122,6 +1122,13 @@ static int lumo_shell_client_run(struct lumo_shell_client *client) {
                 client->compositor_scrim_state == LUMO_SHELL_REMOTE_SCRIM_HIDDEN;
             bool any_anim = false;
             timeout_ms = bg_visible ? 33 : 5000;
+
+            /* launcher page snap animation needs 16ms frames */
+            if (client->launcher_snap_active) {
+                timeout_ms = 16;
+                any_anim = true;
+            }
+
             for (int i = 0; i < client->surface_count; i++) {
                 struct lumo_shell_surface_slot *slot = &client->slots[i];
                 if (slot->animation_active) {

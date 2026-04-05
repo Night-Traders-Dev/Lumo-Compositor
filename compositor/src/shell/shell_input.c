@@ -407,6 +407,11 @@ static void lumo_shell_touch_handle_down(
 
     /* record swipe start for launcher page navigation */
     if (client->mode == LUMO_SHELL_MODE_LAUNCHER) {
+        /* if a snap animation is running, complete it immediately */
+        if (client->launcher_snap_active) {
+            client->launcher_page = client->launcher_snap_page;
+            client->launcher_snap_active = false;
+        }
         client->launcher_swipe_x = client->pointer_x;
         client->launcher_swipe_offset = 0.0;
         client->launcher_swiping = false;
@@ -579,7 +584,7 @@ static void lumo_shell_touch_handle_up(
         return;
     }
 
-    /* launcher page swipe — snap to nearest page on release */
+    /* launcher page swipe — start snap animation on release */
     if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
             client->compositor_launcher_visible &&
             client->launcher_swiping) {
@@ -589,22 +594,30 @@ static void lumo_shell_touch_handle_up(
         uint32_t per_page = (uint32_t)lumo_shell_launcher_tile_count();
         int max_page = (int)((total_tiles + per_page - 1) / per_page) - 1;
         if (max_page < 0) max_page = 0;
+        double w = (double)client->configured_width;
 
-        /* snap threshold: 1/4 of screen width or velocity-based */
-        double threshold = (double)client->configured_width * 0.20;
+        /* decide target: snap to next/prev page or bounce back */
+        double threshold = w * 0.20;
+        client->launcher_snap_from = dx;
+        client->launcher_snap_start = lumo_now_msec();
+        client->launcher_snap_active = true;
+        client->launcher_swiping = false;
+
         if (dx < -threshold && client->launcher_page < max_page) {
-            client->launcher_page++;
+            /* commit to next page: animate offset → -width */
+            client->launcher_snap_to = -w;
+            client->launcher_snap_page = client->launcher_page + 1;
         } else if (dx > threshold && client->launcher_page > 0) {
-            client->launcher_page--;
+            /* commit to prev page: animate offset → +width */
+            client->launcher_snap_to = w;
+            client->launcher_snap_page = client->launcher_page - 1;
+        } else {
+            /* bounce back to current page: animate offset → 0 */
+            client->launcher_snap_to = 0.0;
+            client->launcher_snap_page = client->launcher_page;
         }
 
-        client->launcher_swipe_offset = 0.0;
-        client->launcher_swiping = false;
         lumo_shell_client_clear_active_target(client);
-        if (client->unified)
-            lumo_shell_client_redraw_unified(client);
-        else
-            (void)lumo_shell_client_redraw(client);
         return;
     }
 

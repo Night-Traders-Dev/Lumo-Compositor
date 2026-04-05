@@ -551,7 +551,33 @@ static void lumo_draw_launcher(
     /* live swipe offset for smooth page scrolling */
     int swipe_x = 0;
     int adj_page = -1;  /* adjacent page to render during swipe */
-    if (client != NULL && client->launcher_swiping) {
+
+    /* tick snap-back animation (ease-out cubic, 250ms) */
+    if (client != NULL && client->launcher_snap_active) {
+        /* cast away const — we are the unified client updating in-place */
+        struct lumo_shell_client *mut =
+            (struct lumo_shell_client *)(uintptr_t)client;
+        uint64_t now = lumo_now_msec();
+        uint64_t elapsed = now - mut->launcher_snap_start;
+        uint32_t duration = 250;
+        if (elapsed >= duration) {
+            mut->launcher_snap_active = false;
+            mut->launcher_swipe_offset = 0.0;
+            mut->launcher_page = mut->launcher_snap_page;
+            page = mut->launcher_page;
+            if (page >= total_pages) page = total_pages - 1;
+            if (page < 0) page = 0;
+        } else {
+            double t = (double)elapsed / (double)duration;
+            double ease = 1.0 - (1.0 - t) * (1.0 - t) * (1.0 - t);
+            mut->launcher_swipe_offset =
+                mut->launcher_snap_from +
+                (mut->launcher_snap_to - mut->launcher_snap_from) * ease;
+        }
+    }
+
+    if (client != NULL &&
+            (client->launcher_swiping || client->launcher_snap_active)) {
         swipe_x = (int)client->launcher_swipe_offset;
         /* clamp: don't scroll past first/last page */
         if (swipe_x > 0 && page == 0) {
