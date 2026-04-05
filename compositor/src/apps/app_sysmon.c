@@ -158,18 +158,110 @@ void lumo_app_render_sysmon(
     y += 8;
 
     /* ── GPU ─────────────────────────────────────────────────── */
-    lumo_app_draw_text(pixels, width, height, pad, y, 3,
-        theme.text, "GPU");
-    y += 26;
-
     {
+        int gpu_util_pct = 0;
+        char gpu_3d[16] = "--";
+        char gpu_freq_str[16] = "--";
+        unsigned long gpu_mem = 0;
+
+        /* read GPU utilization + 3D load from pvr status */
+        FILE *fp = fopen("/sys/kernel/debug/pvr/status", "r");
+        if (fp) {
+            char line[256];
+            while (fgets(line, sizeof(line), fp)) {
+                int val = 0;
+                if (strstr(line, "GPU Utilisation") != NULL) {
+                    char *pct = strstr(line, ":");
+                    if (pct) {
+                        pct++;
+                        while (*pct == ' ') pct++;
+                        if (sscanf(pct, "%d", &val) == 1)
+                            gpu_util_pct = val;
+                    }
+                } else if (strstr(line, "3D:") != NULL) {
+                    char *pct = strstr(line, "3D:");
+                    if (pct) {
+                        pct += 3;
+                        while (*pct == ' ') pct++;
+                        char *end = strchr(pct, '%');
+                        if (!end) end = strchr(pct, '\n');
+                        if (end) {
+                            int len = (int)(end - pct);
+                            if (len > 0 && len < 15) {
+                                memcpy(gpu_3d, pct, (size_t)len);
+                                gpu_3d[len] = '%';
+                                gpu_3d[len + 1] = '\0';
+                            }
+                        }
+                    }
+                }
+            }
+            fclose(fp);
+        }
+
+        /* read GPU frequency from clk_summary */
+        fp = fopen("/sys/kernel/debug/clk/clk_summary", "r");
+        if (fp) {
+            char line[256];
+            while (fgets(line, sizeof(line), fp)) {
+                if (strstr(line, "cac00000.imggpu") != NULL) {
+                    /* extract large number (frequency in Hz) */
+                    unsigned long freq_hz = 0;
+                    char *p = line;
+                    while (*p) {
+                        if (*p >= '0' && *p <= '9') {
+                            unsigned long n = strtoul(p, &p, 10);
+                            if (n > 1000000) { freq_hz = n; break; }
+                        } else {
+                            p++;
+                        }
+                    }
+                    if (freq_hz > 0)
+                        snprintf(gpu_freq_str, sizeof(gpu_freq_str),
+                            "%.0f MHz", (double)freq_hz / 1000000.0);
+                    break;
+                }
+            }
+            fclose(fp);
+        }
+
+        /* read GPU memory from driver_stats */
+        fp = fopen("/sys/kernel/debug/pvr/driver_stats", "r");
+        if (fp) {
+            char line[128];
+            while (fgets(line, sizeof(line), fp)) {
+                unsigned long val = 0;
+                if (sscanf(line, "MemoryUsageAllocGPUMemUMA %lu", &val) == 1)
+                    gpu_mem = val;
+            }
+            fclose(fp);
+        }
+
+        snprintf(buf, sizeof(buf), "GPU  %d%%", gpu_util_pct);
+        lumo_app_draw_text(pixels, width, height, pad, y, 3,
+            theme.text, buf);
+        y += 26;
+
+        /* utilization bar */
+        draw_bar(pixels, width, height, pad, y, col_w, 18,
+            gpu_util_pct, pct_color(gpu_util_pct),
+            theme.card_bg, theme.card_stroke);
+        y += 24;
+
+        /* GPU details: name + freq on one line */
+        snprintf(buf, sizeof(buf), "BXE-2-32  %s", gpu_freq_str);
         lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
-            theme.accent, "PowerVR BXE-2-32");
-        y += 20;
-        lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
-            theme.text_dim, "GLES 3.2 / Vulkan 1.3");
+            theme.accent, buf);
         y += 20;
 
+        /* 3D load + memory on one line */
+        snprintf(buf, sizeof(buf), "3D: %s  MEM: %.1fMB",
+            gpu_3d, (double)gpu_mem / (1024.0 * 1024.0));
+        lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
+            theme.text_dim, buf);
+        y += 20;
+
+        /* renderer */
         const char *renderer = getenv("WLR_RENDERER");
         snprintf(buf, sizeof(buf), "RENDERER: %s",
             renderer ? renderer : "pixman");
@@ -178,24 +270,6 @@ void lumo_app_render_sysmon(
                 ? theme.accent : theme.text_dim,
             buf);
         y += 20;
-
-        /* GPU memory */
-        FILE *fp = fopen("/sys/kernel/debug/pvr/driver_stats", "r");
-        if (fp) {
-            char line[128];
-            unsigned long gpu_mem = 0;
-            while (fgets(line, sizeof(line), fp)) {
-                unsigned long val = 0;
-                if (sscanf(line, "MemoryUsageAllocGPUMemUMA %lu", &val) == 1)
-                    gpu_mem = val;
-            }
-            fclose(fp);
-            snprintf(buf, sizeof(buf), "GPU MEM: %.1f MB",
-                (double)gpu_mem / (1024.0 * 1024.0));
-            lumo_app_draw_text(pixels, width, height, pad + 8, y, 2,
-                theme.text_dim, buf);
-            y += 20;
-        }
     }
 
     lumo_app_fill_rect(pixels, width, height, pad, y, col_w, 1,
