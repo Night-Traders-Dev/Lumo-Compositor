@@ -1,6 +1,9 @@
 #include "lumo/compositor.h"
 #include "lumo/shell.h"
 
+/* from shell_launch.c — broadcasts state to all shell clients */
+extern void lumo_shell_mark_state_dirty(struct lumo_compositor *compositor);
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -624,6 +627,9 @@ static void lumo_protocol_teardown_toplevel(struct lumo_toplevel *toplevel) {
             wl_list_empty(&compositor->toplevels)) {
         lumo_protocol_set_keyboard_visible(compositor, false);
     }
+    /* broadcast so shell sees updated running_app_count */
+    if (compositor != NULL)
+        lumo_shell_mark_state_dirty(compositor);
 }
 
 static void lumo_protocol_teardown_popup(struct lumo_popup *popup) {
@@ -885,8 +891,19 @@ static void lumo_protocol_toplevel_unmap(
     (void)data;
 
     wlr_scene_node_set_enabled(&toplevel->scene_tree->node, false);
+
+    /* clear keyboard focus if this surface was focused */
+    if (toplevel->compositor->seat != NULL) {
+        struct wlr_surface *focused =
+            toplevel->compositor->seat->keyboard_state.focused_surface;
+        if (focused == toplevel->xdg_surface->surface)
+            wlr_seat_keyboard_clear_focus(toplevel->compositor->seat);
+    }
+
     wlr_log(WLR_INFO, "protocol: toplevel unmapped");
     lumo_protocol_mark_layers_dirty(toplevel->compositor);
+    /* broadcast updated running_app_count so shell redraws background */
+    lumo_shell_mark_state_dirty(toplevel->compositor);
 }
 
 static void lumo_protocol_new_toplevel(
