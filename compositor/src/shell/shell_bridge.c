@@ -798,6 +798,8 @@ static void lumo_shell_launch_app(
         /* use GPU-accelerated GL renderer for GTK4 apps (PowerVR GLES 3.2).
          * Falls back to cairo if GL init fails. */
         setenv("GSK_RENDERER", "gl", 0);
+        /* prevent 12s portal timeout stall (portal removed in debloat) */
+        setenv("GTK_USE_PORTAL", "0", 0);
         if (app_id != NULL && app_id[0] != '\0') {
             execlp(binary, binary, "--app", app_id, (char *)NULL);
         } else if (strchr(command, ' ') != NULL) {

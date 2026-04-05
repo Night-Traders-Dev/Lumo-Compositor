@@ -3122,6 +3122,7 @@ static void lumo_app_browser_launch_url(const char *url) {
         if (wl == NULL || wl[0] == '\0')
             setenv("WAYLAND_DISPLAY", "lumo-shell", 1);
         setenv("GSK_RENDERER", "gl", 1);
+        setenv("GTK_USE_PORTAL", "0", 1);
         if (access("/data/lumo-cache/webkit", W_OK) == 0)
             setenv("XDG_CACHE_HOME", "/data/lumo-cache/webkit", 1);
         else
