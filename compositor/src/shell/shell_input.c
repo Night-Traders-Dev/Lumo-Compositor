@@ -406,8 +406,11 @@ static void lumo_shell_touch_handle_down(
         client->sidebar_press_start_msec = lumo_now_msec();
 
     /* record swipe start for launcher page navigation */
-    if (client->mode == LUMO_SHELL_MODE_LAUNCHER)
+    if (client->mode == LUMO_SHELL_MODE_LAUNCHER) {
         client->launcher_swipe_x = client->pointer_x;
+        client->launcher_swipe_offset = 0.0;
+        client->launcher_swiping = false;
+    }
 
     /* trigger touch ripple on the surface that received the touch */
     client->ripple_x = client->pointer_x;
@@ -576,37 +579,33 @@ static void lumo_shell_touch_handle_up(
         return;
     }
 
-    /* launcher page swipe — horizontal swipe changes page */
+    /* launcher page swipe — snap to nearest page on release */
     if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
-            client->compositor_launcher_visible) {
-        double dx = client->pointer_x - client->launcher_swipe_x;
+            client->compositor_launcher_visible &&
+            client->launcher_swiping) {
+        double dx = client->launcher_swipe_offset;
         uint32_t total_tiles = (uint32_t)lumo_shell_launcher_filtered_tile_count(
             client->search_active ? client->search_query : NULL);
         uint32_t per_page = (uint32_t)lumo_shell_launcher_tile_count();
         int max_page = (int)((total_tiles + per_page - 1) / per_page) - 1;
         if (max_page < 0) max_page = 0;
 
-        if (dx < -40.0) {
-            /* swipe left → next page */
-            if (client->launcher_page < max_page)
-                client->launcher_page++;
-            lumo_shell_client_clear_active_target(client);
-            if (client->unified)
-                lumo_shell_client_redraw_unified(client);
-            else
-                (void)lumo_shell_client_redraw(client);
-            return;
-        } else if (dx > 40.0) {
-            /* swipe right → previous page */
-            if (client->launcher_page > 0)
-                client->launcher_page--;
-            lumo_shell_client_clear_active_target(client);
-            if (client->unified)
-                lumo_shell_client_redraw_unified(client);
-            else
-                (void)lumo_shell_client_redraw(client);
-            return;
+        /* snap threshold: 1/4 of screen width or velocity-based */
+        double threshold = (double)client->configured_width * 0.20;
+        if (dx < -threshold && client->launcher_page < max_page) {
+            client->launcher_page++;
+        } else if (dx > threshold && client->launcher_page > 0) {
+            client->launcher_page--;
         }
+
+        client->launcher_swipe_offset = 0.0;
+        client->launcher_swiping = false;
+        lumo_shell_client_clear_active_target(client);
+        if (client->unified)
+            lumo_shell_client_redraw_unified(client);
+        else
+            (void)lumo_shell_client_redraw(client);
+        return;
     }
 
     if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
@@ -641,6 +640,24 @@ static void lumo_shell_touch_handle_motion(
 
     client->pointer_x = wl_fixed_to_double(x);
     client->pointer_y = wl_fixed_to_double(y);
+
+    /* live horizontal swipe tracking for launcher page scroll */
+    if (client->mode == LUMO_SHELL_MODE_LAUNCHER &&
+            client->compositor_launcher_visible) {
+        double dx = client->pointer_x - client->launcher_swipe_x;
+        if (!client->launcher_swiping && (dx > 15.0 || dx < -15.0)) {
+            client->launcher_swiping = true;
+        }
+        if (client->launcher_swiping) {
+            client->launcher_swipe_offset = dx;
+            if (client->unified)
+                lumo_shell_client_redraw_unified(client);
+            else
+                (void)lumo_shell_client_redraw(client);
+            return; /* don't update target while swiping */
+        }
+    }
+
     lumo_shell_client_note_target(client, client->pointer_x,
         client->pointer_y);
 }

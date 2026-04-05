@@ -148,6 +148,8 @@ struct lumo_shell_client {
     int search_len;
     int launcher_page;           /* current page in multi-page drawer */
     double launcher_swipe_x;     /* touch-down x for page swipe */
+    double launcher_swipe_offset; /* live horizontal offset during drag */
+    bool launcher_swiping;       /* true while dragging between pages */
     char weather_condition[32];
     char weather_humidity[16];
     char weather_wind[24];

@@ -547,12 +547,51 @@ static void lumo_draw_launcher(
     if (total_pages < 1) total_pages = 1;
     if (page >= total_pages) page = total_pages - 1;
     if (page < 0) page = 0;
+
+    /* live swipe offset for smooth page scrolling */
+    int swipe_x = 0;
+    int adj_page = -1;  /* adjacent page to render during swipe */
+    if (client != NULL && client->launcher_swiping) {
+        swipe_x = (int)client->launcher_swipe_offset;
+        /* clamp: don't scroll past first/last page */
+        if (swipe_x > 0 && page == 0) {
+            swipe_x = swipe_x / 3; /* rubber-band effect */
+        } else if (swipe_x < 0 && page >= total_pages - 1) {
+            swipe_x = swipe_x / 3;
+        }
+        /* determine which adjacent page to show */
+        if (swipe_x < 0 && page < total_pages - 1) {
+            adj_page = page + 1; /* next page sliding in from right */
+        } else if (swipe_x > 0 && page > 0) {
+            adj_page = page - 1; /* prev page sliding in from left */
+        }
+    }
+
     uint32_t page_start = (uint32_t)page * tiles_per_page;
     uint32_t page_end = page_start + tiles_per_page;
     if (page_end > total_tiles) page_end = total_tiles;
 
-    for (uint32_t visible_index = page_start;
-            visible_index < page_end;
+    /* also prepare adjacent page range if swiping */
+    uint32_t adj_start = 0, adj_end = 0;
+    int adj_offset_x = 0;
+    if (adj_page >= 0 && adj_page < total_pages) {
+        adj_start = (uint32_t)adj_page * tiles_per_page;
+        adj_end = adj_start + tiles_per_page;
+        if (adj_end > total_tiles) adj_end = total_tiles;
+        adj_offset_x = (adj_page > page)
+            ? (int)width + swipe_x   /* next page: slides in from right */
+            : -(int)width + swipe_x; /* prev page: slides in from left */
+    }
+
+    /* render both current page (shifted) and adjacent page */
+    for (int pass = 0; pass < 2; pass++) {
+        uint32_t ps = (pass == 0) ? page_start : adj_start;
+        uint32_t pe = (pass == 0) ? page_end : adj_end;
+        int x_off = (pass == 0) ? swipe_x : adj_offset_x;
+        if (pass == 1 && adj_page < 0) break;
+
+    for (uint32_t visible_index = ps;
+            visible_index < pe;
             visible_index++) {
         struct lumo_rect tile_rect = {0};
         struct lumo_rect icon_rect = {0};
@@ -571,6 +610,7 @@ static void lumo_draw_launcher(
         }
 
         tile_rect.y += slide_y;
+        tile_rect.x += x_off;
         cx = tile_rect.x + tile_rect.width / 2;
         cy = tile_rect.y +
             ((tile_rect.height - (56 + 8 + 20)) > 0
@@ -758,6 +798,7 @@ static void lumo_draw_launcher(
             active ? highlight : subtitle_color,
             label != NULL ? label : "APP");
     }
+    } /* end pass loop (current page + adjacent page) */
 
     /* page indicator dots */
     if (total_pages > 1) {
