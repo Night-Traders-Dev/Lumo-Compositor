@@ -1,0 +1,6 @@
+[submodule "gpu"]
+	path = gpu
+	url = /root/Devel/lumo-gpu
+[submodule "compositor/src/apps"]
+	path = compositor/src/apps
+	url = /root/Devel/lumo-apps
