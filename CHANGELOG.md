@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.83] - 2026-06-20
+
+### Architecture & Modularity
+- Modularized application suite (`compositor/src/apps`) and GPU driver-specific rendering code (`gpu/`) into independent Git submodule repositories (`lumo-apps` and `lumo-gpu`).
+- Added parallel synchronization script `sync_lumo.py` using `rich` terminal UI layout/progress to update, sync, and bootstrap submodules simultaneously.
+- Documented submodules and core components (`input_pointer.c`, `lumo_cache.c`, `app_maps.c`) in design and architecture manuals.
+
+### Weather App Fix
+- Fixed 3-day forecast parser logic in the weather application (`app_weather.c`) to iterate correctly over forecast day nodes instead of getting stuck inside nested hourly/astronomy arrays.
+
 ## [0.0.82] - 2026-04-04
 
 ### GPU Wave Background
