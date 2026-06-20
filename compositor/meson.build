@@ -20,8 +20,15 @@ udev_rules_dir = get_option('udev_rules_dir')
 
 libsystemd = dependency('libsystemd', required: false)
 
+wlroots_dep = dependency('wlroots-0.19', required: false)
+if wlroots_dep.found()
+  add_project_arguments('-DLUMO_WLROOTS_0_19=1', language: 'c')
+else
+  wlroots_dep = dependency('wlroots-0.18', required: true)
+endif
+
 lumo_deps = [
-  dependency('wlroots-0.18', required: true),
+  wlroots_dep,
   dependency('wayland-server', required: true),
   dependency('xkbcommon', required: true),
   dependency('wayland-protocols', required: true),

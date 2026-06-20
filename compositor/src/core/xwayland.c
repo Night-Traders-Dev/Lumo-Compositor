@@ -106,7 +106,11 @@ void lumo_xwayland_focus_surface(
         return;
     }
 
+#if LUMO_WLROOTS_0_19
+    if (!wlr_xwayland_surface_override_redirect_wants_focus(xsurface)) {
+#else
     if (!wlr_xwayland_or_surface_wants_focus(xsurface)) {
+#endif
         wlr_log(WLR_DEBUG, "xwayland: skipping focus for %s",
             xsurface->title != NULL ? xsurface->title : "(unnamed)");
         return;
@@ -258,7 +262,11 @@ static void lumo_xwayland_surface_request_activate(
 
     (void)data;
     if (surface == NULL || surface->xsurface == NULL ||
+#if LUMO_WLROOTS_0_19
+            !wlr_xwayland_surface_override_redirect_wants_focus(surface->xsurface)) {
+#else
             !wlr_xwayland_or_surface_wants_focus(surface->xsurface)) {
+#endif
         return;
     }
 
