@@ -17,9 +17,10 @@ leans toward:
 ## Current Layout
 
 - `compositor/` contains the wlroots-based compositor core in C.
-  The compositor sources are grouped by category under `src/apps`, `src/core`,
-  `src/protocol`, `src/shell`, and `src/tools`, with matching grouped test
-  directories.
+  The compositor sources are grouped by category under `src/core`, `src/protocol`,
+  `src/shell`, and `src/tools`, with matching grouped test directories.
+- `compositor/src/apps/` is a Git submodule containing the suite of native, touch-first Wayland applications (housed in the [lumo-apps](https://github.com/Night-Traders-Dev/lumo-apps) repository).
+- `gpu/` is a Git submodule containing the Lumo GPU rendering code (housed in the [lumo-gpu](https://github.com/Night-Traders-Dev/lumo-gpu) repository).
 - `docs/` contains the architecture and migration notes.
 - `Design.md` captures the touch-first shell direction and visual language.
 - `CHANGELOG.md` tracks semver-style progress starting at `0.0.1`.
@@ -36,6 +37,22 @@ The compositor module already has a working scaffold for:
 - a native `lumo-app` client that powers the launcher tiles with built-in Lumo apps
 - compositor-owned shell hitboxes for scrims, OSK zones, and edge gestures
 - multi-edge mobile gesture zones plus a built-in touch audit flow that saves per-device profiles without taking over the launcher path in normal sessions
+
+## Submodule Synchronization
+
+Lumo modularizes its applications and GPU code into separate repositories, pulling them in as submodules (`gpu` and `compositor/src/apps`).
+
+To synchronize the repository and all of its submodules in parallel, run the custom synchronization script:
+
+```sh
+./sync_lumo.py
+```
+
+If you are initializing a fresh clone, run the script with the `--bootstrap` option to wipe and clone all submodules fresh:
+
+```sh
+./sync_lumo.py --bootstrap
+```
 
 ## Build
 

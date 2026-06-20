@@ -61,7 +61,7 @@ Current app drawer labels:
 
 ### Native Apps
 
-Launcher tiles now open native `lumo-app` clients or system applications.
+Launcher tiles now open native `lumo-app` clients or system applications. The suite of 14 native, touch-first applications is modularized into a separate [lumo-apps](https://github.com/Night-Traders-Dev/lumo-apps) repository, pulled in as a Git submodule under `compositor/src/apps/`.
 The Browser tile launches system Chromium (v122) via Wayland instead of a
 custom WebKitGTK binary.
 
@@ -239,7 +239,9 @@ Animation principles:
 - shell clients use double-buffered SHM rendering to avoid per-frame allocation overhead
 - the OSK is modularized into its own source file
 - input handling is modularized into input.c, input_touch.c, input_pointer.c, and input_internal.h
-- native apps are modularized into separate source files per app (app_terminal.c, app_clock.c, app_files.c, app_settings.c, app_notes.c, app_music.c, app_photos.c, app_videos.c)
+- native apps are modularized into a separate Git submodule repository (`compositor/src/apps`) to isolate the core shell from application logic, with source files per app (app_terminal.c, app_clock.c, app_files.c, app_settings.c, app_notes.c, app_music.c, app_photos.c, app_videos.c, app_maps.c, etc.)
+- GPU rendering is isolated in the `gpu` Git submodule repository to separate driver-specific code from core compositor logic
+- caching of key-value settings and surfaces is supported by the `lumo_cache.c` module
 - the shared app rendering API lives in app_render.h with common helpers (fill, gradient, rounded rect, text, glyph table)
 - app clients use a poll-based event loop with configurable timeout for periodic redraws (1s for Clock, 5s for Settings)
 - touch on scrim hitboxes is replayed to the overlay layer surface so launcher tiles and panel buttons receive taps

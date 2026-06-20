@@ -1,7 +1,9 @@
 # Lumo Compositor Architecture
 
 Lumo is a touch-first Wayland compositor and mobile shell built on
-wlroots 0.18 for the OrangePi RV2 (riscv64, GPU compositing via PowerVR BXE-2-32 GLES 3.2).
+wlroots 0.18 for the OrangePi RV2 (riscv64, GPU compositing via PowerVR BXE-2-32 GLES 3.2). 
+
+The repository structures for the GPU driver code (`gpu/`) and the suite of native applications (`compositor/src/apps/`) are modularized into independent Git submodules.
 
 ## System Overview
 
@@ -35,6 +37,10 @@ wlroots 0.18 for the OrangePi RV2 (riscv64, GPU compositing via PowerVR BXE-2-32
 - Selects DRM, Wayland, headless, or X11 backend
 - Initializes wlroots renderer and event loop
 - Manages session startup/shutdown
+
+### lumo_cache.c
+- Implements stubs for Lumo key-value settings and surface caching
+- Exposes caching interfaces (`lumo_cache_init()`, `lumo_cache_put()`, `lumo_cache_get()`, `lumo_cache_put_surface()`, `lumo_cache_get_surface()`, and `lumo_cache_stats()`) for future optimizations
 
 ### input.c + input_touch.c + input_pointer.c (~2900 lines total)
 
@@ -173,7 +179,7 @@ Priority-based touch dispatch:
 - Surface configuration per mode (dimensions, anchors, exclusive zones)
 - Animation duration constants (Material Design: 350/250ms launcher, 300/200ms OSK)
 
-## App Clients (`src/apps/`)
+## App Clients (`compositor/src/apps/` Submodule)
 
 ### app_client.c (~1900 lines)
 - Wayland client with xdg-shell, wl_seat (pointer + touch + keyboard)
@@ -193,6 +199,7 @@ Priority-based touch dispatch:
 - `app_music.c`: track list with now-playing bar
 - `app_photos.c`: 3-column grid with fullscreen JPEG/PNG viewer
 - `app_videos.c`: library list with preview area
+- `app_maps.c`: Maps app with compass tab, saved places, and location info
 - `app_ui.c`: shared rendering (fill_rect, gradient, rounded_rect, text, theme)
 
 ### Browser (native SHM)
